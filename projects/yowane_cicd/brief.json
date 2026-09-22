@@ -1,0 +1,54 @@
+{
+  "project_id": "yowane_cicd",
+  "name": "3D手办弱音的CI/CD避坑指南",
+  "tagline": "手办美少女带你从零看懂持续集成与持续交付",
+  "category": "AI短剧 & 开发者科普",
+  "description": "由 3D 手办风格的虚拟偶像弱音出镜，用微缩手办场景与通俗生动的比喻，为开发者彻底讲透现代软件工程核心 CI/CD 流水线。",
+  "target_audience": [
+    "刚接触自动化部署的初中级程序员",
+    "深受手动打包、深夜发布折磨的开发与运维",
+    "喜欢二次元与 3D 手办风的技术爱好者"
+  ],
+  "pain_points": [
+    "每次上线都靠肉身敲命令，深夜发布提心吊胆，一出 Bug 彻夜难眠",
+    "多分支合并冲突像拆盲盒，测试环境和生产环境总有莫名其妙的玄学差异",
+    "缺少自动化质量门禁，坏代码直接溜进主干，导致线上频频暴雷"
+  ],
+  "solutions": [
+    "CI 持续集成：代码一提交，全自动单元测试与安全扫描自动开跑",
+    "CD 持续交付：自动化容器构建、金丝雀灰度发布、秒级健康巡检",
+    "无人值守流水线：把一切重复手工彻底固化为确定性自动化任务"
+  ],
+  "key_features": [
+    {
+      "name": "自动化质量门禁",
+      "headline": "Git Push 触发即时体检",
+      "detail": "静态扫描、代码规范、单元测试全自动拦截漏洞，杜绝不合格代码合并进主干。"
+    },
+    {
+      "name": "秒级确定性构建",
+      "headline": "环境一致性杜绝环境玄学",
+      "detail": "基于 Docker / OCI 容器标准打包，无论在哪台机器运行都百分之百一致。"
+    },
+    {
+      "name": "灰度与一键回滚",
+      "headline": "异常自愈毫秒级止血",
+      "detail": "支持小流量渐进式发布，一旦指标异常看门狗自动回滚到上一稳定版本。"
+    }
+  ],
+  "tech_stack": [
+    "ByteDance Doubao Seedream 5.0",
+    "Edge-TTS (Xiaoxiao Anime Voice)",
+    "ContentFlow / MoneyPrinterTurbo",
+    "FFmpeg Macro Cinematic Lens"
+  ],
+  "highlights": [
+    "3D 手办级高保真微距视觉呈现",
+    "大模型生动剧本，告别枯燥枯涩的技术术语",
+    "全自动音画卡点与字幕对齐"
+  ],
+  "call_to_action": "点赞关注弱音，下期带你手把手搭起属于你的第一条 GitHub Actions 自动化流水线！",
+  "links": {
+    "docs": "https://github.com/universal-flow/ContentFlow"
+  }
+}

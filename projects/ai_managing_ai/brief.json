@@ -1,0 +1,72 @@
+{
+  "project_id": "ai_managing_ai",
+  "name": "AI 管理 AI 工作深度调研与 TermFlow 控制舱",
+  "tagline": "从认知编排到物理控制舱：多智能体分层管辖的技术死穴与 TermFlow 架构破局",
+  "category": "前沿 AI 系统架构调研 / 多智能体工程基建",
+  "description": "深入调研 2026 年大模型进入深度推理时代后，'AI 管理 AI（Multi-Agent 分层管理与监督）'的架构演进与生产落地真实困境。系统性拆解执行黑盒、断网雪崩、爆炸半径、内网穿透及人机在环脱节四大物理死穴，并全面剖析开源项目 TermFlow 如何作为智能体执行控制舱与安全 Broker 给出工业级基建解法。",
+  "target_audience": [
+    "AI 系统架构师与大模型工程师",
+    "自主智能体（Autonomous Agents）与 Multi-Agent 开发者",
+    "云原生运维、SRE 与后端技术专家",
+    "技术决策者、CTO 与独立极客开发者"
+  ],
+  "pain_points": [
+    "执行黑盒与断网雪崩：传统 HTTP API 抖动或超时导致底层的长耗时编译/微调子进程被操作系统 SIGHUP 强杀，前功尽弃",
+    "失控爆炸半径与安全失守：工人 AI 遇到报错产生幻觉，暴力执行 rm -rf / 或泄露包含数据库凭据的生产密钥",
+    "异构孤岛与内网穿透壁垒：生产服务器和 GPU 工作站深居内网 NAT，开放公网 SSH 22 端口面临毁灭级渗透风险",
+    "人机在环（HITL）严重脱节：多智能体陷入死锁僵局时，控制台只有满屏乱滚的 JSON 日志，人类工程师无法无缝切入交互式 TTY 现场排障"
+  ],
+  "solutions": [
+    "tmux 原生虚拟化与长任务状态机：任务与客户端网络彻底解耦，即便断网或主管 AI 重启，底层长期任务雷打不动，随时秒级恢复",
+    "主动反向安全穿透连接：计算执行节点（Computer A）主动向控制面建立加密 WSS 长连接，零公网端口暴露，轻松穿透多重企业 NAT",
+    "内建 Agent Broker 与标准 MCP 协议：对外暴露标准 Model Context Protocol 接口，固化工具白名单，彻底封禁未受控的破坏性底层工具",
+    "Level 4 审批护栏与结构化 Unified Diff 审查：只读操作秒级放行，高危写入与破坏性指令强制拦截挂起，生成类似 GitHub PR 的 Diff 供人类一票否决",
+    "终极人机共管：移动端专属 18 键触觉按键坞，工程师在通勤或深夜随时用手机秒级接管报错会话现场"
+  ],
+  "key_features": [
+    {
+      "name": "tmux 原生虚拟化保活",
+      "headline": "长任务永不掉线，彻底告别断网暴毙",
+      "detail": "深度接管操作系统 tmux 守护进程，使长耗时编译、依赖下载与模型训练拥有独立生命周期，连接断开后台安然运行，重连秒级恢复现场 ANSI 字符流。"
+    },
+    {
+      "name": "主动反向穿透长连接",
+      "headline": "零公网端口暴露，内网算力即插即用",
+      "detail": "执行节点主动发起 WSS 出网连接，无需公网 IP 与路由器端口映射，彻底消除企业合规阻碍与安全渗透隐患。"
+    },
+    {
+      "name": "原生 MCP Agent Broker",
+      "headline": "紧密拥抱行业开放标准，安全沙箱隔离",
+      "detail": "作为中立安全中介暴露标准 Model Context Protocol 服务，支持 OpenCode、Claude Code、DeepSeek 等大模型一键接入，强制工具白名单隔离。"
+    },
+    {
+      "name": "Level 4 审批护栏与 Unified Diff",
+      "headline": "写操作强制挂起审查，人类守住最终底线",
+      "detail": "读写分离鉴权，智能体提议的代码修改以高对比度 Diff 形式呈现，人类工程师或主管 AI 可行使一票否决权，杜绝 rm -rf 悲剧。"
+    },
+    {
+      "name": "移动端 18 键触觉操作坞",
+      "headline": "人在地铁，手机单手接管现场排障救火",
+      "detail": "专为手机触摸屏打造的 18 颗极客按键（Esc, Ctrl, Alt, Tab, 方向键）及振动反馈，随时随地优雅兜底。"
+    }
+  ],
+  "tech_stack": [
+    "Python 3.12+",
+    "FastAPI & asyncio",
+    "tmux & POSIX System Calls",
+    "Model Context Protocol (MCP)",
+    "TypeScript & Vue 3",
+    "xterm.js & Tauri 2",
+    "Docker Compose"
+  ],
+  "highlights": [
+    "100% 开源且完全本地自托管，核心资产与代码数据不出机",
+    "突破传统'聊天室多智能体'玩具局限，直面生产操作系统物理执行层",
+    "全平台覆盖：桌面 Web、跨端客户端与移动端手机控制舱完美自适应"
+  ],
+  "call_to_action": "欢迎前往 GitHub 点亮 Star 并亲自上手体验：开启人机共生与 AI 管理 AI 的全新时代！",
+  "links": {
+    "github": "https://github.com/mcocdaa/TermFlow",
+    "docs": "https://github.com/mcocdaa/TermFlow#readme"
+  }
+}

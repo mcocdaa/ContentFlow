@@ -1,0 +1,47 @@
+[
+  {
+    "scene_id": 1,
+    "title": "痛点引入与崩溃现状",
+    "narration": "是不是还在手动发包改代码，天天熬夜到脱发？",
+    "visual_description": "未来科技教室单场景：虚拟偶像左侧全景立姿轻扶眼镜，神态微显无奈撩人，右侧全息大屏展示崩溃报错日志与失败流水线",
+    "character_pose": "pose1_troubled",
+    "whiteboard_theme": "error_red",
+    "duration_estimate": 7.0
+  },
+  {
+    "scene_id": 2,
+    "title": "三大玄学坑点警示",
+    "narration": "今天给大家盘盘最容易踩的那些坑，坐稳咯。",
+    "visual_description": "未来科技教室同一场景：虚拟偶像手持精致激光教鞭精准指向板书，神情严肃娇俏，右侧全息屏展示三大玄学重灾区",
+    "character_pose": "pose2_pointer",
+    "whiteboard_theme": "warning_orange",
+    "duration_estimate": 7.0
+  },
+  {
+    "scene_id": 3,
+    "title": "核心解法一：自动化质量门禁",
+    "narration": "代码提交就触发自动构建测试，全绿才准入，绝不让 bug 跑上线。",
+    "visual_description": "未来科技教室同一场景：虚拟偶像单手平摊优雅展示右侧全绿流水线，神情自信迷人，全息屏展示自动化流程绿灯节点",
+    "character_pose": "pose3_confident",
+    "whiteboard_theme": "success_green",
+    "duration_estimate": 8.0
+  },
+  {
+    "scene_id": 4,
+    "title": "核心解法二：标准化容器交付",
+    "narration": "用容器标准化交付环境，再也不用喊‘我本地没问题啊’。",
+    "visual_description": "未来科技教室同一场景：虚拟偶像双手耐心阐述架构，右侧全息屏展示 Docker 不可变镜像、金丝雀发布与健康自愈拓扑",
+    "character_pose": "pose4_explaining",
+    "whiteboard_theme": "tech_blue",
+    "duration_estimate": 8.0
+  },
+  {
+    "scene_id": 5,
+    "title": "总结升华与号召关注",
+    "narration": "自动化用对早下班，点个赞摸鱼去啦！",
+    "visual_description": "未来科技教室同一场景：虚拟偶像开朗竖起大拇指点赞，灿烂治愈微笑，右侧全息屏展示 100% 成功勋章与下期实战预告",
+    "character_pose": "pose5_thumbsup",
+    "whiteboard_theme": "celebration_gold",
+    "duration_estimate": 7.0
+  }
+]

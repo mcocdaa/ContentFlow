@@ -1,0 +1,768 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-09-22T07:16:13.738652Z",
+  "total_assets": 33,
+  "assets": [
+    {
+      "id": "yowane_teacher_pointing_blackboard",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "pointing",
+        "blackboard",
+        "teaching",
+        "ci_cd",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/teaching/yowane_teacher_pointing_blackboard.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "teaching",
+      "prompt": "16:9 wide-angle shot, full body view from head to toe of Japanese anime 3D PVC figurine of Yowane Haku...",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:32:53.390436Z"
+    },
+    {
+      "id": "yowane_teacher_hands_on_hips",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "angry",
+        "hands_on_hips",
+        "warning",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/angry/yowane_teacher_hands_on_hips.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "angry",
+      "prompt": "Hands on hips angry sulking teacher pose, same Yowane character",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:32:53.393717Z"
+    },
+    {
+      "id": "conveyor_robot_arm_inspection",
+      "type": "image",
+      "category": "prop",
+      "tags": [
+        "robot_arm",
+        "conveyor",
+        "code_cubes",
+        "ci_inspection",
+        "laser"
+      ],
+      "aspect_ratio": "1:1",
+      "resolution": "2048x2048",
+      "file_path": "library/props/conveyor_robot_arm_inspection.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Miniature robotic arm with green laser inspecting glowing code cubes",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:32:53.395746Z"
+    },
+    {
+      "id": "server_racks_green_checks",
+      "type": "image",
+      "category": "scene",
+      "tags": [
+        "server_room",
+        "datacenter",
+        "green_checks",
+        "deployment",
+        "success"
+      ],
+      "aspect_ratio": "1:1",
+      "resolution": "2048x2048",
+      "file_path": "library/scenes/server_racks_green_checks.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Miniature server racks with glowing green checkmarks",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:32:53.398008Z"
+    },
+    {
+      "id": "yowane_scene1_sigh",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "sigh",
+        "error_404",
+        "blackboard",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/sigh/yowane_scene1_sigh.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "sigh",
+      "prompt": "Scene 1 sighing",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:41:20.626040Z"
+    },
+    {
+      "id": "yowane_scene2_warning",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "warning",
+        "blackboard",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/warning/yowane_scene2_warning.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "warning",
+      "prompt": "16:9 wide-angle shot, split-screen composition. Left side: full body view of the same female anime character Yowane Haku from reference image, flowing silky smooth silver hair in long ponytail, ruby wine-red eyes, delicate porcelain matte figurine skin texture, wearing anime teacher uniform with navy blazer and pleated skirt. Pose: holding a red laser teaching pointer stick, tapping against the board with a serious stern warning expression. Right side: large high-tech glowing electronic whiteboard in a modern tech classroom, displaying bright orange-red warning text and exclamation marks: PITFALLS: MANUAL DEPLOY FAILS, CODE CONFLICTS, NO QUALITY GATES. Consistent art style, studio rim lighting, 8k resolution, highly detailed.",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:41:48.574566Z"
+    },
+    {
+      "id": "yowane_scene3_ci",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "teaching",
+        "blackboard",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/teaching/yowane_scene3_ci.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "teaching",
+      "prompt": "16:9 wide-angle shot, split-screen composition. Left side: full body view of the same female anime character Yowane Haku from reference image, flowing silky smooth silver hair in long ponytail, ruby wine-red eyes, delicate porcelain matte figurine skin texture, wearing anime teacher uniform with navy blazer and pleated skirt. Pose: smiling confidently, holding her pointer stick gesturing towards the glowing pipeline. Right side: large high-tech glowing electronic whiteboard, displaying CI AUTOMATED PIPELINE: GIT PUSH -> LINT -> UNIT TESTS -> CODE SCAN, with bright glowing green checkmarks on all steps. Consistent art style, studio rim lighting, 8k resolution, highly detailed.",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:42:24.490354Z"
+    },
+    {
+      "id": "yowane_scene4_cd",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "explaining",
+        "blackboard",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/explaining/yowane_scene4_cd.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "explaining",
+      "prompt": "16:9 wide-angle shot, split-screen composition. Left side: full body view of the same female anime character Yowane Haku from reference image, flowing silky smooth silver hair in long ponytail, ruby wine-red eyes, delicate porcelain matte figurine skin texture, wearing anime teacher uniform with navy blazer and pleated skirt. Pose: open palm gesture towards the viewer, happily and professionally explaining container deployment. Right side: large high-tech glowing electronic whiteboard, displaying CD CONTAINER DELIVERY: DOCKER IMAGE BUILD -> CLOUD CLUSTER DEPLOY, with glowing blue nodes and cloud icons. Consistent art style, studio rim lighting, 8k resolution, highly detailed.",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:43:04.288066Z"
+    },
+    {
+      "id": "yowane_scene5_outro",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "thumbs_up",
+        "blackboard",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/thumbs_up/yowane_scene5_outro.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "thumbs_up",
+      "prompt": "16:9 wide-angle shot, split-screen composition. Left side: full body view of the same female anime character Yowane Haku from reference image, flowing silky smooth silver hair in long ponytail, ruby wine-red eyes, delicate porcelain matte figurine skin texture, wearing anime teacher uniform with navy blazer and pleated skirt. Pose: standing proudly, beaming bright smile, giving a big thumbs up gesture to the camera. Right side: large high-tech glowing electronic whiteboard, displaying celebratory glowing text: PIPELINE SUCCESS! 100% AUTOMATED, GOODBYE OVERTIME! with gold stars and green checkmarks. Consistent art style, studio rim lighting, 8k resolution, highly detailed.",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T03:43:41.572086Z"
+    },
+    {
+      "id": "yowane_unified_scene1",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "sigh",
+        "pipeline_error",
+        "unified_scene",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/sigh/yowane_unified_scene1.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "sigh",
+      "prompt": "Unified single-scene yowane_unified_scene1",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T04:09:35.150843Z"
+    },
+    {
+      "id": "yowane_unified_scene2",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "warning",
+        "pointer",
+        "pitfalls",
+        "unified_scene",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/warning/yowane_unified_scene2.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "warning",
+      "prompt": "Unified single-scene yowane_unified_scene2",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T04:09:35.151811Z"
+    },
+    {
+      "id": "yowane_unified_scene3",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "ci_cd",
+        "green_pipeline",
+        "proud",
+        "unified_scene",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/proud/yowane_unified_scene3.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "proud",
+      "prompt": "A single unified 16:9 cinematic wide shot in the same sleek futuristic high-tech classroom, no split screen, one cohesive room. Standing in the room is the same anime character Yowane Haku from reference image, shown in full body from head to toe with shoes and feet completely visible on the polished reflective floor. She has extremely silky, smooth, flowing silver-white hair in a long elegant ponytail with lustrous highlights, glowing radiant porcelain skin with soft studio luster, glasses, and ruby red eyes. She wears the same sharp navy teacher blazer over a white shirt with a plaid pleated skirt and black thigh-high socks. Pose: holding her laser pointer gesturing enthusiastically towards the glowing screen, smiling confidently with a proud expression. Behind her in the same room, the large seamless holographic glass display panel is built into the tech wall, displaying a glowing emerald-green CI automation pipeline diagram: GIT PUSH -> LINT -> UNIT TEST -> SECURITY SCAN -> ALL GREEN PASSED, with bright glowing green checkmarks on all stages. Unified cinematic lighting, soft emerald and cyan ambient light illuminating her hair and skin, realistic reflections on the floor, single cohesive camera angle, 8k masterpiece.",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T04:10:09.528674Z"
+    },
+    {
+      "id": "yowane_unified_scene4",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "container",
+        "docker",
+        "explaining",
+        "unified_scene",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/explaining/yowane_unified_scene4.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "explaining",
+      "prompt": "A single unified 16:9 cinematic wide shot in the same sleek futuristic high-tech classroom, no split screen, one cohesive room. Standing in the room is the same anime character Yowane Haku from reference image, shown in full body from head to toe with shoes and feet completely visible on the polished reflective floor. She has extremely silky, smooth, flowing silver-white hair in a long elegant ponytail with lustrous highlights, glowing radiant porcelain skin with soft studio luster, glasses, and ruby red eyes. She wears the same sharp navy teacher blazer over a white shirt with a plaid pleated skirt and black thigh-high socks. Pose: open palm gesturing towards the screen and viewer in a professional, clear explanatory manner, friendly reassuring smile. Behind her in the same room, the large seamless holographic glass display panel is built into the tech wall, displaying CD containerized delivery diagram: a glowing blue Docker container cube icon, ARTIFACT REGISTRY -> CLUSTER DEPLOYMENT, with glowing blue and cyan connected network nodes. Unified cinematic lighting, cool blue and cyan ambient glow softly highlighting her hair and clothing, realistic floor reflections, single cohesive camera angle, 8k masterpiece.",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T04:10:37.871216Z"
+    },
+    {
+      "id": "yowane_unified_scene5",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teacher",
+        "full_body",
+        "thumbs_up",
+        "celebration",
+        "happy",
+        "unified_scene",
+        "16:9",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/thumbs_up/yowane_unified_scene5.jpg",
+      "character_id": "yowane_haku",
+      "emotion": "thumbs_up",
+      "prompt": "A single unified 16:9 cinematic wide shot in the same sleek futuristic high-tech classroom, no split screen, one cohesive room. Standing in the room is the same anime character Yowane Haku from reference image, shown in full body from head to toe with shoes and feet completely visible on the polished reflective floor. She has extremely silky, smooth, flowing silver-white hair in a long elegant ponytail with lustrous highlights, glowing radiant porcelain skin with soft studio luster, glasses, and ruby red eyes. She wears the same sharp navy teacher blazer over a white shirt with a plaid pleated skirt and black thigh-high socks. Pose: standing cheerfully facing the camera, radiant beaming happy smile, giving a big thumbs up with her hand, energetic and joyful. Behind her in the same room, the large seamless holographic glass display panel is built into the tech wall, displaying celebratory glowing green and gold text: PIPELINE SUCCESS! 100% AUTOMATED, GOODBYE OVERTIME! with gold floating stars, celebratory sparkle particles and glowing green checkmarks. Unified cinematic lighting, warm golden and cyan ambient celebration lighting, realistic floor reflections, single cohesive camera angle, 8k masterpiece.",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T04:11:09.176565Z"
+    },
+    {
+      "id": "cyber_classroom_clean_bg",
+      "type": "image",
+      "category": "scene",
+      "tags": [
+        "classroom",
+        "cyberpunk",
+        "holographic",
+        "clean",
+        "16:9",
+        "4k"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/scenes/cyber_classroom_clean_bg.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Clean high-tech cyber classroom background decomposed layer",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.013139Z"
+    },
+    {
+      "id": "holographic_whiteboard_chassis",
+      "type": "image",
+      "category": "prop",
+      "tags": [
+        "whiteboard",
+        "holographic",
+        "cyan",
+        "hud",
+        "ui",
+        "screen"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "1389x781",
+      "file_path": "library/props/holographic_whiteboard_chassis.png",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Floating holographic whiteboard chassis with glowing cyan frame",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.017089Z"
+    },
+    {
+      "id": "yowane_alluring_pose1_troubled",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "glasses",
+        "hourglass",
+        "full_body",
+        "seductive",
+        "silver_hair",
+        "troubled",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/troubled/yowane_alluring_pose1_troubled.png",
+      "character_id": "yowane_haku",
+      "emotion": "troubled",
+      "prompt": "High-appeal mature Yowane Haku standee with realistic silver hair and sheer pantyhose",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.023626Z"
+    },
+    {
+      "id": "yowane_alluring_pose2_pointer",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "pointer_stick",
+        "teaching",
+        "full_body",
+        "seductive",
+        "silver_hair",
+        "warning",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/warning/yowane_alluring_pose2_pointer.png",
+      "character_id": "yowane_haku",
+      "emotion": "warning",
+      "prompt": "High-appeal mature Yowane Haku standee with realistic silver hair and sheer pantyhose",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.029615Z"
+    },
+    {
+      "id": "yowane_alluring_pose3_allgreen",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "open_palm",
+        "presenting",
+        "full_body",
+        "seductive",
+        "silver_hair",
+        "confident",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/confident/yowane_alluring_pose3_allgreen.png",
+      "character_id": "yowane_haku",
+      "emotion": "confident",
+      "prompt": "High-appeal mature Yowane Haku standee with realistic silver hair and sheer pantyhose",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.035205Z"
+    },
+    {
+      "id": "yowane_alluring_pose4_container",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "explaining",
+        "teaching",
+        "full_body",
+        "seductive",
+        "silver_hair",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/explaining/yowane_alluring_pose4_container.png",
+      "character_id": "yowane_haku",
+      "emotion": "explaining",
+      "prompt": "High-appeal mature Yowane Haku standee with realistic silver hair and sheer pantyhose",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.040647Z"
+    },
+    {
+      "id": "yowane_alluring_pose5_thumbsup",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "thumbs_up",
+        "celebrating",
+        "full_body",
+        "seductive",
+        "silver_hair",
+        "yowane_haku"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yowane_haku/thumbs_up/yowane_alluring_pose5_thumbsup.png",
+      "character_id": "yowane_haku",
+      "emotion": "thumbs_up",
+      "prompt": "High-appeal mature Yowane Haku standee with realistic silver hair and sheer pantyhose",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.046278Z"
+    },
+    {
+      "id": "yowane_cicd_v3_scene1",
+      "type": "image",
+      "category": "scene",
+      "tags": [
+        "composed",
+        "scene_1",
+        "ci_cd",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/scenes/yowane_cicd_v3_scene1.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Full composed scene 1 with alluring Yowane and holographic whiteboard",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.050237Z"
+    },
+    {
+      "id": "yowane_cicd_v3_scene2",
+      "type": "image",
+      "category": "scene",
+      "tags": [
+        "composed",
+        "scene_2",
+        "ci_cd",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/scenes/yowane_cicd_v3_scene2.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Full composed scene 2 with alluring Yowane and holographic whiteboard",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.054268Z"
+    },
+    {
+      "id": "yowane_cicd_v3_scene3",
+      "type": "image",
+      "category": "scene",
+      "tags": [
+        "composed",
+        "scene_3",
+        "ci_cd",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/scenes/yowane_cicd_v3_scene3.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Full composed scene 3 with alluring Yowane and holographic whiteboard",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.058185Z"
+    },
+    {
+      "id": "yowane_cicd_v3_scene4",
+      "type": "image",
+      "category": "scene",
+      "tags": [
+        "composed",
+        "scene_4",
+        "ci_cd",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/scenes/yowane_cicd_v3_scene4.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Full composed scene 4 with alluring Yowane and holographic whiteboard",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.061913Z"
+    },
+    {
+      "id": "yowane_cicd_v3_scene5",
+      "type": "image",
+      "category": "scene",
+      "tags": [
+        "composed",
+        "scene_5",
+        "ci_cd",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/scenes/yowane_cicd_v3_scene5.jpg",
+      "character_id": null,
+      "emotion": null,
+      "prompt": "Full composed scene 5 with alluring Yowane and holographic whiteboard",
+      "used_in_projects": [
+        "yowane_cicd"
+      ],
+      "created_at": "2026-09-22T05:29:45.066947Z"
+    },
+    {
+      "id": "yorha_2b_master_reference",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "master_reference",
+        "3d_figure",
+        "yorha_2b",
+        "nier",
+        "16:9",
+        "tech_classroom"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yorha_2b/master_reference.jpg",
+      "character_id": "yorha_2b",
+      "emotion": "teaching",
+      "prompt": "Masterpiece 3D CGI anime figure style 2B NieR Automata tech classroom",
+      "used_in_projects": [
+        "ai_api_tutorial_2b"
+      ],
+      "created_at": "2026-09-22T07:16:13.737948Z"
+    },
+    {
+      "id": "yorha_2b_troubled_api_error",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "troubled",
+        "sigh",
+        "api_error",
+        "yorha_2b",
+        "16:9",
+        "classroom"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yorha_2b/troubled/2b_troubled_pose1.jpg",
+      "character_id": "yorha_2b",
+      "emotion": "troubled",
+      "prompt": "2B touching chin troubled expression, holographic error HUD",
+      "used_in_projects": [
+        "ai_api_tutorial_2b"
+      ],
+      "created_at": "2026-09-22T07:16:13.738273Z"
+    },
+    {
+      "id": "yorha_2b_teaching_base_url",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "teaching",
+        "pointer",
+        "base_url",
+        "routing",
+        "yorha_2b",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yorha_2b/teaching/2b_teaching_base_url.jpg",
+      "character_id": "yorha_2b",
+      "emotion": "teaching",
+      "prompt": "2B standing laser pointer pointing at Base URL holographic diagram",
+      "used_in_projects": [
+        "ai_api_tutorial_2b"
+      ],
+      "created_at": "2026-09-22T07:16:13.738361Z"
+    },
+    {
+      "id": "yorha_2b_warning_api_key",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "warning",
+        "security",
+        "api_key",
+        "yorha_2b",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yorha_2b/warning/2b_warning_api_key.jpg",
+      "character_id": "yorha_2b",
+      "emotion": "warning",
+      "prompt": "2B warning hand gesture, API Key padlock and security shield",
+      "used_in_projects": [
+        "ai_api_tutorial_2b"
+      ],
+      "created_at": "2026-09-22T07:16:13.738453Z"
+    },
+    {
+      "id": "yorha_2b_explaining_model_name",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "explaining",
+        "model_name",
+        "cards",
+        "yorha_2b",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yorha_2b/explaining/2b_explaining_model_name.jpg",
+      "character_id": "yorha_2b",
+      "emotion": "explaining",
+      "prompt": "2B hands presenting floating model cards deepseek gpt4o claude",
+      "used_in_projects": [
+        "ai_api_tutorial_2b"
+      ],
+      "created_at": "2026-09-22T07:16:13.738507Z"
+    },
+    {
+      "id": "yorha_2b_error_triage",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "triage",
+        "tablet",
+        "error_codes",
+        "401",
+        "404",
+        "429",
+        "yorha_2b"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yorha_2b/triage/2b_error_triage.jpg",
+      "character_id": "yorha_2b",
+      "emotion": "triage",
+      "prompt": "2B holding glass tablet, error code triage HUD panel",
+      "used_in_projects": [
+        "ai_api_tutorial_2b"
+      ],
+      "created_at": "2026-09-22T07:16:13.738541Z"
+    },
+    {
+      "id": "yorha_2b_success_thumbs_up",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "thumbs_up",
+        "success",
+        "200_ok",
+        "celebration",
+        "yorha_2b",
+        "16:9"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2560x1440",
+      "file_path": "library/characters/yorha_2b/thumbs_up/2b_thumbs_up_success.jpg",
+      "character_id": "yorha_2b",
+      "emotion": "thumbs_up",
+      "prompt": "2B smiling giving thumbs-up, API Call Success 200 OK green screen",
+      "used_in_projects": [
+        "ai_api_tutorial_2b"
+      ],
+      "created_at": "2026-09-22T07:16:13.738579Z"
+    }
+  ]
+}

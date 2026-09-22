@@ -1,0 +1,73 @@
+{
+  "channels": {
+    "wechat": {
+      "name": "WeChat Official Account (微信公众号)",
+      "target_audience": "Tech enthusiasts, enterprise practitioners, product managers, developers",
+      "format": "Markdown and Inline CSS HTML",
+      "word_count_target": "1500-2500 words",
+      "tone": "Insightful, narrative-driven, authoritative, problem-solving",
+      "sections": [
+        "Hook & Industry Reality Check",
+        "The Hidden Pitfall / Friction",
+        "Core Solution & Architecture / Mechanism",
+        "Hands-on Demonstration & Key Features",
+        "Enterprise / Practical Value Analysis",
+        "Open Conclusion & Interactive Question"
+      ]
+    },
+    "xiaohongshu": {
+      "name": "Xiaohongshu (小红书)",
+      "target_audience": "Productivity hackers, indie developers, knowledge workers, young professionals",
+      "format": "Card script + Visual slide cues",
+      "word_count_target": "400-800 words",
+      "tone": "Approachable, punchy, emoji-rich, practical",
+      "sections": [
+        "Big Hook / Pain Point Contrast",
+        "Three-Bullet Aha Moment",
+        "Step-by-step Quick Guide",
+        "Suitable Scenarios",
+        "Save & Follow Call to Action"
+      ]
+    },
+    "zhihu": {
+      "name": "Zhihu (知乎专业专栏/回答)",
+      "target_audience": "Technical architects, engineers, researchers, critical thinkers",
+      "format": "Markdown",
+      "word_count_target": "1200-2000 words",
+      "tone": "Rigorous, analytical, objective comparison, technical depth",
+      "sections": [
+        "Direct Answer & Definition",
+        "Industry Status Quo & Technical Bottlenecks",
+        "Architecture & Trade-off Analysis",
+        "Benchmark or Workflow Walkthrough",
+        "Pros & Cons / Boundary Evaluation"
+      ]
+    },
+    "v2ex": {
+      "name": "V2EX / Hacker News / Developer Communities",
+      "target_audience": "Hardcore developers, open source contributors, sysadmins",
+      "format": "Markdown",
+      "word_count_target": "400-700 words",
+      "tone": "Direct, sincere, geeky, humble, seeking feedback",
+      "sections": [
+        "TL;DR / Why I Built This",
+        "Technical Stack & Key Decisions",
+        "Quick Start / Installation",
+        "Looking for Honest Feedback / Open Roadmap"
+      ]
+    },
+    "release": {
+      "name": "Product Release / Changelog",
+      "target_audience": "Existing users, community watchers",
+      "format": "Markdown",
+      "word_count_target": "300-600 words",
+      "tone": "Clear, concise, celebratory, actionable",
+      "sections": [
+        "Highlight Banner",
+        "What's New (Key Features)",
+        "Fixes & Improvements",
+        "Upgrade Guide"
+      ]
+    }
+  }
+}

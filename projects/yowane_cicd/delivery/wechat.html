@@ -1,0 +1,44 @@
+<div class="wechat-article" style="max-width: 680px; margin: 0 auto; padding: 20px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 15px; line-height: 1.85; color: #1f2937; letter-spacing: 0.03em; word-break: break-word;">
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+<h1 style="font-size: 22px; font-weight: 700; color: #ffffff; background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding: 18px 20px; border-radius: 10px; margin: 24px 0 20px 0; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">白发弱音开课｜3D手办人都该看的CI/CD避坑指南，从此告别深夜肉身发版</h1>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;"><img src="https://picsum.photos/id/237/1000/400" alt="弱音手办讲师看板" style="border-radius:8px;"/></p>
+<h3 style="font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 10px 0;">👀 导读</h3>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">大家好，我是做3D数字手办开发的弱音✧(≖ ◡ ≖✿) 今天不说捏脸调材质，来说说我们开发流程里最容易翻车的<strong style="color: #2563eb; font-weight: 600;">发版环节</strong>——多少人熬了大夜改bug，结果上线秒崩，从黑发熬成跟我一样的白发？今天就把我们团队踩过的坑、以及怎么用CI/CD解决坑全说给你听，看完再也不用对着泡面等天亮。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+<h2 style="font-size: 18px; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 12px; margin: 28px 0 14px 0; display: flex; align-items: center;">🩸 痛点：深夜肉身发版的血泪史，你一定懂</h2>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">上个月那个周五我至今难忘：产品说「新色弱音手办的3D预览后天要上淘宝活动，今晚一定要更完」，整个项目组留守到九点，我改完最后一个裙摆顶点权重，本地跑一遍预览流畅，材质也对，信心满满点了上线。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">结果十分钟后运营群直接炸了：用户打开商品页，3D预览全是透明块！啥也看不见。我慌得赶紧登服务器回滚，发现刚才打包把旧版本覆盖了，git分支还合错了，找历史版本找了半小时，回滚完一看又漏了个金属纹理包，等一切搞定，窗外天都亮了，我对着泡面发呆，头发又掉了一把。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">相信每个做3D开发、做数字化手办的朋友，都有过这种「肉身发版」的血泪史：手动拉代码、手动打包、手动上传服务器，出了问题手动回滚，全程全靠人扛，稍微出错就是大型线上事故。为什么好好的代码，本地没问题，上线就炸？我们踩过无数坑之后，总结出了三个最常见的坑点。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+<h2 style="font-size: 18px; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 12px; margin: 28px 0 14px 0; display: flex; align-items: center;">🕳️ 三大坑点，看看你中了几个？</h2>
+<h3 style="font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 10px 0;">👉 坑1：多分支合并=开盲盒</h3>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">现在开发都是多分支并行：有人改建模导出脚本，有人调材质渲染参数，merge的时候只解决了看得见的代码冲突，那些隐式冲突谁也说不清——改了同一个依赖的版本、改了共用模型的哈希表，合完之后本地跑没事，到线上就是各种幺蛾子。每次合并完都提心吊胆，就像开盲盒，你永远不知道下一个bug躲在哪里。</p>
+<h3 style="font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 10px 0;">👉 坑2：环境玄学，谁也逃不掉</h3>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">「我本地跑明明好好的啊！」这句话是不是每天都能听到？开发用Mac，测试用Windows，线上跑Linux，Node版本不一样，纹理压缩工具版本不一样，甚至GPU驱动不一样，出来的3D资源都天差地别。上次我们出事故，就是因为本地压缩的纹理是10M，到线上打包压缩完变成了80M，小程序直接加载超时，活动一开始就卡崩，损失了不少预售单。</p>
+<h3 style="font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 10px 0;">👉 坑3：没有自动化门禁，什么代码都能进主干</h3>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">没上线前谁也不检查代码，有人把调试用的测试开关忘了关，有人把未完成的功能写进了主干，反正能merge就merge，等到上线炸了才回头找锅，已经晚了。要是刚好赶在大活动前出问题，那真是叫天天不应叫地地不灵。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+<h2 style="font-size: 18px; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 12px; margin: 28px 0 14px 0; display: flex; align-items: center;">💡 破局之道：用CI/CD把坑填上</h2>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">踩了这么多坑，我们最终靠CI/CD解决了80%的发版问题，逻辑其实很简单：</p>
+<h3 style="font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 10px 0;">✅ CI：给代码上一道自动化门禁</h3>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">CI就是持续集成，说白了就是你每push一次代码，平台就自动帮你跑一遍「全身检查」：代码格式对不对，单元测试过没过，甚至自动跑一遍基础的3D建模导出测试，只要有一项不合格，就直接打回，<strong style="color: #2563eb; font-weight: 600;">不绿不让合并进主干</strong>。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">相当于你做手办，原材料不合格根本进不了加工环节，从源头把烂代码拦在了门外。现在我们团队不管是谁改代码，都得过CI全绿这一关，再也不怕有人把调试代码混进主干了。</p>
+<h3 style="font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 10px 0;">✅ CD：用容器实现确定性交付，一键回滚</h3>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">CI把好了入口，CD就是持续部署，怎么解决环境玄学？答案是<strong style="color: #2563eb; font-weight: 600;">Docker容器化</strong>。把代码、运行环境、依赖、甚至3D建模工具一起打包成一个镜像，你本地跑是什么样，服务器跑就是什么样，彻底告别「我本地没问题」的玄学。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">部署的时候做灰度发布：先切10%的流量给新版本，观察几个小时没问题再全量扩，出问题直接一键回滚到上一个版本，根本不用熬夜瞎折腾。现在我们上线，点一下按钮就搞定，十分钟完成部署，出问题五秒回滚，再也不用熬大夜等天亮。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+<h2 style="font-size: 18px; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 12px; margin: 28px 0 14px 0; display: flex; align-items: center;">🚀 极轻成本落地：不用大团队也能玩</h2>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">很多朋友说CI/CD是不是大公司才玩得起？其实完全不是，个人开发者和小团队极轻成本就能落地：</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">现在用GitHub Actions或者GitLab CI，免费额度完全够用，Docker镜像存在Docker Hub，也是免费的。第一步不用搞复杂的全链路，先把最核心的两件事做了就够：</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">1. 给主干分支加上CI门禁，push自动跑代码检查和单元测试，不绿不让合；</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">2. 把你的项目打包成基础Docker镜像，统一运行环境。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">就这两步，一周就能跑通，成本几乎为零，但能解决80%的发版坑，性价比拉满。</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+<h2 style="font-size: 18px; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 12px; margin: 28px 0 14px 0; display: flex; align-items: center;">💬 弱音寄语&amp;互动</h2>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">其实做开发和做手办一样，慢工出细活，但流程对了就能少走很多弯路，不用把时间都耗在熬夜排障上，早点下班摸手办不香吗😉</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">今天聊了这么多踩坑的经历，<strong style="color: #2563eb; font-weight: 600;">你们遇过最离谱的上线事故是什么？</strong> 评论区留言告诉我，点赞最高的三位朋友，我送你定制的弱音Docker主题贴纸哦！</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">（截止日期：下周五18:00，会在评论区公示中奖名单~）</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">*本文字数：1487字*</p>
+<p style="margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;">---</p>
+</div>

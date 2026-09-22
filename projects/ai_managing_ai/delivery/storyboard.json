@@ -1,0 +1,30 @@
+[
+  {
+    "scene_id": 1,
+    "title": "痛点共鸣与破局引入",
+    "narration": "在日常开发中，你是否也经常被执行黑盒与断网雪崩：传统 HTTP API 抖动或超时导致底层的长耗时编译/微调子进程被操作系统 SIGHUP 强杀，前功尽弃、失控爆炸半径与安全失守：工人 AI 遇到报错产生幻觉，暴力执行 rm -rf / 或泄露包含数据库凭据的生产密钥所折磨？今天为你介绍一个全新的破局方案：AI 管理 AI 工作深度调研与 TermFlow 控制舱。",
+    "visual_description": "展示开发中遇到的困境与痛点对比，随后呈现 AI 管理 AI 工作深度调研与 TermFlow 控制舱 的醒目Logo与核心主标",
+    "duration_estimate": 4.5
+  },
+  {
+    "scene_id": 2,
+    "title": "核心定位与架构理念",
+    "narration": "AI 管理 AI 工作深度调研与 TermFlow 控制舱 主打从认知编排到物理控制舱：多智能体分层管辖的技术死穴与 TermFlow 架构破局。从第一性原理出发，告别过度设计，带来极致的确定性与敏捷体验。",
+    "visual_description": "简洁的架构图或核心价值三要素，高亮展示核心理念",
+    "duration_estimate": 5.0
+  },
+  {
+    "scene_id": 3,
+    "title": "核心功能亮点实战",
+    "narration": "在实际功能上，AI 管理 AI 工作深度调研与 TermFlow 控制舱 提供了四大核心特性：tmux 原生虚拟化保活，长任务永不掉线，彻底告别断网暴毙。主动反向穿透长连接，零公网端口暴露，内网算力即插即用。原生 MCP Agent Broker，紧密拥抱行业开放标准，安全沙箱隔离。",
+    "visual_description": "动态演示产品界面与核心特性运行时的交互反馈",
+    "duration_estimate": 6.0
+  },
+  {
+    "scene_id": 4,
+    "title": "适用对象与行动呼吁",
+    "narration": "无论你是AI 系统架构师与大模型工程师和自主智能体（Autonomous Agents）与 Multi-Agent 开发者，AI 管理 AI 工作深度调研与 TermFlow 控制舱 都能大幅缩短交付路径。让工具回归本质，让创造更加高效！",
+    "visual_description": "展示支持的终端设备与生态互通，呈现开源地址与互动引导",
+    "duration_estimate": 4.5
+  }
+]

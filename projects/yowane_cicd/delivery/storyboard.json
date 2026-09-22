@@ -1,0 +1,42 @@
+[
+  {
+    "scene_id": 1,
+    "title": "手动发包的痛",
+    "narration": "是不是还在手动发包改代码，天天熬夜到脱发？",
+    "visual_description": "未来科技教室统一样式单场景：弱音老师全身立姿轻扶眼镜，神态微显无奈撩人，左侧是绝美弱音手办全身立绘，右侧全息屏显示崩溃流水线",
+    "asset_path": "projects/yowane_cicd/assets/yowane_v3_scene1.jpg",
+    "duration_estimate": 7.0
+  },
+  {
+    "scene_id": 2,
+    "title": "三大玄学坑点预警",
+    "narration": "今天给大家盘盘 CI/CD 最容易踩的那些坑，坐稳咯。",
+    "visual_description": "未来科技教室同一场景：弱音老师右手手持精致激光教鞭，指向全息白板三大玄学重灾区进行警示讲解",
+    "asset_path": "projects/yowane_cicd/assets/yowane_v3_scene2.jpg",
+    "duration_estimate": 7.0
+  },
+  {
+    "scene_id": 3,
+    "title": "CI自动化质量门禁",
+    "narration": "代码提交就触发自动构建测试，全绿才准入，绝不让 bug 跑上线。",
+    "visual_description": "未来科技教室同一场景：弱音老师右手优雅平摊展示全绿流水线，展露自信从容的迷人微笑",
+    "asset_path": "projects/yowane_cicd/assets/yowane_v3_scene3.jpg",
+    "duration_estimate": 8.0
+  },
+  {
+    "scene_id": 4,
+    "title": "CD容器化标准化交付",
+    "narration": "用容器标准化交付环境，再也不用喊‘我本地没问题啊’。",
+    "visual_description": "未来科技教室同一场景：弱音老师双手耐心阐述容器架构，全息白板清晰展示 Docker 镜像与自愈回滚全景",
+    "asset_path": "projects/yowane_cicd/assets/yowane_v3_scene4.jpg",
+    "duration_estimate": 8.0
+  },
+  {
+    "scene_id": 5,
+    "title": "告别加班拥抱自动化",
+    "narration": "CI/CD 用对早下班，点个赞摸鱼去啦！",
+    "visual_description": "未来科技教室同一场景：弱音老师开心地竖起大拇指点赞，灿烂治愈微笑，呼吁一键三连支持",
+    "asset_path": "projects/yowane_cicd/assets/yowane_v3_scene5.jpg",
+    "duration_estimate": 7.0
+  }
+]

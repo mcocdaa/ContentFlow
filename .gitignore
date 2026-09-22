@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Output directories & artifacts
+output/
+staged_clips/
+*.mp4
+*.mp3
+
+# Ignore vendor local storages and venvs if any leak through
+vendor/MoneyPrinterTurbo/storage/
+vendor/MoneyPrinterTurbo/.venv/
+vendor/MoneyPrinterTurbo/config.toml
+
+# Environment & credentials
+.env
+.env.*
+*.env

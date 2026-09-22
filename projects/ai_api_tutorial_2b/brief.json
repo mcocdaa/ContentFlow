@@ -1,0 +1,66 @@
+{
+  "project_id": "ai_api_tutorial_2b",
+  "name": "2B小姐姐教你大模型API核心三要素",
+  "tagline": "3D二次元虚拟偶像技术科普：搞懂Base URL、API Key与Model Name，告别401/404连接报错",
+  "category": "二次元虚拟偶像科普 / AI 开发者入门教学",
+  "description": "由超高人气 3D 虚拟偶像 2B（寄叶二号B型）担任特邀科技讲师，以顶奢手办级美学与未来科技全息教室为背景，系统科普大模型 API 调用三大核心参数（Base URL、API Key、Model Name），深度剖析 HTTP 401 鉴权失效、404 模型不存在与 429 速率超限等典型避坑场景，并给出标准代码闭环指南。",
+  "target_audience": [
+    "初次接触大模型 API 调用的前端与全栈开发者",
+    "使用 Cherry Studio / Chatbox / NextChat 等客户端的普通用户",
+    "二次元动漫、3D 手办与前沿 AI 科技爱好者",
+    "追求高颜值、高质量技术科普视频的自媒体观众"
+  ],
+  "pain_points": [
+    "为什么各大 AI 客户端总是连接失败报 401 或 404？参数概念混淆令人抓狂",
+    "Base URL 到底是官方网址还是特定网关？缺了 /v1 路径导致直接 404 报错",
+    "API Key 是什么原理？小白误把密钥硬编码提交到 GitHub 导致被盗刷欠费",
+    "Model Name 到底该填什么？大小写或别名写错一个字母就无法响应"
+  ],
+  "solutions": [
+    "核心要素一 Base URL：接口通信的基地址。明确请求路由、官方直接调用与本地私有化（如 Ollama）的路径标准与 /v1 结尾规范",
+    "核心要素二 API Key：通行全球大模型的安全护照。详解 Bearer Token 认证头规范，强调环境变量隔离与脱敏防盗刷底线",
+    "核心要素三 Model Name：大模型的精确身份代号。教你如何精确定位模型快照（如 deepseek-reasoner, gpt-4o, claude-3-7-sonnet）",
+    "常见报错急诊排障：三步速查 401 密钥失效、404 地址或模型错误、429 额度与并发超限",
+    "优雅跑通 Hello World：一份极简标准 cURL 与 Python 脚本，一键完成闭环验证"
+  ],
+  "key_features": [
+    {
+      "name": "Base URL 基地址详解",
+      "headline": "决定你的请求飞向哪台服务器",
+      "detail": "Base URL 是客户端与大模型服务提供商之间的通信桥梁。例如官方接口 https://api.deepseek.com、本地运行的 http://localhost:11434/v1。特别警示：绝大多数兼容 OpenAI 规范的工具都强制要求在基地址末尾携带 /v1 路由。"
+    },
+    {
+      "name": "API Key 密钥护照",
+      "headline": "身份凭据与安全防线",
+      "detail": "通过 HTTP 请求头中的 Authorization: Bearer sk-xxx 传递。严禁直接写入前端 JS 代码或提交至公共 Git 仓库，必须通过 .env 文件和环境变量读取，保护你的数字钱包。"
+    },
+    {
+      "name": "Model Name 模型代号",
+      "headline": "精确定位你的大模型大脑",
+      "detail": "模型代号是模型服务商分配的唯一定位符，如 deepseek-reasoner（R1 满血推理）、gpt-4o、claude-3-7-sonnet。必须完全遵循供应商官方文档，大小写或横杠错位都会导致 404 Model Not Found。"
+    },
+    {
+      "name": "HTTP 报错速查手册",
+      "headline": "常见异常三秒精准定位",
+      "detail": "401 表示密钥错误或欠费；404 表示 Base URL 路径漏写 /v1 或模型代号拼错；429 表示当前请求速率超限或账户余额见底，对症下药即可秒解。"
+    }
+  ],
+  "tech_stack": [
+    "OpenAI-Compatible REST API",
+    "cURL & Python requests / openai SDK",
+    "HTTP Headers (Authorization: Bearer)",
+    "Environment Variables (.env)",
+    "MoneyPrinterTurbo & Edge-TTS",
+    "3D Figure Aesthetic Pipeline"
+  ],
+  "highlights": [
+    "超高人气 3D 虚拟偶像 2B 全程出镜教学，顶奢手办光影与发丝级细节",
+    "全息科技教室实景化 HUD 投屏，单场景统合沉浸式观感",
+    "纯干货零废话技术科普，两分钟彻底搞懂所有 AI 客户端与 API 配置"
+  ],
+  "call_to_action": "觉得有用请一键三连并收藏！下期 2B 小姐姐将为你实战演示如何写好 System Prompt 提示词！",
+  "links": {
+    "github": "https://github.com/mcocdaa/ContentFlow",
+    "models_doc": "https://platform.openai.com/docs/models"
+  }
+}

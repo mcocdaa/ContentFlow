@@ -1,0 +1,61 @@
+{
+  "project_id": "universal_dev_engine",
+  "name": "DevPulse",
+  "tagline": "下一代开发者自动化调度与全生命周期工作流引擎",
+  "category": "开发者效能工具 & AI 调度底座",
+  "description": "DevPulse 是一款轻量、确定性且高可用的开发者效能工作流引擎，通过单机自托管极简架构，彻底解放繁琐重复的胶水编码与手工发布流水线。",
+  "target_audience": [
+    "中高级全栈开发者与架构师",
+    "独立开发者（Indie Hackers）与技术创作者",
+    "追求高稳定、低维护成本的研发效能团队"
+  ],
+  "pain_points": [
+    "传统 CI/CD 与调度工具极度沉重，常驻内存动辄数 GB 且配置繁琐",
+    "复杂的多步骤流水线缺乏确定性与状态回溯机制，排错犹如大海捞针",
+    "云端 SaaS 依赖严重，存在代码泄漏风险且受到供应商网络限制"
+  ],
+  "solutions": [
+    "基于现代化轻量底盘，毫秒级冷启动，内存占用低于 60MB",
+    "引入时间旅行分叉机制与确定性状态快照，每一步执行均可审计回放",
+    "100% 本地优先（Local-First），完全离线自托管，保障核心资产安全"
+  ],
+  "key_features": [
+    {
+      "name": "轻量极致内核",
+      "headline": "零外部笨重依赖，单镜像秒级拉起",
+      "detail": "抛弃庞杂的微服务堆叠，采用单进程高并发事件驱动模型，资源消耗仅为同类工具的十分之一。"
+    },
+    {
+      "name": "确定性时空调试",
+      "headline": "支持单步断点与任意节点时间旅行",
+      "detail": "遇到异常可直接从失败节点分叉重试，保留所有上下文环境变量，告别从头重新跑全量流水线的低效煎熬。"
+    },
+    {
+      "name": "多协议无缝接入",
+      "headline": "标准化 MCP 服务与通用 Webhook",
+      "detail": "原生支持 Model Context Protocol 与标准 REST/SSE 接口，可作为各种 Agent 与研发工具的标准动作调度器。"
+    },
+    {
+      "name": "自愈式熔断看门狗",
+      "headline": "全链路指数退避与长连接自愈",
+      "detail": "内置工业级流量整形与重试机制，面对网络抖动和下游异常能够从容应对、优雅降级。"
+    }
+  ],
+  "tech_stack": [
+    "Python 3.11+",
+    "FastAPI",
+    "SQLite WAL",
+    "Tailwind CSS",
+    "Native Web Components"
+  ],
+  "highlights": [
+    "本地自托管无后门，100% 数据不出机",
+    "极简开箱即用，两分钟完成首次编排",
+    "活跃的开源社区支持与完整测试保障"
+  ],
+  "call_to_action": "欢迎前往 GitHub 点亮 Star，立刻在本地启动你的专属自动化调度中心！",
+  "links": {
+    "github": "https://github.com/universal-flow/devpulse",
+    "docs": "https://docs.devpulse.io"
+  }
+}
