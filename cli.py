@@ -327,10 +327,49 @@ def cmd_reuse_asset(args):
         item.used_in_projects.append(args.project)
         lib.save_registry()
     print(f"[+] Reused asset '{args.asset}' in project '{args.project}': {dest_file}")
+def cmd_figure_status(args):
+    """Reports status of the 3 figure anime dance video pipelines."""
+    from core.figure_orchestrator import FigureVideoOrchestrator
+    import json
+    fo = FigureVideoOrchestrator()
+    readiness = fo.get_pipeline_readiness()
+    print("\n=== ContentFlow 3D Figure Anime Dance Pipelines Readiness ===")
+    for key, info in readiness.items():
+        print(f"\n[{key.upper()}] {info['name']}")
+        print(f"  • Overall Status: {info['status']}")
+        for k, v in info.items():
+            if k not in ("name", "status"):
+                print(f"    - {k}: {v}")
+    print()
+    return 0
+
+
+def cmd_figure_video(args):
+    """Executes one of the 3 figure anime dance video pipelines."""
+    from core.figure_orchestrator import FigureVideoOrchestrator
+    fo = FigureVideoOrchestrator()
+    proj_dir = PROJECTS_DIR / args.project
+    if not proj_dir.exists():
+        print(f"[-] Project directory '{proj_dir}' does not exist.")
+        return 1
+    
+    char_img = proj_dir / "assets" / args.character if args.character else None
+    audio = proj_dir / "assets" / args.audio if args.audio else None
+
+    print(f"[+] Starting Figure Dance Pipeline: {args.pipeline} for project: {args.project}")
+    out = fo.run_pipeline(
+        mode=args.pipeline,
+        project_dir=proj_dir,
+        character_image=char_img,
+        audio_file=audio,
+        prompt=args.prompt,
+    )
+    print(f"[+] Figure video generated successfully: {out}")
     return 0
 
 
 def main():
+
     parser = argparse.ArgumentParser(
         description="ContentFlow: Universal Multi-Modal Content & Video Engine"
     )
@@ -378,13 +417,22 @@ def main():
     p_assets.set_defaults(func=cmd_list_assets)
 
     # reuse-asset
-    p_reuse = subparsers.add_parser("reuse-asset", help="Import an asset from central library into project")
-    p_reuse.add_argument("--asset", required=True, help="Asset ID from registry")
-    p_reuse.add_argument("--project", required=True, help="Target Project ID")
-    p_reuse.set_defaults(func=cmd_reuse_asset)
+    # figure-status
+    p_fstatus = subparsers.add_parser("figure-status", help="Inspect readiness of 3 figure animation pipelines")
+    p_fstatus.set_defaults(func=cmd_figure_status)
+
+    # figure-video
+    p_fvideo = subparsers.add_parser("figure-video", help="Generate 3D figure dance video (3d, keyframe, or api)")
+    p_fvideo.add_argument("--pipeline", required=True, choices=["3d", "keyframe", "api"], help="Pipeline mode to execute")
+    p_fvideo.add_argument("--project", required=True, help="Project name (e.g. transformer_noshiro_tutorial)")
+    p_fvideo.add_argument("--character", default="noshiro_reference.jpg", help="Character image filename in project assets")
+    p_fvideo.add_argument("--audio", default=None, help="Audio/BGM filename in project assets")
+    p_fvideo.add_argument("--prompt", default="3D anime figure girl dancing gracefully, studio lighting", help="Prompt description")
+    p_fvideo.set_defaults(func=cmd_figure_video)
 
     args = parser.parse_args()
     return args.func(args)
+
 
 
 if __name__ == "__main__":

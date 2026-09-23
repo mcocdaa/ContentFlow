@@ -1,3 +1,6 @@
 [submodule "vendor/MoneyPrinterTurbo"]
 	path = vendor/MoneyPrinterTurbo
 	url = https://github.com/harry0703/MoneyPrinterTurbo.git
+[submodule "vendor/blender_mmd_tools"]
+	path = vendor/blender_mmd_tools
+	url = https://github.com/powroupi/blender_mmd_tools.git

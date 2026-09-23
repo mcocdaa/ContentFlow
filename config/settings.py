@@ -6,7 +6,30 @@ from pathlib import Path
 import os
 
 CONTENTFLOW_ROOT = Path(__file__).resolve().parent.parent
+
+# Auto-load .env configuration if present
+def _load_env_file(dotenv_path: Path):
+    if not dotenv_path.exists():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path)
+    except ImportError:
+        with open(dotenv_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("'\"")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+
+_load_env_file(CONTENTFLOW_ROOT / ".env")
+
 VENDOR_DIR = CONTENTFLOW_ROOT / "vendor"
+
 MONEYPRINTER_DIR = VENDOR_DIR / "MoneyPrinterTurbo"
 MONEYPRINTER_VENV_PYTHON = MONEYPRINTER_DIR / ".venv" / "bin" / "python"
 MONEYPRINTER_CLI = MONEYPRINTER_DIR / "cli.py"
