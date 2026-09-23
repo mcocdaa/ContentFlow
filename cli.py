@@ -29,9 +29,57 @@ from core.asset_builder import AssetBuilder
 from core.video_engine import VideoEngine
 
 
+def resolve_project_dir(project_name: str) -> Path:
+    """Resolves project directory by exact name, 00x sequence prefix, or substring."""
+    direct = PROJECTS_DIR / project_name
+    if direct.exists() and direct.is_dir():
+        return direct
+
+    if not PROJECTS_DIR.exists():
+        return direct
+
+    candidates = [p for p in PROJECTS_DIR.iterdir() if p.is_dir()]
+
+    # If project_name is a number like "5" or "005"
+    if project_name.isdigit():
+        target_prefix = f"{int(project_name):03d}_"
+        for c in candidates:
+            if c.name.startswith(target_prefix):
+                return c
+
+    # If project_name matches start of directory (e.g. "005")
+    for c in candidates:
+        if c.name.startswith(f"{project_name}_"):
+            return c
+
+    # Substring matching (e.g. "noshiro" -> "005_transformer_noshiro_tutorial")
+    matched = [c for c in candidates if project_name.lower() in c.name.lower()]
+    if len(matched) == 1:
+        return matched[0]
+    elif len(matched) > 1:
+        for m in matched:
+            if m.name.endswith(f"_{project_name.lower()}"):
+                return m
+        return matched[0]
+
+    return direct
+
+
 def cmd_init_project(args):
-    """Initializes a new project workspace with a boilerplate brief.json."""
-    project_id = args.name.lower().replace(" ", "_")
+    """Initializes a new project workspace with 00x sequential numbering and a boilerplate brief.json."""
+    existing = [p.name for p in PROJECTS_DIR.iterdir() if p.is_dir()] if PROJECTS_DIR.exists() else []
+    seq_nums = []
+    for name in existing:
+        if len(name) >= 4 and name[:3].isdigit() and name[3] == "_":
+            seq_nums.append(int(name[:3]))
+    next_seq = max(seq_nums, default=0) + 1
+
+    clean_name = args.name.lower().replace(" ", "_").strip()
+    if len(clean_name) >= 4 and clean_name[:3].isdigit() and clean_name[3] == "_":
+        project_id = clean_name
+    else:
+        project_id = f"{next_seq:03d}_{clean_name}"
+
     proj_dir = PROJECTS_DIR / project_id
     proj_dir.mkdir(parents=True, exist_ok=True)
     assets_dir = proj_dir / "assets"
@@ -105,13 +153,13 @@ def cmd_init_project(args):
 
 def cmd_generate_copy(args):
     """Generates complete multi-platform copywriting assets."""
-    project_id = args.project
-    proj_dir = PROJECTS_DIR / project_id
+    proj_dir = resolve_project_dir(args.project)
+    project_id = proj_dir.name
     brief_file = proj_dir / "brief.json"
 
     if not brief_file.exists():
         print(f"[-] brief.json not found in: {proj_dir}")
-        print(f"    Run: python cli.py init-project {project_id} first.")
+        print(f"    Run: python cli.py init-project {args.project} first.")
         return 1
 
     with open(brief_file, "r", encoding="utf-8") as f:
@@ -176,8 +224,8 @@ def cmd_generate_copy(args):
 
 def cmd_generate_video(args):
     """Generates rendered video using MoneyPrinterTurbo engine."""
-    project_id = args.project
-    proj_dir = PROJECTS_DIR / project_id
+    proj_dir = resolve_project_dir(args.project)
+    project_id = proj_dir.name
     copy_dir = OUTPUT_DIR / project_id / "copy"
     video_out = OUTPUT_DIR / project_id / "video"
     video_out.mkdir(parents=True, exist_ok=True)
@@ -318,13 +366,14 @@ def cmd_reuse_asset(args):
         print(f"[-] Asset '{args.asset}' not found in library.")
         return 1
     item = lib.assets[args.asset]
-    proj_dir = PROJECTS_DIR / args.project / "assets"
+    proj_dir = resolve_project_dir(args.project) / "assets"
     proj_dir.mkdir(parents=True, exist_ok=True)
     src_file = CONTENTFLOW_ROOT / item.file_path
     dest_file = proj_dir / src_file.name
     shutil.copy2(src_file, dest_file)
-    if args.project not in item.used_in_projects:
-        item.used_in_projects.append(args.project)
+    project_name = resolve_project_dir(args.project).name
+    if project_name not in item.used_in_projects:
+        item.used_in_projects.append(project_name)
         lib.save_registry()
     print(f"[+] Reused asset '{args.asset}' in project '{args.project}': {dest_file}")
 def cmd_figure_status(args):
@@ -348,13 +397,13 @@ def cmd_figure_video(args):
     """Executes one of the 3 figure anime dance video pipelines."""
     from core.figure_orchestrator import FigureVideoOrchestrator
     fo = FigureVideoOrchestrator()
-    proj_dir = PROJECTS_DIR / args.project
+    proj_dir = resolve_project_dir(args.project)
     if not proj_dir.exists():
-        print(f"[-] Project directory '{proj_dir}' does not exist.")
+        print(f"[-] Project directory '{args.project}' not found (searched in {PROJECTS_DIR}).")
         return 1
     
-    char_img = proj_dir / "assets" / args.character if args.character else None
-    audio = proj_dir / "assets" / args.audio if args.audio else None
+    char_img = proj_dir / "assets" / args.character if getattr(args, "character", None) else None
+    audio = proj_dir / "assets" / args.audio if getattr(args, "audio", None) else None
 
     print(f"[+] Starting Figure Dance Pipeline: {args.pipeline} for project: {args.project}")
     out = fo.run_pipeline(
@@ -363,6 +412,9 @@ def cmd_figure_video(args):
         character_image=char_img,
         audio_file=audio,
         prompt=args.prompt,
+        model=getattr(args, "model", None),
+        motion=getattr(args, "motion", None),
+        frames=getattr(args, "frames", 60),
     )
     print(f"[+] Figure video generated successfully: {out}")
     return 0
@@ -426,6 +478,9 @@ def main():
     p_fvideo.add_argument("--pipeline", required=True, choices=["3d", "keyframe", "api"], help="Pipeline mode to execute")
     p_fvideo.add_argument("--project", required=True, help="Project name (e.g. transformer_noshiro_tutorial)")
     p_fvideo.add_argument("--character", default="noshiro_reference.jpg", help="Character image filename in project assets")
+    p_fvideo.add_argument("--model", default=None, help="PMX model name, keyword (e.g. 'miku', 'luka'), or path")
+    p_fvideo.add_argument("--motion", default=None, help="VMD dance motion name or path")
+    p_fvideo.add_argument("--frames", type=int, default=60, help="Number of 3D frames to render (default: 60)")
     p_fvideo.add_argument("--audio", default=None, help="Audio/BGM filename in project assets")
     p_fvideo.add_argument("--prompt", default="3D anime figure girl dancing gracefully, studio lighting", help="Prompt description")
     p_fvideo.set_defaults(func=cmd_figure_video)

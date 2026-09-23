@@ -30,7 +30,7 @@ SCENES_DEF = [
     {
         "index": 1,
         "title": "痛点引出",
-        "image": CONTENTFLOW_ROOT / "projects/ai_api_tutorial_2b/assets/scene1_intro_troubled.jpg",
+        "image": CONTENTFLOW_ROOT / "projects/004_ai_api_tutorial_2b/assets/scene1_intro_troubled.jpg",
         "text": "为什么你的 AI 客户端总是连接失败报 401 或者 404？别慌，不是大模型变笨了，而是你的三大通信参数配错啦！",
         "subs": [
             ("为什么你的 AI 客户端总是连接失败报 401 或者 404？", 0.50),
@@ -40,7 +40,7 @@ SCENES_DEF = [
     {
         "index": 2,
         "title": "Base URL",
-        "image": CONTENTFLOW_ROOT / "projects/ai_api_tutorial_2b/assets/scene2_base_url.jpg",
+        "image": CONTENTFLOW_ROOT / "projects/004_ai_api_tutorial_2b/assets/scene2_base_url.jpg",
         "text": "第一把钥匙是 Base URL，也就是通信基地址。它决定请求飞向哪台服务器。大部分兼容客户端都必须加上斜杠 v1 路径哦！",
         "subs": [
             ("第一把钥匙是 Base URL，也就是通信基地址，它决定请求飞向哪台服务器。", 0.52),
@@ -50,7 +50,7 @@ SCENES_DEF = [
     {
         "index": 3,
         "title": "API Key",
-        "image": CONTENTFLOW_ROOT / "projects/ai_api_tutorial_2b/assets/scene3_api_key.jpg",
+        "image": CONTENTFLOW_ROOT / "projects/004_ai_api_tutorial_2b/assets/scene3_api_key.jpg",
         "text": "第二把钥匙是 API Key，也就是安全护照。它以 Bearer Token 格式鉴权。千万别写死在代码里提交开源，小心额度被盗刷！",
         "subs": [
             ("第二把钥匙是 API Key，也就是安全护照，它以 Bearer Token 格式鉴权。", 0.50),
@@ -60,7 +60,7 @@ SCENES_DEF = [
     {
         "index": 4,
         "title": "Model Name",
-        "image": CONTENTFLOW_ROOT / "projects/ai_api_tutorial_2b/assets/scene4_model_name.jpg",
+        "image": CONTENTFLOW_ROOT / "projects/004_ai_api_tutorial_2b/assets/scene4_model_name.jpg",
         "text": "第三把钥匙是 Model Name，也就是模型代号。比如 deepseek-reasoner 或 gpt-4o。必须严格匹配官方代号，错一个字母都会报错！",
         "subs": [
             ("第三把钥匙是 Model Name，也就是模型代号，比如 deepseek-reasoner 或 gpt-4o。", 0.55),
@@ -70,7 +70,7 @@ SCENES_DEF = [
     {
         "index": 5,
         "title": "排查手册",
-        "image": CONTENTFLOW_ROOT / "projects/ai_api_tutorial_2b/assets/scene5_error_triage.jpg",
+        "image": CONTENTFLOW_ROOT / "projects/004_ai_api_tutorial_2b/assets/scene5_error_triage.jpg",
         "text": "排查手册拿好：401 查 Key 和余额；404 查基地址路径和模型名；429 是并发或频率超限。按图索骥三秒搞定排障！",
         "subs": [
             ("排查手册拿好：401 查 Key 和余额；404 查基地址路径和模型名；", 0.50),
@@ -80,7 +80,7 @@ SCENES_DEF = [
     {
         "index": 6,
         "title": "全通下班",
-        "image": CONTENTFLOW_ROOT / "projects/ai_api_tutorial_2b/assets/scene6_success_thumbsup.jpg",
+        "image": CONTENTFLOW_ROOT / "projects/004_ai_api_tutorial_2b/assets/scene6_success_thumbsup.jpg",
         "text": "参数全部配齐，点击测试看到 200 OK 绿灯全亮！恭喜你彻底打通大模型通信！觉得有用记得点赞收藏，下期带你解锁进阶玩法！",
         "subs": [
             ("参数全部配齐，点击测试看到 200 OK 绿灯全亮！恭喜你彻底打通大模型通信！", 0.55),
@@ -119,7 +119,7 @@ def main():
     work_dir.mkdir(parents=True, exist_ok=True)
     out_dir = CONTENTFLOW_ROOT / "output" / "ai_api_tutorial_2b" / "video"
     out_dir.mkdir(parents=True, exist_ok=True)
-    deliv_dir = CONTENTFLOW_ROOT / "projects/ai_api_tutorial_2b/delivery"
+    deliv_dir = CONTENTFLOW_ROOT / "projects/004_ai_api_tutorial_2b/delivery"
     deliv_dir.mkdir(parents=True, exist_ok=True)
 
     client = DoubaoSeedTTS(

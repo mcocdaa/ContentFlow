@@ -71,6 +71,9 @@ class FigureVideoOrchestrator:
         audio_file: Optional[Path] = None,
         prompt: str = "3d figure girl dancing gracefully, sunlit wooden floor",
         output_name: str = "figure_dance_final.mp4",
+        model: Optional[str | Path] = None,
+        motion: Optional[str | Path] = None,
+        frames: int = 60,
     ) -> Path:
         """Executes the chosen pipeline and produces a 1080P/60FPS final video."""
         project_dir = Path(project_dir).resolve()
@@ -85,14 +88,48 @@ class FigureVideoOrchestrator:
             # 1. 3D Headless Pipeline
             logger.info("Executing 3D Blender Headless Render...")
             raw_frames_dir = output_dir / "3d_raw_frames"
+            
+            # Resolve model: explicit param -> project assets -> central library
+            all_pmx = list(Path("library/models").rglob("*.pmx")) + list((project_dir / "assets").glob("*.pmx"))
+            if model:
+                model_str = str(model).lower()
+                matched = [p for p in all_pmx if model_str in p.name.lower() or model_str in str(p).lower()]
+                model_file = matched[0] if matched else Path(model).resolve()
+            elif (project_dir / "assets" / "model.pmx").exists():
+                model_file = project_dir / "assets" / "model.pmx"
+            elif all_pmx:
+                model_file = all_pmx[0]
+            else:
+                raise FileNotFoundError("No PMX model found in project assets or library/models.")
+
+            # Resolve motion: explicit param -> project assets -> central library
+            all_vmd = [c for c in Path("library/motions").rglob("*.vmd") if "camera" not in c.name.lower()]
+            if motion:
+                motion_str = str(motion).lower()
+                matched = [m for m in all_vmd if motion_str in m.name.lower()]
+                motion_file = matched[0] if matched else Path(motion).resolve()
+            elif (project_dir / "assets" / "dance.vmd").exists():
+                motion_file = project_dir / "assets" / "dance.vmd"
+            elif all_vmd:
+                motion_file = all_vmd[0]
+            else:
+                raise FileNotFoundError("No VMD dance motion found in project assets or library/motions.")
+
+            logger.info(f"Using 3D model: {model_file}")
+            logger.info(f"Using dance motion: {motion_file}")
+            logger.info(f"Rendering {frames} frames...")
+
             self.blender_engine.render_animation(
-                model_path=project_dir / "assets" / "model.pmx",
-                motion_path=project_dir / "assets" / "dance.vmd",
+                model_path=model_file,
+                motion_path=motion_file,
                 output_dir=raw_frames_dir,
-                start_frame=1, end_frame=120
+                start_frame=1,
+                end_frame=frames,
+                resolution_x=720,
+                resolution_y=1280,
             )
             # Assemble & enhance to 60fps
-            raw_video = output_dir / "3d_rendered.mp4"
+            raw_video = output_dir / "3d_rendered_30fps.mp4"
             self.interpolator.assemble_sequence_to_video(raw_frames_dir, raw_video, fps=30, audio_file=audio_file)
             return self.enhancer.interpolate_video_to_60fps(raw_video, final_output)
 

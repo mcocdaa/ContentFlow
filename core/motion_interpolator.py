@@ -82,11 +82,25 @@ class MotionInterpolator:
         output_mp4 = Path(output_mp4).resolve()
         output_mp4.parent.mkdir(parents=True, exist_ok=True)
 
+        # Auto-detect file naming pattern in directory
+        png_files = sorted(Path(frames_dir).glob("*.png"))
+        if not png_files:
+            raise FileNotFoundError(f"No PNG files found in {frames_dir} to assemble.")
+
+        first_stem = png_files[0].stem
+        if first_stem.startswith("frame_"):
+            pattern = "frame_%04d.png"
+        elif len(first_stem) == 8 and first_stem.isdigit():
+            pattern = "%08d.png"
+        else:
+            # Fallback: create temporary sequential symlinks/copies if format is arbitrary
+            pattern = f"{first_stem[:6]}%04d.png" if len(first_stem) >= 6 else "%04d.png"
+
         cmd = [
             "ffmpeg", "-y",
             "-r", str(fps),
             "-pattern_type", "sequence",
-            "-i", str(Path(frames_dir) / "%08d.png"),
+            "-i", str(Path(frames_dir) / pattern),
         ]
 
         if audio_file and Path(audio_file).exists():
