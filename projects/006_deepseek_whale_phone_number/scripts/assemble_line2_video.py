@@ -28,11 +28,13 @@ KEYFRAME_NAMES = [
     "composite_keyframe_03.jpg",
     "composite_keyframe_04.jpg",
     "composite_keyframe_05.jpg",
+    "composite_keyframe_06.jpg",
+    "composite_keyframe_07.jpg",
 ]
 
 TARGET_W = 720
 TARGET_H = 1280
-FRAMES_PER_TRANSITION = 60  # 4 transitions * 60 = 240 frames = ~4.0s @ 60fps
+FRAMES_PER_TRANSITION = 41  # 6 transitions * 40 frames = 240 frames = 4.00s @ 60fps
 
 
 def main():
@@ -99,8 +101,8 @@ def main():
         seg_frames = sorted(seg_out.glob("*.png"))
         print(f"  [+] Segment {seg_idx+1} produced {len(seg_frames)} frames.")
 
-        # If not the last segment, omit the last frame to avoid duplicate with next segment's first frame
-        slice_end = len(seg_frames) if seg_idx == len(scaled_keyframes) - 2 else len(seg_frames) - 1
+        # Each transition contributes 40 frames for exactly 240 frames = 4.00s @ 60FPS
+        slice_end = len(seg_frames) - 1
         for f in seg_frames[:slice_end]:
             dst = interpolated_frames_dir / f"{global_frame_idx:08d}.png"
             shutil.copy2(f, dst)

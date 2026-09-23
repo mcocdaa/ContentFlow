@@ -21,7 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 BLENDER_BIN = ROOT_DIR / "vendor" / "blender" / "blender"
 MMD_TOOLS_DIR = ROOT_DIR / "vendor" / "blender_mmd_tools"
 
-DEFAULT_MODEL = ROOT_DIR / "library" / "models" / "tda_miku_lace" / "TDA Miku Lace Dress Blue Ver2.0.pmx"
+DEFAULT_MODEL = ROOT_DIR / "library" / "models" / "tda_luka_dress" / "TDA Luka Dress.pmx"
 DEFAULT_MOTION = ROOT_DIR / "projects" / "006_deepseek_whale_phone_number" / "assets" / "phone_number_motion" / "Phone Number 【Motion-by-Ureshiiiiii】" / "Motion.vmd"
 DEFAULT_OUTPUT = ROOT_DIR / "projects" / "006_deepseek_whale_phone_number" / "output" / "line1_raw_frames"
 
@@ -34,7 +34,7 @@ def build_blender_script(
     end_frame: int = 1530,
     resolution_x: int = 720,
     resolution_y: int = 1280,
-    samples: int = 24,
+    samples: int = 14,
 ) -> str:
     """Generate inline Python script for Blender execution."""
     model_abs = model_path.resolve().as_posix()
@@ -93,6 +93,33 @@ arm.select_set(True)
 mesh = [o for o in scene.objects if o.type == 'MESH' and 'mesh' in o.name.lower()][0]
 bpy.context.view_layer.objects.active = mesh
 bpy.ops.object.shade_smooth()
+
+# 3b. DeepSeek Whale-chan Persona Customization:
+# Hide umbrella disk / diamond / pannier to expose dance leg movement & short idol dress
+hide_keywords = ["ドレス・スカート", "ドレス・エッジ", "スカート裏", "パニエ", "ダイヤモンド"]
+for mat in mesh.data.materials:
+    if any(k in mat.name for k in hide_keywords):
+        mat.use_nodes = True
+        mat.node_tree.nodes.clear()
+        out_node = mat.node_tree.nodes.new(type="ShaderNodeOutputMaterial")
+        trans_node = mat.node_tree.nodes.new(type="ShaderNodeBsdfTransparent")
+        mat.node_tree.links.new(trans_node.outputs["BSDF"], out_node.inputs["Surface"])
+
+# Tint materials to match DeepSeek Whale-chan palette (sheer black stockings, navy skirt/boots, cyan/silver hair)
+for mat in mesh.data.materials:
+    node = mat.node_tree.nodes.get("mmd_shader")
+    if not node:
+        continue
+    if "ニーハイ" in mat.name:
+        node.inputs["Diffuse Color"].default_value = (0.12, 0.12, 0.15, 1.0)
+        node.inputs["Ambient Color"].default_value = (0.08, 0.08, 0.10, 1.0)
+    elif "スカートインナー" in mat.name:
+        node.inputs["Diffuse Color"].default_value = (0.05, 0.12, 0.28, 1.0)
+    elif "靴" in mat.name:
+        node.inputs["Diffuse Color"].default_value = (0.06, 0.14, 0.32, 1.0)
+    elif any(k in mat.name for k in ["髪", "hair", "モミアゲ", "あほ毛"]):
+        node.inputs["Diffuse Color"].default_value = (0.78, 0.90, 1.0, 1.0)
+        node.inputs["Specular Color"].default_value = (0.2, 0.8, 1.0, 1.0)
 
 # 4. Import Dance Motion VMD
 motion_file = r"{motion_abs}"

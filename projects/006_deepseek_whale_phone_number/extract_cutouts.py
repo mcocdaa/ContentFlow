@@ -17,7 +17,17 @@ def main():
     print("[*] Initializing rembg session...")
     session = rembg.new_session("u2net")
     
-    jpg_files = sorted(KEYFRAMES_DIR.glob("pose*.jpg"))
+    # Match all pose and profile jpg keyframes
+    target_names = [
+        "pose1_call_me_sway_right.jpg",
+        "pose2_seductive_hip_left.jpg",
+        "pose3_rhythmic_double_pulse.jpg",
+        "pose3b_quarter_turn_45deg.jpg",
+        "profile_turn_90deg.jpg",
+        "pose4_turn_back_swirling_tails.jpg",
+        "pose5_final_wink_dynamic_idol.jpg"
+    ]
+    jpg_files = [KEYFRAMES_DIR / name for name in target_names if (KEYFRAMES_DIR / name).exists()]
     print(f"[*] Found {len(jpg_files)} keyframe JPGs to process.")
 
     for jpg_path in jpg_files:
