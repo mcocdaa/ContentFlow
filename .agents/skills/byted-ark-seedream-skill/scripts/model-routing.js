@@ -21,7 +21,22 @@ function references(value) {
     if (trimmed.startsWith('[')) refs = JSON.parse(trimmed);
     else refs = trimmed.startsWith('data:image/') ? [trimmed] : trimmed.split(',');
   }
-  if (!Array.isArray(refs) || !refs.length || refs.some(r => typeof r !== 'string' || !/^(https?:\/\/\S+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+)$/.test(r.trim()))) {
+  if (!Array.isArray(refs) || !refs.length) {
+    throw new Error('reference_images 必须是非空的图片 URL / Base64 数组');
+  }
+  const fs = require('fs');
+  const path = require('path');
+  refs = refs.map(r => {
+    r = String(r).trim();
+    if (fs.existsSync(r) && fs.statSync(r).isFile()) {
+      const ext = path.extname(r).toLowerCase();
+      const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+      const b64 = fs.readFileSync(r).toString('base64');
+      return `data:${mime};base64,${b64}`;
+    }
+    return r;
+  });
+  if (refs.some(r => typeof r !== 'string' || !/^(https?:\/\/\S+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+)$/.test(r.trim()))) {
     throw new Error('reference_images 必须是非空的图片 URL / Base64 数组');
   }
   return refs.map(r => r.trim());

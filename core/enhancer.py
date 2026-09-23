@@ -158,5 +158,128 @@ class MediaEnhancer:
             if res.returncode != 0:
                 raise RuntimeError(f"FFmpeg muxing failed: {res.stderr or res.stdout}")
 
+        return output_video
+
+    def upscale_frames_dir(
+        self,
+        input_dir: str | Path,
+        output_dir: str | Path,
+        scale: int = 2,
+        model_name: str = "realesr-animevideov3",
+    ) -> Path:
+        """Upscale all frames in an image directory using Real-ESRGAN."""
+        input_dir = Path(input_dir).resolve()
+        output_dir = Path(output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if not self.is_realesrgan_available():
+            raise RuntimeError(f"Real-ESRGAN executable not found at {self.realesrgan_path}")
+
+        cmd = [
+            str(self.realesrgan_path),
+            "-i", str(input_dir),
+            "-o", str(output_dir),
+            "-s", str(scale),
+            "-n", model_name,
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(f"Real-ESRGAN failed: {res.stderr or res.stdout}")
+        return output_dir
+
+    def enhance_video_with_sr_and_rife(
+        self,
+        input_video: str | Path,
+        output_video: str | Path,
+        audio_file: Optional[str | Path] = None,
+        target_fps: int = 60,
+        scale: int = 2,
+        model_name: str = "realesr-animevideov3",
+        target_resolution: Optional[tuple[int, int]] = (1080, 1920),
+    ) -> Path:
+        """Apply Real-ESRGAN super-resolution and RIFE 60FPS frame interpolation end-to-end."""
+        input_video = Path(input_video).resolve()
+        output_video = Path(output_video).resolve()
+        output_video.parent.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.TemporaryDirectory(prefix="cf_enhance_") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            frames_raw = tmp_path / "raw"
+            frames_sr = tmp_path / "sr"
+            frames_interp = tmp_path / "interp"
+            frames_raw.mkdir()
+            frames_sr.mkdir()
+            frames_interp.mkdir()
+
+            # 1. Extract frames from input video
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", str(input_video), "-qscale:v", "1", "-qmin", "1", "-qmax", "1",
+                 str(frames_raw / "%08d.png")],
+                check=True, capture_output=True
+            )
+
+            # 2. Run Real-ESRGAN super-resolution / edge sharpening
+            self.upscale_frames_dir(frames_raw, frames_sr, scale=scale, model_name=model_name)
+
+            # 3. Optional resize to target resolution (e.g. 1080x1920) if needed
+            if target_resolution:
+                w, h = target_resolution
+                frames_resized = tmp_path / "resized"
+                frames_resized.mkdir()
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-pattern_type", "sequence",
+                        "-i", str(frames_sr / "%08d.png"),
+                        "-vf", f"scale={w}:{h}:flags=lanczos",
+                        str(frames_resized / "%08d.png")
+                    ],
+                    check=True, capture_output=True
+                )
+                rife_input = frames_resized
+            else:
+                rife_input = frames_sr
+
+            # 4. Run RIFE 60FPS frame interpolation
+            self.interpolate_frames_dir(rife_input, frames_interp, model="rife-v4.6")
+
+            # 5. Normalize filenames sequentially
+            rife_frames = sorted(frames_interp.glob("*.png"))
+            seq_dir = tmp_path / "seq"
+            seq_dir.mkdir(parents=True, exist_ok=True)
+            for idx, img_p in enumerate(rife_frames, 1):
+                shutil.move(str(img_p), str(seq_dir / f"{idx:08d}.png"))
+
+            # 6. Re-encode video at target FPS with audio
+            mux_cmd = [
+                "ffmpeg", "-y",
+                "-r", str(target_fps),
+                "-pattern_type", "sequence",
+                "-i", str(seq_dir / "%08d.png"),
+            ]
+
+            if audio_file and Path(audio_file).exists():
+                mux_cmd.extend(["-i", str(audio_file), "-c:a", "aac", "-b:a", "192k", "-shortest"])
+            else:
+                # Try extracting audio from input video
+                audio_track = tmp_path / "audio.aac"
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", str(input_video), "-vn", "-c:a", "copy", str(audio_track)],
+                    capture_output=True
+                )
+                if audio_track.exists() and audio_track.stat().st_size > 0:
+                    mux_cmd.extend(["-i", str(audio_track), "-c:a", "aac", "-shortest"])
+
+            mux_cmd.extend([
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", "fast",
+                "-crf", "18",
+                str(output_video)
+            ])
+            res = subprocess.run(mux_cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                raise RuntimeError(f"FFmpeg muxing failed: {res.stderr or res.stdout}")
 
         return output_video
+
