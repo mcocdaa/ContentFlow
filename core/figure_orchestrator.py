@@ -137,8 +137,19 @@ class FigureVideoOrchestrator:
             # 2. Keyframe Interpolation Pipeline
             logger.info("Executing 2D Keyframe Interpolation Pipeline...")
             staged_frames_dir = output_dir / "interpolated_frames"
-            # Collect keyframes from project assets
-            keyframe_images = sorted(list((project_dir / "assets").glob("pose*.jpg")) + list((project_dir / "assets").glob("pose*.png")))
+            # Collect keyframes from project assets (scenes, poses, or general images)
+            assets_dir = project_dir / "assets"
+            matched_candidates = []
+            for pat in ("*scene*.jpg", "*scene*.png", "*pose*.png", "*pose*.jpg", "*keyframe*.png", "*keyframe*.jpg"):
+                matched_candidates.extend(assets_dir.glob(pat))
+            # Deduplicate preserving order
+            seen = set()
+            keyframe_images = []
+            for p in sorted(matched_candidates):
+                if p not in seen:
+                    seen.add(p)
+                    keyframe_images.append(p)
+
             if not keyframe_images and character_image:
                 keyframe_images = [character_image]
 

@@ -55,8 +55,10 @@ class MotionInterpolator:
                 "-m", str(self.enhancer.rife_path.parent / "rife-v4.6")
             ]
 
-            # Use batch interpolation on the segment
-            self.enhancer.interpolate_frames_dir(trans_in, trans_out, model="rife-v4.6")
+            # Use batch interpolation on the segment with specified transition frames
+            self.enhancer.interpolate_frames_dir(
+                trans_in, trans_out, model="rife-v4.6", num_frames=frames_per_transition
+            )
 
             # Collect generated frames in order
             generated = sorted(trans_out.glob("*.png"))

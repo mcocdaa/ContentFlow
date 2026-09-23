@@ -66,6 +66,7 @@ class MediaEnhancer:
         input_dir: str | Path,
         output_dir: str | Path,
         model: str = "rife-v4.6",
+        num_frames: Optional[int] = None,
     ) -> Path:
         """Interpolate an image sequence directory (e.g. 00000001.png, 00000002.png)."""
         input_dir = Path(input_dir).resolve()
@@ -81,7 +82,11 @@ class MediaEnhancer:
             "-i", str(input_dir),
             "-o", str(output_dir),
             "-m", str(model_dir),
+            "-f", "%08d.png",
         ]
+        if num_frames:
+            cmd.extend(["-n", str(num_frames)])
+
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
             raise RuntimeError(f"RIFE interpolation failed: {res.stderr or res.stdout}")
