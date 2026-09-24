@@ -38,5 +38,6 @@ vendor/MoneyPrinterTurbo/config.toml
 # Local vendor binaries
 vendor/bin/
 vendor/blender/
+vendor/ebsynth/
 
 

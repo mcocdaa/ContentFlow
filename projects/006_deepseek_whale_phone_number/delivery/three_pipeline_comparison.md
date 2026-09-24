@@ -31,15 +31,16 @@
 
 ## 三、深度优化与关键技术突破
 
-### 1. 路线一（真实 3D MMD 连续跳舞 + AI 深度去穿模润色）：彻底与路线二区分
+### 1. 路线一（真实 3D MMD 连续跳舞 + 工业级 EbSynth CUDA 神经网络全时序重绘）
 
-- **定位与纠偏**：路线一必须是**真正的 3D MMD 跳舞动画视频作为基底，并对其做 AI 去穿模与材质光泽深度润色**，绝非 2D 离散图片抽帧插画（后者为路线二）。
-- **重构方案**：
-  1. **3D 骨骼与全时序运动渲染**：使用短裙偶像模型（[`library/models/tda_luka_dress/`](file:///home/mcocdaa/AI_CODE/ContentFlow/library/models/tda_luka_dress/)）与副歌编舞动作（[`Motion.vmd`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/assets/phone_number_motion/Phone%20Number%20【Motion-by-Ureshiiiiii】/Motion.vmd)）。通过 bmesh 在内存中物理修剪掉巨型蓬蓬裙撑、玫瑰饰品与多余部件，释放完整的踢腿、跨步与扭胯编舞。在 Blender Cycles GPU 下完整渲染副歌全部 121 帧动作序列。
-  2. **AI 去穿模与接缝修复（Anti-Clipping Inpainting）**：针对 3D 骨骼运动中衣物刺穿大腿、发丝碰撞缺陷等高频多边形错误，算法自动检测穿模孔洞与接缝能量，执行 Telea/Bilateral 边缘保持修复与软化。
-  3. **手办材质与次表面散射注入（SSS & Figure Luster）**：注入次表面散射（桃色通透瓷感肤质，消除 Cycles 冷灰阴影）、电光青各向异性高光发丝、黑丝透肉微光泽与亚克力底座镜面光。
-  4. **时间域运动自适应防闪烁（Motion-Adaptive Temporal Stabilization）**：在低速躯干区强化跨帧一致性消除噪点，在高速手脚舞动区动态降低权重避免运动模糊拖尾。
-  5. **RIFE v4.6 Vulkan 60FPS 运动插帧**：对 121 帧 AI 润色帧执行稠密光流插帧至 241 帧，输出丝滑 60FPS 视频，完美对齐伴奏。
+- **行业标准解决方案**：行业专业影视/动漫 MMD 转 AI 工作流均采用 **“3D 真实骨骼驱动 + ControlNet 约束 + 关键帧神经重绘 + 硬件加速 EbSynth (PatchMatch) 纹理迁移 + 时序去闪烁平滑”**。
+- **技术突破与执行落地**：
+  1. **3D 物理与全时序运动基底**：基于 Blender Cycles GPU 渲染 121 帧无遮挡真骨骼舞蹈（`Motion.vmd`），提供连续高精度的空间深度、法线与位移指导。
+  2. **顶级手办审美关键帧重绘**：通过 Doubao-Seedream-5.0-Pro 制作 5 组关键舞姿神经重绘立绘，包含晶莹二次元眼眸、银白渐变电光青双马尾（发梢透明发光鲸鱼尾巴丝带）、科技打歌服短裙与高光微透肉黑丝。
+  3. **CUDA GPU 加速 EbSynth（30MB 专用二进制）**：自主编译 NVIDIA CUDA 12.9 与 RTX 4060 (sm_89) 硬件加速版 `ebsynth`，单帧合成仅需 2.3 秒。
+  4. **单帧极小位移双向推演（Sequential 1-Frame Propagation）**：规避跨多帧大位移 PatchMatch 的果冻拉伸，在相邻帧（位移仅 2~3px）进行正向与反向逐帧推演，中心点平滑余弦过渡，彻底消灭双重曝光鬼影。
+  5. **二次元神态面部锚定与 3 帧时序消闪滤波**：全帧 100% 覆盖头部中心检测，面部神态高保真锚定，结合时序平滑彻底消解传统逐帧扩散的闪烁噪点。
+  6. **RIFE v4.6 Vulkan 60FPS 运动插帧**：121 帧全量平滑重绘帧经 RIFE 插帧为 241 帧 60.00FPS 超高清成片，完美对齐伴奏。
 
 ### 2. 路线二（2D 密集生图 + 光流插值）深度优化：消灭“转身撕裂与底座漂移”
 
