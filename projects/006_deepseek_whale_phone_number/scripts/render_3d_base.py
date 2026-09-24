@@ -47,6 +47,7 @@ import os
 import math
 import mathutils
 import bpy
+import bmesh
 
 # 1. Enable Cycles with CUDA GPU Acceleration
 cpref = bpy.context.preferences.addons['cycles'].preferences
@@ -95,31 +96,63 @@ bpy.context.view_layer.objects.active = mesh
 bpy.ops.object.shade_smooth()
 
 # 3b. DeepSeek Whale-chan Persona Customization:
-# Hide umbrella disk / diamond / pannier to expose dance leg movement & short idol dress
-hide_keywords = ["ドレス・スカート", "ドレス・エッジ", "スカート裏", "パニエ", "ダイヤモンド"]
+# Physically remove hoop skirt, giant roses, diamond, pannier, wristlet, ribbons, glasses via bmesh
+bpy.context.view_layer.objects.active = mesh
+bpy.ops.object.mode_set(mode='EDIT')
+bm = bmesh.from_edit_mesh(mesh.data)
+
+hide_keywords = ["ドレス・スカート", "ドレス・エッジ", "スカート裏", "パニエ", "ダイヤモンド", "薔薇腰飾り", "リボン", "リボン裏", "リストレット", "メガネ", "レンズ"]
+hide_indices = set(i for i, m in enumerate(mesh.data.materials) if any(k in m.name for k in hide_keywords))
+faces_to_delete = [f for f in bm.faces if f.material_index in hide_indices]
+print(f"Pruning {{len(faces_to_delete)}} unwanted mesh faces for DeepSeek Whale-chan persona...")
+bmesh.ops.delete(bm, geom=faces_to_delete, context='FACES')
+bmesh.update_edit_mesh(mesh.data)
+bpy.ops.object.mode_set(mode='OBJECT')
+
+# Shaders for DeepSeek Whale-chan palette:
 for mat in mesh.data.materials:
-    if any(k in mat.name for k in hide_keywords):
+    if any(k in mat.name for k in ["髪", "hair", "モミアゲ", "あほ毛", "後頭部", "前髪"]):
         mat.use_nodes = True
         mat.node_tree.nodes.clear()
-        out_node = mat.node_tree.nodes.new(type="ShaderNodeOutputMaterial")
-        trans_node = mat.node_tree.nodes.new(type="ShaderNodeBsdfTransparent")
-        mat.node_tree.links.new(trans_node.outputs["BSDF"], out_node.inputs["Surface"])
-
-# Tint materials to match DeepSeek Whale-chan palette (sheer black stockings, navy skirt/boots, cyan/silver hair)
-for mat in mesh.data.materials:
-    node = mat.node_tree.nodes.get("mmd_shader")
-    if not node:
-        continue
-    if "ニーハイ" in mat.name:
-        node.inputs["Diffuse Color"].default_value = (0.12, 0.12, 0.15, 1.0)
-        node.inputs["Ambient Color"].default_value = (0.08, 0.08, 0.10, 1.0)
-    elif "スカートインナー" in mat.name:
-        node.inputs["Diffuse Color"].default_value = (0.05, 0.12, 0.28, 1.0)
-    elif "靴" in mat.name:
-        node.inputs["Diffuse Color"].default_value = (0.06, 0.14, 0.32, 1.0)
-    elif any(k in mat.name for k in ["髪", "hair", "モミアゲ", "あほ毛"]):
-        node.inputs["Diffuse Color"].default_value = (0.78, 0.90, 1.0, 1.0)
-        node.inputs["Specular Color"].default_value = (0.2, 0.8, 1.0, 1.0)
+        out = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
+        bsdf = mat.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.inputs["Base Color"].default_value = (0.80, 0.90, 1.0, 1.0) # silver-cyan hair
+        bsdf.inputs["Roughness"].default_value = 0.28
+        mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    elif "ニーハイ" in mat.name:
+        mat.use_nodes = True
+        mat.node_tree.nodes.clear()
+        out = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
+        bsdf = mat.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.inputs["Base Color"].default_value = (0.08, 0.08, 0.10, 1.0) # sheer black stockings
+        bsdf.inputs["Roughness"].default_value = 0.25
+        if "Specular IOR Level" in bsdf.inputs:
+            bsdf.inputs["Specular IOR Level"].default_value = 0.75
+        mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    elif any(k in mat.name for k in ["靴", "スカートインナー"]):
+        mat.use_nodes = True
+        mat.node_tree.nodes.clear()
+        out = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
+        bsdf = mat.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.inputs["Base Color"].default_value = (0.04, 0.12, 0.30, 1.0) # deep cyber blue
+        bsdf.inputs["Roughness"].default_value = 0.18
+        mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    elif mat.name == "ドレス" or "服" in mat.name:
+        mat.use_nodes = True
+        mat.node_tree.nodes.clear()
+        out = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
+        bsdf = mat.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.inputs["Base Color"].default_value = (0.95, 0.96, 0.98, 1.0) # white corset top
+        bsdf.inputs["Roughness"].default_value = 0.22
+        mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    elif "ティアラ" in mat.name or "チョーカー" in mat.name:
+        mat.use_nodes = True
+        mat.node_tree.nodes.clear()
+        out = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
+        bsdf = mat.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.inputs["Base Color"].default_value = (0.1, 0.85, 1.0, 1.0) # cyber cyan accent
+        bsdf.inputs["Roughness"].default_value = 0.1
+        mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
 
 # 4. Import Dance Motion VMD
 motion_file = r"{motion_abs}"
@@ -252,7 +285,7 @@ def main():
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Output directory for raw frames")
     parser.add_argument("--start", type=int, default=1410, help="Start frame (default: 1410)")
     parser.add_argument("--end", type=int, default=1530, help="End frame (default: 1530)")
-    parser.add_argument("--samples", type=int, default=24, help="Cycles samples (default: 24)")
+    parser.add_argument("--samples", type=int, default=12, help="Cycles samples (default: 12)")
     args = parser.parse_args()
 
     if not BLENDER_BIN.exists():

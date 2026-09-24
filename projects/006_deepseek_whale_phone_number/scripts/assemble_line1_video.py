@@ -35,21 +35,31 @@ def interpolate_rife_60fps(input_dir: Path, output_dir: Path) -> Path:
     if not input_frames:
         raise FileNotFoundError(f"No frames found in {input_dir}")
 
+    # Stage sequentially numbered inputs for RIFE (00000001.png, 00000002.png, ...)
+    staging_in = output_dir.parent / "_rife_in_staged"
+    if staging_in.exists():
+        shutil.rmtree(staging_in)
+    staging_in.mkdir(parents=True, exist_ok=True)
+    for idx, f in enumerate(input_frames, start=1):
+        shutil.copy2(f, staging_in / f"{idx:08d}.png")
+
     # For N frames at 30fps, 2x interpolation gives (2N - 1) frames at 60fps
     target_count = len(input_frames) * 2 - 1
 
     print(f"Running RIFE v4.6 Vulkan frame interpolation: {len(input_frames)} -> {target_count} frames (60FPS)...")
     cmd = [
         str(RIFE_BIN),
-        "-i", str(input_dir),
+        "-i", str(staging_in),
         "-o", str(output_dir),
         "-m", str(RIFE_MODEL_DIR),
         "-f", "%08d.png",
         "-n", str(target_count),
+        "-j", "2:8:4",
     ]
 
     t0 = time.time()
     res = subprocess.run(cmd, capture_output=True, text=True)
+    shutil.rmtree(staging_in, ignore_errors=True)
     elapsed = time.time() - t0
 
     if res.returncode != 0:

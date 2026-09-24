@@ -14,8 +14,8 @@
 | 交付类型 | 产物文件路径 | 画幅分辨率 | 帧率 | 核心技术融合栈 |
 |---|---|---|---|---|
 | **三线同屏对比视频** | [`output/three_pipeline_comparison_split.mp4`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/output/three_pipeline_comparison_split.mp4) | **1920×1080** | **60.00 FPS** | 三路并排画幅、动态 HUD 标识、立体声伴奏精准对齐 |
-| **路线一优化成片** | [`output/line1_3d_ai_polished.mp4`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/output/line1_3d_ai_polished.mp4) | 720×1280 (9:16) | 60.00 FPS | TDA短裙骨骼 + Blender Cycles GPU + Doubao-Seedream-5.0-Pro神经重绘去穿模 + SSS皮肤/丝袜光泽 + RIFE 60FPS |
-| **路线二优化成片** | [`output/line2_dense_keyframes_rife.mp4`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/output/line2_dense_keyframes_rife.mp4) | 720×1280 (9:16) | 60.00 FPS | 7连贯微角舞姿（新增45°/90°过渡）+ rembg发丝抠图 + 锚定底座赛博舞台 + RIFE密集光流（彻底消灭鬼影撕裂） |
+| **路线一优化成片** | [`output/line1_3d_ai_polished.mp4`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/output/line1_3d_ai_polished.mp4) | 720×1280 (9:16) | 60.00 FPS | 真实3D MMD舞蹈骨骼动画（Blender Cycles GPU 121帧逐帧渲染） + AI深度去穿模修复 + SSS皮肤透光/发丝流光/漆皮高光 + 时间域去闪烁稳定 + RIFE 60FPS |
+| **路线二优化成片** | [`output/line2_dense_keyframes_rife.mp4`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/output/line2_dense_keyframes_rife.mp4) | 720×1280 (9:16) | 60.00 FPS | 7连贯微角舞姿（Doubao-Seedream-5.0-Pro 原生生图，新增45°/90°过渡）+ rembg发丝抠图 + 锚定底座赛博舞台 + RIFE密集光流（彻底消灭鬼影撕裂） |
 | **路线三基线成片** | [`output/line3_seedance_api_enhanced.mp4`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/output/line3_seedance_api_enhanced.mp4) | 720×1280 (9:16) | 60.00 FPS | 火山方舟 Seedance 规范接入 + 律动运镜 + Real-ESRGAN/RIFE 60FPS 增强（当前暂停升级） |
 
 ---
@@ -31,14 +31,15 @@
 
 ## 三、深度优化与关键技术突破
 
-### 1. 路线一（3D Rig + AI 去穿模重绘）深度优化：解决“遮挡与塑料感”
+### 1. 路线一（真实 3D MMD 连续跳舞 + AI 深度去穿模润色）：彻底与路线二区分
 
-- **旧版缺陷**：原 3D 模型采用维多利亚宫廷蓬蓬大裙摆（TDA Miku Lace Dress），下半身裙撑完全遮挡了大腿动作与胯部律动，且初版仅使用基础图像滤波，未达到真正的生成式 AI 重绘质感。
+- **定位与纠偏**：路线一必须是**真正的 3D MMD 跳舞动画视频作为基底，并对其做 AI 去穿模与材质光泽深度润色**，绝非 2D 离散图片抽帧插画（后者为路线二）。
 - **重构方案**：
-  1. **模型与动作重构**：更换为支持展现腿部线条的打歌服短裙模型（[`library/models/tda_luka_dress/`](file:///home/mcocdaa/AI_CODE/ContentFlow/library/models/tda_luka_dress/)），完整释放 Phone Number 标志性跨步、扭胯与踢腿动作。在 Blender Cycles GPU 渲染 121 帧动作序列。
-  2. **Doubao-Seedream-5.0-Pro 神经重绘去穿模**：对动作序列关键帧执行图生图重绘（融合姿态约束与鲸鱼娘角色锚点），在保留 MMD 编舞骨骼姿态的同时，利用生成式大模型彻底消灭裙摆穿刺（去穿模）、多边形折痕与低模粗糙感。
-  3. **材质光泽注入**：注入次表面散射（SSS 蜜桃柔光肤质）、电光青发丝各向异性流光与微透肉黑丝光泽。
-  4. **RIFE v4.6 Vulkan 60FPS 运动插帧**：生成 240 帧流畅 60FPS 视频，完美对齐伴奏。
+  1. **3D 骨骼与全时序运动渲染**：使用短裙偶像模型（[`library/models/tda_luka_dress/`](file:///home/mcocdaa/AI_CODE/ContentFlow/library/models/tda_luka_dress/)）与副歌编舞动作（[`Motion.vmd`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/006_deepseek_whale_phone_number/assets/phone_number_motion/Phone%20Number%20【Motion-by-Ureshiiiiii】/Motion.vmd)）。通过 bmesh 在内存中物理修剪掉巨型蓬蓬裙撑、玫瑰饰品与多余部件，释放完整的踢腿、跨步与扭胯编舞。在 Blender Cycles GPU 下完整渲染副歌全部 121 帧动作序列。
+  2. **AI 去穿模与接缝修复（Anti-Clipping Inpainting）**：针对 3D 骨骼运动中衣物刺穿大腿、发丝碰撞缺陷等高频多边形错误，算法自动检测穿模孔洞与接缝能量，执行 Telea/Bilateral 边缘保持修复与软化。
+  3. **手办材质与次表面散射注入（SSS & Figure Luster）**：注入次表面散射（桃色通透瓷感肤质，消除 Cycles 冷灰阴影）、电光青各向异性高光发丝、黑丝透肉微光泽与亚克力底座镜面光。
+  4. **时间域运动自适应防闪烁（Motion-Adaptive Temporal Stabilization）**：在低速躯干区强化跨帧一致性消除噪点，在高速手脚舞动区动态降低权重避免运动模糊拖尾。
+  5. **RIFE v4.6 Vulkan 60FPS 运动插帧**：对 121 帧 AI 润色帧执行稠密光流插帧至 241 帧，输出丝滑 60FPS 视频，完美对齐伴奏。
 
 ### 2. 路线二（2D 密集生图 + 光流插值）深度优化：消灭“转身撕裂与底座漂移”
 
@@ -57,11 +58,11 @@
 
 ## 四、三大技术管线综合横向评测矩阵（最新版）
 
-| 评测维度 | 路线一：3D骨骼 + 神经去穿模润色 | 路线二：2D密集生图 + 密集光流 | 路线三：Seedance大模型 + AI超分 |
+| 评测维度 | 路线一：真实3D MMD骨骼 + AI去穿模润色 | 路线二：2D连贯生图 + 密集光流 | 路线三：Seedance大模型 + AI超分 |
 |---|---|---|---|
-| **肢体编舞还原度** | ⭐⭐⭐⭐⭐ **最高**<br>（精准遵循 MMD 动作捕捉，手势 🤙、抬腿、扭胯 100% 还原） | ⭐⭐⭐⭐☆ **优良**<br>（7 关键舞姿密集衔接，编舞节奏卡点极佳） | ⭐⭐⭐☆☆ **中等**<br>（提示词引导，部分动作自由发挥） |
-| **面容与手办质感** | ⭐⭐⭐⭐⭐ **顶级**<br>（神经重绘注入鲸鱼娘立绘特征，去塑料感） | ⭐⭐⭐⭐⭐ **顶级**<br>（Seedream 5.0 Pro 原生画质，发丝与黑丝高光极具吸引力） | ⭐⭐⭐⭐☆ **优良**<br>（首帧锚定精准，AI 超分后边缘干净） |
-| **去穿模与瑕疵处理** | ⭐⭐⭐⭐⭐ **彻底解决**<br>（神经生成重构衣物遮挡，无多边形刺穿） | ⭐⭐⭐⭐⭐ **天生无穿模**<br>（2D 物理合理生成，无 3D 穿透） | ⭐⭐⭐⭐☆ **无穿模**<br>（隐空间连续生成） |
+| **肢体编舞还原度** | ⭐⭐⭐⭐⭐ **最高**<br>（精准遵循 MMD 动作捕捉，手势 🤙、抬腿、扭胯 100% 真实骨骼还原） | ⭐⭐⭐⭐☆ **优良**<br>（7 关键舞姿密集衔接，编舞节奏卡点极佳） | ⭐⭐⭐☆☆ **中等**<br>（提示词引导，部分动作自由发挥） |
+| **面容与手办质感** | ⭐⭐⭐⭐☆ **优良**<br>（Cycles GPU 渲染 + SSS 瓷感润肤 + 电光青流光发丝） | ⭐⭐⭐⭐⭐ **顶级**<br>（Seedream 5.0 Pro 原生画质，发丝与黑丝高光极具吸引力） | ⭐⭐⭐⭐☆ **优良**<br>（首帧锚定精准，AI 超分后边缘干净） |
+| **去穿模与瑕疵处理** | ⭐⭐⭐⭐⭐ **彻底解决**<br>（bmesh 物理修剪 + Telea/Bilateral 穿模孔洞接缝修复） | ⭐⭐⭐⭐⭐ **天生无穿模**<br>（2D 物理合理生成，无 3D 穿透） | ⭐⭐⭐⭐☆ **无穿模**<br>（隐空间连续生成） |
 | **大角度动作连续性** | ⭐⭐⭐⭐⭐ **极强**<br>（3D 骨骼天生具备连续空间旋转） | ⭐⭐⭐⭐☆ **良好**<br>（45° 分段补帧消除了 180° 鬼影撕裂） | ⭐⭐⭐⭐☆ **平滑**<br>（大模型端到端运镜） |
 | **运动帧率与稳定性** | ⭐⭐⭐⭐⭐ **60FPS 极度丝滑** | ⭐⭐⭐⭐⭐ **60FPS 极度丝滑**<br>（底座锚定，消灭漂移） | ⭐⭐⭐⭐☆ **60FPS 稳定** |
 
