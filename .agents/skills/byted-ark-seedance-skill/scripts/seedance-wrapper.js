@@ -118,17 +118,11 @@ function expandHome(p) {
   return p;
 }
 
-// 下载目录三级 fallback
+// 下载目录 fallback (优先项目内部 output/seedance_raw，避免污染用户主目录)
 function getDefaultDownloadDir() {
-  const os = require('os');
-  const home = os.homedir();
-  const desktop = path.join(home, 'Desktop');
-  
   const paths = [
     process.env.ARK_SEEDANCE_SAVE_PATH ? path.resolve(expandHome(process.env.ARK_SEEDANCE_SAVE_PATH)) : null,
-    fs.existsSync(desktop) ? path.join(desktop, 'Seedance-Videos') : null,
-    path.join(home, 'Seedance-Videos'),
-    path.join(process.cwd(), 'Seedance-Videos'),
+    path.join(process.cwd(), 'output', 'seedance_raw'),
   ].filter(Boolean);
   
   for (const p of paths) {
@@ -142,7 +136,7 @@ function getDefaultDownloadDir() {
       continue;
     }
   }
-  return paths[paths.length - 1];
+  return path.join(process.cwd(), 'output', 'seedance_raw');
 }
 
 const DEFAULT_DOWNLOAD_DIR = require.main === module ? getDefaultDownloadDir() : null;

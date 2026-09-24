@@ -12,8 +12,16 @@ ENV/
 # Output directories & artifacts
 output/
 staged_clips/
+temp_clips/
+seedance_raw/
+seedream_raw/
+Seedream-Images/
+Seedance-Videos/
+.cache/
 *.mp4
 *.mp3
+*.wav
+*.aac
 
 # Ignore vendor local storages and venvs if any leak through
 vendor/MoneyPrinterTurbo/storage/

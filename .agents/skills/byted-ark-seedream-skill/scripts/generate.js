@@ -519,8 +519,7 @@ function getDefaultSavePath() {
   const os = require('os');
   const path = require('path');
   const fs = require('fs');
-  const homedir = os.homedir();
-  
+
   // 1. 优先使用环境变量配置
   if (process.env.ARK_SEEDREAM_SAVE_PATH) {
     return expandHome(process.env.ARK_SEEDREAM_SAVE_PATH);
@@ -528,21 +527,10 @@ function getDefaultSavePath() {
   if (process.env.ARK_SAVE_PATH) {
     return expandHome(process.env.ARK_SAVE_PATH);
   }
-  
-  // 2. 尝试桌面目录（如果存在）
-  const desktopPath = path.join(homedir, 'Desktop', 'Seedream-Images');
-  if (fs.existsSync(path.join(homedir, 'Desktop'))) {
-    return desktopPath;
-  }
-  
-  // 3. 降级到用户主目录
-  const homePath = path.join(homedir, 'Seedream-Images');
-  if (fs.existsSync(homedir)) {
-    return homePath;
-  }
-  
-  // 4. 最终兜底：当前运行目录
-  return './Seedream-Images';
+
+  // 2. 优先保存在当前工作目录的 output/seedream_raw（git 忽略目录）
+  const projectOutputDir = path.resolve(process.cwd(), 'output', 'seedream_raw');
+  return projectOutputDir;
 }
 
 // ============================================
@@ -1026,6 +1014,10 @@ async function main() {
     if (params['dry-run'] !== undefined && parseBoolean(params['dry-run'])) {
       console.log(JSON.stringify({ dry_run: true, model: params.model, routing_reason: params.routing_reason, request: buildRequestBody(params) }, null, 2));
       return;
+    }
+    const customSaveDir = params['output-dir'] || params.output_dir || params['save-path'] || params.save_path || params['download-dir'] || params.download_dir;
+    if (customSaveDir) {
+      CONFIG.savePath = path.resolve(customSaveDir);
     }
     const detected = autoDetectApiKey();
     CONFIG.apiKey = detected.found ? detected.key : '';

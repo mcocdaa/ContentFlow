@@ -19,7 +19,6 @@ if str(SCRIPT_DIR) not in sys.path:
 from config.settings import (
     CONTENTFLOW_ROOT,
     PROJECTS_DIR,
-    OUTPUT_DIR,
     DEFAULT_VOICES,
     DEFAULT_ASPECT_RATIOS,
 )
@@ -169,7 +168,7 @@ def cmd_generate_copy(args):
     engine = CopywritingEngine(theme_name=args.theme)
     package = engine.generate_all(facts)
 
-    copy_out = OUTPUT_DIR / project_id / "copy"
+    copy_out = proj_dir / "output" / "copy"
     copy_out.mkdir(parents=True, exist_ok=True)
 
     # Save WeChat MD & HTML
@@ -226,8 +225,8 @@ def cmd_generate_video(args):
     """Generates rendered video using MoneyPrinterTurbo engine."""
     proj_dir = resolve_project_dir(args.project)
     project_id = proj_dir.name
-    copy_dir = OUTPUT_DIR / project_id / "copy"
-    video_out = OUTPUT_DIR / project_id / "video"
+    copy_dir = proj_dir / "output" / "copy"
+    video_out = proj_dir / "output" / "video"
     video_out.mkdir(parents=True, exist_ok=True)
 
     # Load brief

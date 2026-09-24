@@ -151,7 +151,7 @@ def main():
     args = parser.parse_args()
 
     full_script = build_full_script()
-    out_dir = CONTENTFLOW_ROOT / "output" / "ai_api_tutorial_2b" / "video"
+    out_dir = SCRIPT_DIR / "output" / "video"
     out_dir.mkdir(parents=True, exist_ok=True)
     audio_out = out_dir / "2B小姐姐教你大模型API核心三要素_doubao_2b.mp3"
     existing_video = out_dir / "2B小姐姐教你大模型API核心三要素_final.mp4"
