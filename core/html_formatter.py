@@ -208,3 +208,17 @@ def _format_inline(text: str, theme: Dict[str, str]) -> str:
     )
     return text
 
+
+class HTMLFormatter:
+    """Canonical HTML formatter wrapper for WeChat and Presentation HTML."""
+
+    @staticmethod
+    def format_text_to_html(
+        text: str,
+        title: Optional[str] = None,
+        theme_name: str = "tech_blue",
+    ) -> str:
+        """Formats raw markdown/script text into styled presentation HTML."""
+        return markdown_to_wechat_html(text, theme_name=theme_name, title=title)
+
+

@@ -190,3 +190,7 @@ class VideoApiRouter:
         subprocess.run(cmd, check=True, capture_output=True)
         return output_path
 
+
+VideoAPIRouter = VideoApiRouter
+
+

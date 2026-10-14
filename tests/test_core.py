@@ -208,3 +208,113 @@ def test_skill_scripts_helpers(tmp_path: Path) -> None:
     outputs = comp.batch_composite_project(proj_dir)
     assert len(outputs) == 1
     assert outputs[0].exists()
+
+
+def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
+    import threading
+    import requests
+    from core.server import create_server
+
+    # Seed a character pose asset in tmp_path library
+    lib = AssetLibrary(root_dir=tmp_path)
+    src_img = tmp_path / "yowane.png"
+    Image.new("RGBA", (32, 32), color=(10, 20, 30, 255)).save(src_img)
+    lib.register_asset(
+        src_path=src_img,
+        asset_id="yowane_teaching_pose",
+        category="character",
+        character_id="yowane_haku",
+        emotion="teaching",
+        tags=["teaching"],
+    )
+
+    server = create_server(host="127.0.0.1", port=0, root_dir=tmp_path)
+    port = server.server_address[1]
+    base_url = f"http://127.0.0.1:{port}"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        # 1. GET /api/v1/health
+        r_health = requests.get(f"{base_url}/api/v1/health", timeout=5)
+        assert r_health.status_code == 200
+        assert r_health.json() == {"status": "ok", "service": "contentflow", "version": "0.1.0"}
+
+        # 2. GET /api/v1/status
+        r_status = requests.get(f"{base_url}/api/v1/status", timeout=5)
+        assert r_status.status_code == 200
+        status_data = r_status.json()
+        assert status_data["status"] == "ok"
+        assert "pipelines" in status_data
+        assert "video_providers" in status_data
+
+        # 3. POST & GET /api/v1/library/characters
+        r_char_post = requests.post(
+            f"{base_url}/api/v1/library/characters",
+            json={
+                "char_id": "noshiro",
+                "name": "Noshiro",
+                "master_ref": "library/characters/noshiro/master_reference.jpg",
+                "description": "3D PVC figurine teacher",
+            },
+            timeout=5,
+        )
+        assert r_char_post.status_code == 201
+        assert r_char_post.json()["character"]["char_id"] == "noshiro"
+
+        r_chars = requests.get(f"{base_url}/api/v1/library/characters", timeout=5)
+        assert r_chars.status_code == 200
+        chars_payload = r_chars.json()
+        assert "noshiro" in chars_payload["characters"]
+        assert "yowane_haku" in chars_payload["characters"]
+
+        # 4. POST & GET /api/v1/projects
+        r_proj_post = requests.post(
+            f"{base_url}/api/v1/projects",
+            json={"project_name": "api_studio_demo", "mode": "3d"},
+            timeout=5,
+        )
+        assert r_proj_post.status_code == 201
+        created_proj = r_proj_post.json()
+        assert created_proj["project_id"] == "001_api_studio_demo"
+        assert created_proj["mode"] == "3d"
+
+        r_projs = requests.get(f"{base_url}/api/v1/projects", timeout=5)
+        assert r_projs.status_code == 200
+        projs_list = r_projs.json()["projects"]
+        assert len(projs_list) == 1
+        assert projs_list[0]["project_id"] == "001_api_studio_demo"
+        for count_key in ("raw_assets", "whiteboards", "backgrounds", "composited", "scripts"):
+            assert count_key in projs_list[0]
+
+        # 5. POST /api/v1/projects/{project_name}/reuse-asset
+        r_reuse = requests.post(
+            f"{base_url}/api/v1/projects/001_api_studio_demo/reuse-asset",
+            json={"char_id": "yowane_haku", "pose": "teaching"},
+            timeout=5,
+        )
+        assert r_reuse.status_code == 200
+        assert r_reuse.json()["status"] == "ok"
+
+        # 6. POST /api/v1/format-html
+        r_fmt = requests.post(
+            f"{base_url}/api/v1/format-html",
+            json={"text": "# Section 1\n\n- **Point** A", "title": "Board Title"},
+            timeout=5,
+        )
+        assert r_fmt.status_code == 200
+        html_str = r_fmt.json()["html"]
+        assert "Board Title" in html_str
+        assert "<strong" in html_str
+
+        # 7. GET / Studio WebUI
+        r_ui = requests.get(f"{base_url}/", timeout=5)
+        assert r_ui.status_code == 200
+        assert "ContentFlow Studio" in r_ui.text
+        assert "/api/v1/health" in r_ui.text
+        assert "AI API Docs" in r_ui.text
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+

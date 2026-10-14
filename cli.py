@@ -337,7 +337,7 @@ def cmd_run_all(args):
 def cmd_list_assets(args):
     """Lists all cataloged reusable assets in the central library."""
     from core.asset_library import AssetLibrary
-    lib = AssetLibrary()
+    lib = AssetLibrary(root_dir=CONTENTFLOW_ROOT)
     assets = lib.search_assets(
         character_id=args.character if args.character != "all" else None,
         emotion=args.emotion if args.emotion != "all" else None,
@@ -356,7 +356,7 @@ def cmd_list_assets(args):
 def cmd_reuse_asset(args):
     """Imports an asset from the central library into a project workspace."""
     from core.asset_library import AssetLibrary
-    lib = AssetLibrary()
+    lib = AssetLibrary(root_dir=CONTENTFLOW_ROOT)
     asset_id = getattr(args, "asset", None)
     char_id = getattr(args, "char_id", None)
     pose = getattr(args, "pose", None)
@@ -446,6 +446,16 @@ def cmd_figure_video(args):
     return 0
 
 
+cmd_init = cmd_init_project
+
+
+def cmd_serve(args):
+    """Starts the ContentFlow Canonical HTTP JSON API server and Studio WebUI."""
+    from core.server import run_server
+
+    return run_server(host=args.host, port=args.port)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="ContentFlow: Universal Multi-Modal Content & Video Engine"
@@ -517,10 +527,17 @@ def main():
     p_fvideo.add_argument("--prompt", default="3D anime figure girl dancing gracefully, studio lighting", help="Prompt description")
     p_fvideo.set_defaults(func=cmd_figure_video)
 
+    # serve
+    p_serve = subparsers.add_parser("serve", help="Start ContentFlow Canonical HTTP API & Studio WebUI")
+    p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    p_serve.add_argument("--port", type=int, default=8090, help="Bind port (default: 8090)")
+    p_serve.set_defaults(func=cmd_serve)
+
     args = parser.parse_args()
     return args.func(args)
 
 
 if __name__ == "__main__":
     sys.exit(main())
+
 

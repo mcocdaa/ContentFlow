@@ -183,3 +183,108 @@ class AssetLibrary:
         shutil.copy2(src_path, dest)
         print(f"[+] Master reference set for character {character_id}: {dest}")
         return dest
+
+    def list_characters(self) -> Dict[str, Dict[str, Any]]:
+        """Lists all characters and their poses from library/characters/index.json and registry."""
+        index_file = self.characters_dir / "index.json"
+        characters: Dict[str, Dict[str, Any]] = {}
+        if index_file.exists():
+            try:
+                raw = json.loads(index_file.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    chars_data = raw.get("characters", raw)
+                    if isinstance(chars_data, dict):
+                        for cid, cinfo in chars_data.items():
+                            if isinstance(cinfo, dict):
+                                characters[cid] = {
+                                    "char_id": cid,
+                                    "name": cinfo.get("name", cid.replace("_", " ").title()),
+                                    "master_ref": cinfo.get("master_ref", ""),
+                                    "description": cinfo.get("description", ""),
+                                    "poses": dict(cinfo.get("poses", {})),
+                                }
+            except Exception as e:
+                print(f"[!] Warning: failed to read character index.json: {e}")
+
+        # Merge characters from characters_dir subdirectories
+        if self.characters_dir.exists():
+            for sub in sorted(self.characters_dir.iterdir()):
+                if sub.is_dir():
+                    cid = sub.name
+                    entry = characters.setdefault(
+                        cid,
+                        {
+                            "char_id": cid,
+                            "name": cid.replace("_", " ").title(),
+                            "master_ref": "",
+                            "description": f"Character {cid}",
+                            "poses": {},
+                        },
+                    )
+                    master_file = sub / "master_reference.jpg"
+                    if master_file.exists() and not entry.get("master_ref"):
+                        entry["master_ref"] = master_file.relative_to(self.root_dir).as_posix()
+                    for pose_dir in sorted(sub.iterdir()):
+                        if pose_dir.is_dir():
+                            pose_files = sorted(
+                                p for p in pose_dir.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+                            )
+                            if pose_files and pose_dir.name not in entry["poses"]:
+                                entry["poses"][pose_dir.name] = pose_files[0].relative_to(self.root_dir).as_posix()
+
+        # Merge character assets from registry
+        for asset in self.assets.values():
+            if asset.category == "character" and asset.character_id:
+                cid = asset.character_id
+                entry = characters.setdefault(
+                    cid,
+                    {
+                        "char_id": cid,
+                        "name": cid.replace("_", " ").title(),
+                        "master_ref": "",
+                        "description": asset.prompt or f"Character {cid}",
+                        "poses": {},
+                    },
+                )
+                pose_key = asset.emotion or asset.id
+                if pose_key and pose_key not in entry["poses"]:
+                    entry["poses"][pose_key] = asset.file_path
+
+        return characters
+
+    def register_character(
+        self,
+        char_id: str,
+        name: str,
+        master_ref: str = "",
+        description: str = "",
+        poses: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Registers or updates a character in library/characters/index.json."""
+        index_file = self.characters_dir / "index.json"
+        characters = self.list_characters()
+        char_dir = self.characters_dir / char_id
+        char_dir.mkdir(parents=True, exist_ok=True)
+
+        existing = characters.get(char_id, {})
+        merged_poses = dict(existing.get("poses", {}))
+        if poses:
+            merged_poses.update(poses)
+
+        entry: Dict[str, Any] = {
+            "char_id": char_id,
+            "name": name or char_id.replace("_", " ").title(),
+            "master_ref": master_ref or existing.get("master_ref", ""),
+            "description": description or existing.get("description", ""),
+            "poses": merged_poses,
+        }
+        characters[char_id] = entry
+
+        index_payload = {
+            "version": "1.0",
+            "updated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
+            "characters": characters,
+        }
+        index_file.write_text(json.dumps(index_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return entry
+

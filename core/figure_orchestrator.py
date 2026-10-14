@@ -62,6 +62,10 @@ class FigureVideoOrchestrator:
             },
         }
 
+    def verify_pipeline_readiness(self) -> Dict[str, Dict[str, Any]]:
+        """Canonical alias for get_pipeline_readiness."""
+        return self.get_pipeline_readiness()
+
     def run_pipeline(
         self,
         mode: FigurePipelineMode | str,
@@ -188,3 +192,7 @@ class FigureVideoOrchestrator:
 
         else:
             raise ValueError(f"Unknown pipeline mode: {mode}")
+
+
+FigureOrchestrator = FigureVideoOrchestrator
+
