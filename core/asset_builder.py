@@ -5,11 +5,17 @@ into video clips using accelerated ffmpeg pipelines for maximum performance.
 
 from pathlib import Path
 import subprocess
-from typing import List, Tuple
+from typing import Any, List, Tuple
+
+Image: Any = None
+ImageDraw: Any = None
+ImageFont: Any = None
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image as _Image, ImageDraw as _ImageDraw, ImageFont as _ImageFont
+
+    Image, ImageDraw, ImageFont = _Image, _ImageDraw, _ImageFont
 except ImportError:
-    Image, ImageDraw, ImageFont = None, None, None
+    pass
 
 
 class AssetBuilder:
