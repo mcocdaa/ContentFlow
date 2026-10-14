@@ -39,5 +39,18 @@ vendor/MoneyPrinterTurbo/config.toml
 vendor/bin/
 vendor/blender/
 vendor/ebsynth/
+vendor/ComfyUI/
+
+# OS & tool caches
+Thumbs.db
+.DS_Store
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+uv.lock
+projects/agenteverywhereflow_rem/
 
 

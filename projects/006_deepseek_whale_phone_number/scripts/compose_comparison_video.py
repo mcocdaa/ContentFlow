@@ -37,7 +37,7 @@ def build_horizontal_trisplit():
     filter_complex = (
         "[0:v]scale=640:1080:force_original_aspect_ratio=decrease,pad=640:1080:(ow-iw)/2:(oh-ih)/2:color=black,"
         "drawbox=y=0:color=black@0.7:width=iw:height=76:t=fill,"
-        "drawtext=fontfile='/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc':text='路线一：3D骨骼+AI去穿模润色':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=22[v0];"
+        "drawtext=fontfile='/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc':text='路线一：3D骨骼+AI神经重绘(去穿模)':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=22[v0];"
         
         "[1:v]scale=640:1080:force_original_aspect_ratio=decrease,pad=640:1080:(ow-iw)/2:(oh-ih)/2:color=black,"
         "drawbox=y=0:color=black@0.7:width=iw:height=76:t=fill,"

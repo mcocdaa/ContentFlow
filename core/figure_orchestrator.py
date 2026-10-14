@@ -7,7 +7,6 @@ across all 3 architectural lines:
 """
 
 import os
-import shutil
 import logging
 from enum import Enum
 from pathlib import Path
@@ -88,7 +87,7 @@ class FigureVideoOrchestrator:
             # 1. 3D Headless Pipeline
             logger.info("Executing 3D Blender Headless Render...")
             raw_frames_dir = output_dir / "3d_raw_frames"
-            
+
             # Resolve model: explicit param -> project assets -> central library
             all_pmx = list(Path("library/models").rglob("*.pmx")) + list((project_dir / "assets").glob("*.pmx"))
             if model:
@@ -139,7 +138,7 @@ class FigureVideoOrchestrator:
             staged_frames_dir = output_dir / "interpolated_frames"
             # Collect keyframes from project assets (scenes, poses, or general images)
             assets_dir = project_dir / "assets"
-            matched_candidates = []
+            matched_candidates: List[Path] = []
             for pat in ("*scene*.jpg", "*scene*.png", "*pose*.png", "*pose*.jpg", "*keyframe*.png", "*keyframe*.jpg"):
                 matched_candidates.extend(assets_dir.glob(pat))
             # Deduplicate preserving order

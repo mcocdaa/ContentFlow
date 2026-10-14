@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parents[3]
 GENERATE_JS = BASE_DIR / ".agents" / "skills" / "byted-ark-seedream-skill" / "scripts" / "generate.js"
 ANCHOR_IMG = BASE_DIR / "projects" / "006_deepseek_whale_phone_number" / "assets" / "character_anchor.jpg"
 KEYFRAMES_DIR = BASE_DIR / "projects" / "006_deepseek_whale_phone_number" / "assets" / "keyframes"

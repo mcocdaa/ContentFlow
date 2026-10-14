@@ -3,13 +3,13 @@ Takes a set of discrete character pose keyframes and performs multi-stage dense 
 interpolation using RIFE (Real-Time Intermediate Flow Estimation) to produce fluid 60FPS motion.
 """
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 from typing import List, Optional
 
 from core.enhancer import MediaEnhancer
+
 
 class MotionInterpolator:
     """Orchestrates recursive keyframe interpolation and temporal smoothing."""
@@ -45,15 +45,6 @@ class MotionInterpolator:
 
             shutil.copy2(k_start, trans_in / "00000001.png")
             shutil.copy2(k_end, trans_in / "00000002.png")
-
-            # Calculate required recursive doubling (e.g. 2->4->8->16)
-            cmd = [
-                str(self.enhancer.rife_path),
-                "-0", str(k_start),
-                "-1", str(k_end),
-                "-o", str(trans_out / "mid.png"),
-                "-m", str(self.enhancer.rife_path.parent / "rife-v4.6")
-            ]
 
             # Use batch interpolation on the segment with specified transition frames
             self.enhancer.interpolate_frames_dir(

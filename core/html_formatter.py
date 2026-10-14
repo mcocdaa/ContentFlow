@@ -3,10 +3,11 @@ Converts Markdown to beautiful, reader-friendly inline-styled HTML that can be
 directly pasted or submitted via WeChat API without broken styles.
 """
 
-import re
 import html
+import re
+from typing import Dict, Optional
 
-THEMES = {
+THEMES: Dict[str, Dict[str, str]] = {
     "tech_blue": {
         "primary": "#2563eb",
         "secondary": "#3b82f6",
@@ -32,7 +33,11 @@ THEMES = {
 }
 
 
-def markdown_to_wechat_html(md_content: str, theme_name: str = "tech_blue") -> str:
+def markdown_to_wechat_html(
+    md_content: str,
+    theme_name: str = "tech_blue",
+    title: Optional[str] = None,
+) -> str:
     """Converts markdown text to WeChat inline-styled HTML."""
     theme = THEMES.get(theme_name, THEMES["tech_blue"])
     lines = md_content.splitlines()
@@ -49,15 +54,28 @@ def markdown_to_wechat_html(md_content: str, theme_name: str = "tech_blue") -> s
 
     html_out.append(f'<div class="wechat-article" style="{container_style}">')
 
-    in_list = False
+    if title:
+        escaped_title = html.escape(title.strip())
+        h1_style = (
+            "font-size: 22px; font-weight: 700; color: #ffffff; "
+            f"background: {theme['header_bg']}; padding: 18px 20px; "
+            "border-radius: 10px; margin: 24px 0 20px 0; text-align: center; "
+            "box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"
+        )
+        html_out.append(f'<h1 style="{h1_style}">{escaped_title}</h1>')
+
+    list_tag: Optional[str] = None
     in_code_block = False
-    code_buffer = []
+    code_buffer: list[str] = []
 
     for raw_line in lines:
         line = raw_line.strip()
 
         # Handle code block ```
         if line.startswith("```"):
+            if list_tag is not None:
+                html_out.append(f"</{list_tag}>")
+                list_tag = None
             if not in_code_block:
                 in_code_block = True
                 code_buffer = []
@@ -78,46 +96,56 @@ def markdown_to_wechat_html(md_content: str, theme_name: str = "tech_blue") -> s
             code_buffer.append(raw_line)
             continue
 
-        # Close list if not a list item
-        if in_list and not (line.startswith("- ") or line.startswith("* ") or re.match(r"^\d+\.\s", line)):
-            html_out.append('</ul>')
-            in_list = False
+        is_ul = line.startswith("- ") or line.startswith("* ")
+        ol_match = re.match(r"^\d+\.\s+(.*)", line)
+
+        # Close list if not matching current list type
+        if list_tag == "ul" and not is_ul:
+            html_out.append("</ul>")
+            list_tag = None
+        elif list_tag == "ol" and not ol_match:
+            html_out.append("</ol>")
+            list_tag = None
 
         # Empty line
         if not line:
             continue
 
+        # Horizontal rule
+        if line == "---":
+            continue
+
         # Header 1
         if line.startswith("# "):
-            title = html.escape(line[2:].strip())
+            h_title = html.escape(line[2:].strip())
             h1_style = (
-                f"font-size: 22px; font-weight: 700; color: #ffffff; "
+                "font-size: 22px; font-weight: 700; color: #ffffff; "
                 f"background: {theme['header_bg']}; padding: 18px 20px; "
                 "border-radius: 10px; margin: 24px 0 20px 0; text-align: center; "
                 "box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"
             )
-            html_out.append(f'<h1 style="{h1_style}">{title}</h1>')
+            html_out.append(f'<h1 style="{h1_style}">{h_title}</h1>')
             continue
 
         # Header 2
         if line.startswith("## "):
-            title = html.escape(line[3:].strip())
+            h_title = html.escape(line[3:].strip())
             h2_style = (
                 f"font-size: 18px; font-weight: 700; color: {theme['primary']}; "
                 f"border-left: 4px solid {theme['primary']}; padding-left: 12px; "
                 "margin: 28px 0 14px 0; display: flex; align-items: center;"
             )
-            html_out.append(f'<h2 style="{h2_style}">{title}</h2>')
+            html_out.append(f'<h2 style="{h2_style}">{h_title}</h2>')
             continue
 
         # Header 3
         if line.startswith("### "):
-            title = html.escape(line[4:].strip())
+            h_title = html.escape(line[4:].strip())
             h3_style = (
-                f"font-size: 16px; font-weight: 600; color: #334155; "
+                "font-size: 16px; font-weight: 600; color: #334155; "
                 "margin: 20px 0 10px 0;"
             )
-            html_out.append(f'<h3 style="{h3_style}">{title}</h3>')
+            html_out.append(f'<h3 style="{h3_style}">{h_title}</h3>')
             continue
 
         # Blockquote >
@@ -132,11 +160,21 @@ def markdown_to_wechat_html(md_content: str, theme_name: str = "tech_blue") -> s
             continue
 
         # Bullet list
-        if line.startswith("- ") or line.startswith("* "):
-            if not in_list:
+        if is_ul:
+            if list_tag != "ul":
                 html_out.append('<ul style="padding-left: 20px; margin: 14px 0;">')
-                in_list = True
+                list_tag = "ul"
             item_text = _format_inline(line[2:].strip(), theme)
+            li_style = "margin-bottom: 8px; line-height: 1.7; color: #374151;"
+            html_out.append(f'<li style="{li_style}">{item_text}</li>')
+            continue
+
+        # Numbered list
+        if ol_match:
+            if list_tag != "ol":
+                html_out.append('<ol style="padding-left: 20px; margin: 14px 0;">')
+                list_tag = "ol"
+            item_text = _format_inline(ol_match.group(1).strip(), theme)
             li_style = "margin-bottom: 8px; line-height: 1.7; color: #374151;"
             html_out.append(f'<li style="{li_style}">{item_text}</li>')
             continue
@@ -146,15 +184,16 @@ def markdown_to_wechat_html(md_content: str, theme_name: str = "tech_blue") -> s
         p_style = "margin: 14px 0; text-align: justify; color: #374151; font-size: 15px;"
         html_out.append(f'<p style="{p_style}">{p_text}</p>')
 
-    if in_list:
-        html_out.append('</ul>')
+    if list_tag is not None:
+        html_out.append(f"</{list_tag}>")
 
-    html_out.append('</div>')
+    html_out.append("</div>")
     return "\n".join(html_out)
 
 
-def _format_inline(text: str, theme: dict) -> str:
-    """Formats inline bold, code, and links with inline CSS."""
+def _format_inline(text: str, theme: Dict[str, str]) -> str:
+    """Formats inline bold, code, and links with inline CSS after escaping HTML entities."""
+    text = html.escape(text)
     # Bold **text**
     text = re.sub(
         r"\*\*(.*?)\*\*",
@@ -168,3 +207,4 @@ def _format_inline(text: str, theme: dict) -> str:
         text,
     )
     return text
+

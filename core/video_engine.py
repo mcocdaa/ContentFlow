@@ -6,16 +6,12 @@ and video packaging.
 from pathlib import Path
 import subprocess
 import json
-import os
 import shutil
 import logging
 from typing import List, Optional, Dict, Any
 from config.settings import (
     MONEYPRINTER_DIR,
     MONEYPRINTER_VENV_PYTHON,
-    MONEYPRINTER_CLI,
-    DEFAULT_VOICES,
-    DEFAULT_FONTS,
 )
 from .asset_builder import AssetBuilder
 

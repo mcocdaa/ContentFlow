@@ -6,9 +6,9 @@ videos powered by MoneyPrinterTurbo.
 """
 
 import argparse
-import sys
 import json
-import os
+import shutil
+import sys
 from pathlib import Path
 
 # Add project root to sys.path
@@ -19,12 +19,10 @@ if str(SCRIPT_DIR) not in sys.path:
 from config.settings import (
     CONTENTFLOW_ROOT,
     PROJECTS_DIR,
-    DEFAULT_VOICES,
-    DEFAULT_ASPECT_RATIOS,
 )
-from core.models import FactSheet
-from core.copywriting import CopywritingEngine
 from core.asset_builder import AssetBuilder
+from core.copywriting import CopywritingEngine
+from core.models import FactSheet
 from core.video_engine import VideoEngine
 
 
@@ -224,7 +222,6 @@ def cmd_generate_copy(args):
 def cmd_generate_video(args):
     """Generates rendered video using MoneyPrinterTurbo engine."""
     proj_dir = resolve_project_dir(args.project)
-    project_id = proj_dir.name
     copy_dir = proj_dir / "output" / "copy"
     video_out = proj_dir / "output" / "video"
     video_out.mkdir(parents=True, exist_ok=True)
@@ -297,7 +294,7 @@ def cmd_generate_video(args):
             )
             final_materials.append(slide_path)
 
-    print(f"[*] Invoking MoneyPrinterTurbo Engine...")
+    print("[*] Invoking MoneyPrinterTurbo Engine...")
     print(f"    - Aspect:     {aspect}")
     print(f"    - Voice:      {args.voice}")
     print(f"    - BGM:        {args.bgm}")
@@ -320,7 +317,7 @@ def cmd_generate_video(args):
         print(f"[-] Video rendering failed: {result.error}")
         return 1
 
-    print(f"[+] Video rendered successfully!")
+    print("[+] Video rendered successfully!")
     print(f"    - Task ID:    {result.task_id}")
     print(f"    - Video MP4:  {result.video_path}")
     print(f"    - Audio MP3:  {result.audio_path}")
@@ -359,12 +356,40 @@ def cmd_list_assets(args):
 def cmd_reuse_asset(args):
     """Imports an asset from the central library into a project workspace."""
     from core.asset_library import AssetLibrary
-    import shutil
     lib = AssetLibrary()
-    if args.asset not in lib.assets:
-        print(f"[-] Asset '{args.asset}' not found in library.")
+    asset_id = getattr(args, "asset", None)
+    char_id = getattr(args, "char_id", None)
+    pose = getattr(args, "pose", None)
+
+    item = None
+    if asset_id and asset_id in lib.assets:
+        item = lib.assets[asset_id]
+    elif char_id or pose:
+        for candidate in lib.assets.values():
+            if char_id:
+                c_match = (
+                    candidate.character_id == char_id
+                    or (candidate.character_id and char_id.lower() in candidate.character_id.lower())
+                    or char_id.lower() in candidate.id.lower()
+                )
+                if not c_match:
+                    continue
+            if pose:
+                p_match = (
+                    candidate.emotion == pose
+                    or pose.lower() in candidate.id.lower()
+                    or any(pose.lower() in t.lower() for t in candidate.tags)
+                )
+                if not p_match:
+                    continue
+            item = candidate
+            break
+
+    if item is None:
+        target_desc = asset_id or f"char_id={char_id}, pose={pose}"
+        print(f"[-] Asset '{target_desc}' not found in library.")
         return 1
-    item = lib.assets[args.asset]
+
     proj_dir = resolve_project_dir(args.project) / "assets"
     proj_dir.mkdir(parents=True, exist_ok=True)
     src_file = CONTENTFLOW_ROOT / item.file_path
@@ -374,11 +399,13 @@ def cmd_reuse_asset(args):
     if project_name not in item.used_in_projects:
         item.used_in_projects.append(project_name)
         lib.save_registry()
-    print(f"[+] Reused asset '{args.asset}' in project '{args.project}': {dest_file}")
+    print(f"[+] Reused asset '{item.id}' in project '{args.project}': {dest_file}")
+    return 0
+
+
 def cmd_figure_status(args):
     """Reports status of the 3 figure anime dance video pipelines."""
     from core.figure_orchestrator import FigureVideoOrchestrator
-    import json
     fo = FigureVideoOrchestrator()
     readiness = fo.get_pipeline_readiness()
     print("\n=== ContentFlow 3D Figure Anime Dance Pipelines Readiness ===")
@@ -400,7 +427,7 @@ def cmd_figure_video(args):
     if not proj_dir.exists():
         print(f"[-] Project directory '{args.project}' not found (searched in {PROJECTS_DIR}).")
         return 1
-    
+
     char_img = proj_dir / "assets" / args.character if getattr(args, "character", None) else None
     audio = proj_dir / "assets" / args.audio if getattr(args, "audio", None) else None
 
@@ -420,7 +447,6 @@ def cmd_figure_video(args):
 
 
 def main():
-
     parser = argparse.ArgumentParser(
         description="ContentFlow: Universal Multi-Modal Content & Video Engine"
     )
@@ -468,6 +494,13 @@ def main():
     p_assets.set_defaults(func=cmd_list_assets)
 
     # reuse-asset
+    p_reuse = subparsers.add_parser("reuse-asset", help="Reuse an asset from central library in a project")
+    p_reuse.add_argument("--project", required=True, help="Target project ID/name")
+    p_reuse.add_argument("--asset", default=None, help="Asset ID in central library")
+    p_reuse.add_argument("--char-id", default=None, help="Character ID in central library")
+    p_reuse.add_argument("--pose", default=None, help="Pose or emotion tag in central library")
+    p_reuse.set_defaults(func=cmd_reuse_asset)
+
     # figure-status
     p_fstatus = subparsers.add_parser("figure-status", help="Inspect readiness of 3 figure animation pipelines")
     p_fstatus.set_defaults(func=cmd_figure_status)
@@ -488,6 +521,6 @@ def main():
     return args.func(args)
 
 
-
 if __name__ == "__main__":
     sys.exit(main())
+

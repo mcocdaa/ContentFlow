@@ -275,18 +275,18 @@ def render_whiteboard_scene5():
     return img
 
 def compose_all_scenes():
-    bg = Image.open("projects/yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg").convert("RGBA")
-    board_chassis = Image.open("projects/yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png").convert("RGBA")
+    bg = Image.open("projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg").convert("RGBA")
+    board_chassis = Image.open("projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png").convert("RGBA")
     
     renders = [
-        ("yowane_v3_scene1.jpg", render_whiteboard_scene1(), "projects/yowane_cicd/assets/yowane_alluring_transparent.png"),
-        ("yowane_v3_scene2.jpg", render_whiteboard_scene2(), "projects/yowane_cicd/assets/yowane_pose2_transparent.png"),
-        ("yowane_v3_scene3.jpg", render_whiteboard_scene3(), "projects/yowane_cicd/assets/yowane_pose3_transparent.png"),
-        ("yowane_v3_scene4.jpg", render_whiteboard_scene4(), "projects/yowane_cicd/assets/yowane_pose4_transparent.png"),
-        ("yowane_v3_scene5.jpg", render_whiteboard_scene5(), "projects/yowane_cicd/assets/yowane_pose5_transparent.png"),
+        ("yowane_v3_scene1.jpg", render_whiteboard_scene1(), "projects/002_yowane_cicd/assets/yowane_alluring_transparent.png"),
+        ("yowane_v3_scene2.jpg", render_whiteboard_scene2(), "projects/002_yowane_cicd/assets/yowane_pose2_transparent.png"),
+        ("yowane_v3_scene3.jpg", render_whiteboard_scene3(), "projects/002_yowane_cicd/assets/yowane_pose3_transparent.png"),
+        ("yowane_v3_scene4.jpg", render_whiteboard_scene4(), "projects/002_yowane_cicd/assets/yowane_pose4_transparent.png"),
+        ("yowane_v3_scene5.jpg", render_whiteboard_scene5(), "projects/002_yowane_cicd/assets/yowane_pose5_transparent.png"),
     ]
     
-    out_dir = Path("projects/yowane_cicd/assets")
+    out_dir = Path("projects/002_yowane_cicd/assets")
     
     for filename, board_content, char_path in renders:
         print(f"[*] Composing {filename} with character cutout {char_path}...")

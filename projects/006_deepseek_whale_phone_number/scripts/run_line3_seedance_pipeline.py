@@ -5,13 +5,14 @@ Executes Seedance video generation (with account compatibility fallbacks)
 followed by Real-ESRGAN super-resolution edge sharpening and RIFE 60FPS temporal smoothing.
 """
 
-import os
-import sys
+import fractions
 import json
-import time
-import shutil
 import logging
+import os
+import shutil
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 # Setup ContentFlow root path
@@ -197,7 +198,7 @@ def step4_verify_output(video_path: Path):
 
     w = stream.get("width")
     h = stream.get("height")
-    fps_eval = eval(stream.get("r_frame_rate", "60/1"))
+    fps_eval = float(fractions.Fraction(stream.get("r_frame_rate", "60/1")))
     dur = float(fmt.get("duration", 0))
     size_mb = int(fmt.get("size", 0)) / (1024 * 1024)
     bitrate_kbps = int(fmt.get("bit_rate", 0)) / 1000

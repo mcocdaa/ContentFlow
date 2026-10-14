@@ -9,24 +9,39 @@ Solves all 4 major flaws:
 """
 
 import os
-import sys
-import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+from typing import Any
+
+
+def _resolve_contentflow_root(script_dir: Path) -> Path:
+    env_root = os.environ.get("CONTENTFLOW_ROOT")
+    if env_root and (Path(env_root) / "core" / "seed_tts.py").exists():
+        return Path(env_root).resolve()
+    for parent in [script_dir, *script_dir.parents]:
+        if (parent / "core" / "seed_tts.py").exists():
+            return parent
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        if (parent / "core" / "seed_tts.py").exists():
+            return parent
+    return script_dir.parents[3]
+
 
 # Paths
 SCRIPT_DIR = Path(__file__).resolve().parent
-CONTENTFLOW_ROOT = SCRIPT_DIR.parent.parent
+CONTENTFLOW_ROOT = _resolve_contentflow_root(SCRIPT_DIR)
 if str(CONTENTFLOW_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTENTFLOW_ROOT))
 
-from core.seed_tts import DoubaoSeedTTS, DEFAULT_TTS_BASE_URL, DEFAULT_RESOURCE_ID
+from core.seed_tts import DEFAULT_RESOURCE_ID, DEFAULT_TTS_BASE_URL, DoubaoSeedTTS
 
 API_KEY = os.environ.get("DOUBAO_TTS_API_KEY") or os.environ.get("ARK_API_KEY")
 VOICE = "zh_female_xiaohe_uranus_bigtts"
 
-SCENES_DEF = [
+SCENES_DEF: list[dict[str, Any]] = [
     {
         "index": 1,
         "title": "痛点引出",
@@ -130,7 +145,7 @@ def main():
 
     # 1. Synthesize Audio for each scene individually
     print("[*] Step 1: Synthesizing individual scene audio clips with Doubao Seed-TTS 2.0...")
-    scene_data = []
+    scene_data: list[dict[str, Any]] = []
     total_time = 0.0
 
     for sc in SCENES_DEF:
@@ -206,8 +221,6 @@ def main():
         idx = sc["index"]
         seg_output = work_dir / f"segment_{idx}.mp4"
         clip_dur = sc["clip_duration"]
-        fps = 30
-        frames = int(round(clip_dur * fps))
 
         # Add pad audio filter to insert tail silence and normalize loudness to -14 LUFS (web video standard)
         pad_ms = int(round((sc["clip_duration"] - sc["duration"]) * 1000))

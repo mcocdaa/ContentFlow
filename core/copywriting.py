@@ -3,8 +3,7 @@ Generates tailored, high-converting, and technically accurate copy packages
 for WeChat, Xiaohongshu, Zhihu, V2EX, Release Notes, and Video Scripts.
 """
 
-from typing import List, Dict, Any, Optional
-from pathlib import Path
+from typing import List
 from .models import FactSheet, ContentPackage, StoryboardScene
 from .html_formatter import markdown_to_wechat_html
 
@@ -277,7 +276,7 @@ class CopywritingEngine:
             scene_id=2,
             title="核心定位与架构理念",
             narration=f"{f.name} 主打{f.tagline}。从第一性原理出发，告别过度设计，带来极致的确定性与敏捷体验。",
-            visual_description=f"简洁的架构图或核心价值三要素，高亮展示核心理念",
+            visual_description="简洁的架构图或核心价值三要素，高亮展示核心理念",
             duration_estimate=5.0,
         )
         scenes.append(s2)

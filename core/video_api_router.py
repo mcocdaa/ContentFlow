@@ -6,13 +6,12 @@ Provides a unified abstraction across multiple cloud video generation providers:
 - Local Mock/Simulation Provider (for pipeline verification without burning API credits)
 """
 
-import os
-import time
-import json
 import logging
+import os
+import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +38,8 @@ class VideoApiRouter:
         """Check which video generation backends have valid credentials configured."""
         return {
             "volcengine_seedance": bool(self.ark_api_key),
-            "kling_ai": bool(self.kling_access_key and self.kling_secret_key),
-            "minimax": bool(self.minimax_api_key),
+            "kling_ai": False,
+            "minimax": False,
             "local_simulator": True,
         }
 
@@ -59,29 +58,26 @@ class VideoApiRouter:
         if not image_path.exists():
             raise FileNotFoundError(f"Source image not found: {image_path}")
 
+        resolved_output = Path(output_path) if output_path else None
         providers = self.get_available_providers()
 
-        # Select provider if auto
+        # Select provider if auto (do not auto-select unimplemented kling/minimax stubs)
         if provider == "auto":
-            if providers["volcengine_seedance"]:
+            if providers.get("volcengine_seedance"):
                 provider = "volcengine_seedance"
-            elif providers["kling_ai"]:
-                provider = "kling_ai"
-            elif providers["minimax"]:
-                provider = "minimax"
             else:
                 provider = "local_simulator"
 
         logger.info(f"Dispatching video generation to provider: {provider}")
 
         if provider == "volcengine_seedance":
-            return self._dispatch_seedance(image_path, prompt, duration, resolution, ratio, output_path)
+            return self._dispatch_seedance(image_path, prompt, duration, resolution, ratio, resolved_output)
         elif provider == "kling_ai":
-            return self._dispatch_kling(image_path, prompt, duration, output_path)
+            return self._dispatch_kling(image_path, prompt, duration, resolved_output)
         elif provider == "minimax":
-            return self._dispatch_minimax(image_path, prompt, duration, output_path)
+            return self._dispatch_minimax(image_path, prompt, duration, resolved_output)
         elif provider == "local_simulator":
-            return self._dispatch_simulator(image_path, duration, output_path, resolution, ratio)
+            return self._dispatch_simulator(image_path, duration, resolved_output, resolution, ratio)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -101,7 +97,7 @@ class VideoApiRouter:
 
         candidate_models = ["doubao-seedance-2.0", "doubao-seedance-1.5-pro", "doubao-seedance-2.5"]
         last_error = None
-        download_dir = str(Path(output_path).parent) if output_path else "seedance_raw"
+        download_dir = str(output_path.parent) if output_path else "seedance_raw"
 
         for model in candidate_models:
             logger.info(f"Attempting Seedance generation with model: {model}")

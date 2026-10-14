@@ -6,10 +6,10 @@ for characters, scenes, props, and video clips.
 from __future__ import annotations
 import json
 import shutil
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -25,7 +25,7 @@ class AssetItem:
     emotion: Optional[str] = None  # e.g., "teaching", "angry", "sigh", "thumbs_up", "calm"
     prompt: str = ""
     used_in_projects: List[str] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z")
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -70,7 +70,7 @@ class AssetLibrary:
     def save_registry(self) -> None:
         data = {
             "version": "1.0",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
             "total_assets": len(self.assets),
             "assets": [a.to_dict() for a in self.assets.values()],
         }

@@ -175,7 +175,7 @@ def main():
         base_url=args.base_url,
         resource_id=args.resource_id,
     )
-    print(f"[*] Calling Doubao Seed-TTS 2.0...")
+    print("[*] Calling Doubao Seed-TTS 2.0...")
     print(f"    - Base URL:    {args.base_url}")
     print(f"    - Resource ID: {args.resource_id}")
     print(f"    - Voice:       {args.voice}")

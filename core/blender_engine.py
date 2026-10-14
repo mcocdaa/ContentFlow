@@ -8,11 +8,10 @@ Controls headless Blender execution to:
 """
 
 import os
-import shutil
 import logging
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from core.enhancer import MediaEnhancer
 

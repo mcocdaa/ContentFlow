@@ -5,8 +5,7 @@ into video clips using accelerated ffmpeg pipelines for maximum performance.
 
 from pathlib import Path
 import subprocess
-import os
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
