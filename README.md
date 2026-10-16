@@ -2,6 +2,10 @@
 
 **ContentFlow** 是一个通用、解耦的自动化全媒体内容与短视频生产工作台。它不绑定任何单一产品或系统，任何软件、开源项目、技术主题或知识概念均可通过定义结构化素材（FactSheet），一键自动生产全渠道图文与高清配音字幕短视频。
 
+<p align="center">
+  <img src="docs/assets/demo_contentflow.gif" alt="ContentFlow Studio & 3-Layer Compositing Demo" width="820">
+</p>
+
 ---
 
 ## 核心架构与设计理念

@@ -250,6 +250,25 @@ class AssetLibrary:
                 if pose_key and pose_key not in entry["poses"]:
                     entry["poses"][pose_key] = asset.file_path
 
+        # Merge 3D character rigs from library/models subdirectories
+        models_dir = self.lib_dir / "models"
+        if models_dir.exists():
+            for sub in sorted(models_dir.iterdir()):
+                if sub.is_dir():
+                    pmx_files = sorted(sub.glob("*.pmx"))
+                    if pmx_files:
+                        cid = sub.name
+                        characters.setdefault(
+                            cid,
+                            {
+                                "char_id": cid,
+                                "name": cid.replace("_", " ").title(),
+                                "master_ref": pmx_files[0].relative_to(self.root_dir).as_posix(),
+                                "description": f"3D PMX Rig ({pmx_files[0].name})",
+                                "poses": {"3d_rig": pmx_files[0].relative_to(self.root_dir).as_posix()},
+                            },
+                        )
+
         return characters
 
     def register_character(
