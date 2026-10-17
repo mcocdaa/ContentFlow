@@ -101,15 +101,24 @@ class VideoEngine:
         cmd = [
             str(self.python_bin),
             str(self.cli_script),
-            "--video-subject", subject,
-            "--video-script", script,
-            "--video-source", "local",
-            "--video-materials", materials_arg,
-            "--video-aspect", aspect,
-            "--voice-name", voice_name,
-            "--bgm-type", bgm_type,
-            "--font-name", font_name,
-            "--stop-at", "video",
+            "--video-subject",
+            subject,
+            "--video-script",
+            script,
+            "--video-source",
+            "local",
+            "--video-materials",
+            materials_arg,
+            "--video-aspect",
+            aspect,
+            "--voice-name",
+            voice_name,
+            "--bgm-type",
+            bgm_type,
+            "--font-name",
+            font_name,
+            "--stop-at",
+            "video",
         ]
 
         logger.info(f"Running MoneyPrinterTurbo CLI: {' '.join(cmd[:6])} ...")
@@ -152,6 +161,7 @@ class VideoEngine:
         mpt_task_dir = self.mpt_dir / "storage" / "tasks" / task_id
 
         import re
+
         safe_subject = re.sub(r'[\\/*?:"<>|\s]+', "_", subject).strip("_")
 
         dest_video = output_dir / f"{safe_subject}_final.mp4"
@@ -184,10 +194,14 @@ class VideoEngine:
                 [
                     "ffmpeg",
                     "-y",
-                    "-ss", "00:00:01",
-                    "-i", str(dest_video),
-                    "-vframes", "1",
-                    "-q:v", "2",
+                    "-ss",
+                    "00:00:01",
+                    "-i",
+                    str(dest_video),
+                    "-vframes",
+                    "1",
+                    "-q:v",
+                    "2",
                     str(dest_cover),
                 ],
                 stdout=subprocess.DEVNULL,

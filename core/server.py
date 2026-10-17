@@ -166,7 +166,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     input:focus, select:focus, textarea:focus {
       border-color: var(--border-highlight);
     }
-    textarea { min-height: 112px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+    textarea { min-height: 176px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; line-height: 1.45; }
     button {
       background: var(--primary);
       color: #fff;
@@ -379,11 +379,11 @@ STUDIO_HTML = """<!DOCTYPE html>
       background: #ffffff;
       color: #1f2937;
       border-radius: 8px;
-      padding: 12px;
-      height: 215px;
+      padding: 10px 12px;
+      height: 356px;
       overflow-y: auto;
       border: 1px solid var(--border);
-      zoom: 0.78;
+      zoom: 0.62;
     }
     .header-right {
       display: flex;
@@ -902,23 +902,116 @@ STUDIO_HTML = """<!DOCTYPE html>
       activateLayerStep(ACTIVE_LAYER_STEP);
     }
 
+    const FMT_TITLE_PAIRS = [
+      ['3-Layer Holographic Video Pipeline', '三层全息舞台解耦视频生产管线'],
+      ['RAG Architecture & 3-Layer Holographic Stage', 'RAG 检索增强架构与三层全息舞台'],
+      ['Holographic Video Architecture', '全息视频生产架构']
+    ];
+
+    const FMT_LINE_PAIRS = [
+      [
+        '1. **Deterministic Z-Order Stage** separating `Z=0` background, `Z=1` glass board, and `Z=2` figurine cutout.',
+        '1. **确定性 Z 轴全息舞台**：解耦 `Z=0` 远景演播室、`Z=1` 全息玻璃白板与 `Z=2` 手办抠图。'
+      ],
+      [
+        '2. **Automated Quality Gates** across unit, API, and visual regression suites.',
+        '2. **全链路自动化质量门禁**：覆盖单元测试、标准 HTTP API 与多模态视觉校验。'
+      ],
+      [
+        '- Zero manual glue scripts on production servers',
+        '- 生产环境零手工胶水脚本依赖'
+      ],
+      [
+        '- Full artifact traceability from script to 1080P MP4',
+        '- 从结构化脚本到 1080P 成片全链路可追溯'
+      ]
+    ];
+
+    const FMT_LINE_MAP = {
+      en_to_zh: Object.fromEntries(FMT_LINE_PAIRS),
+      zh_to_en: Object.fromEntries(FMT_LINE_PAIRS.map(([en, zh]) => [zh, en])),
+      title_en_to_zh: Object.fromEntries(FMT_TITLE_PAIRS),
+      title_zh_to_en: Object.fromEntries(FMT_TITLE_PAIRS.map(([en, zh]) => [zh, en]))
+    };
+
+    function translateCharDisplay(label, targetLang) {
+      const trimmed = (label || '').trim();
+      for (const [cid, enName] of Object.entries(CHAR_LABELS.en)) {
+        const zhName = CHAR_LABELS.zh[cid];
+        if (trimmed === enName || trimmed === zhName || trimmed === cid) {
+          return targetLang === 'zh' ? zhName : enName;
+        }
+      }
+      return trimmed;
+    }
+
+    function translatePoseDisplay(poseLabel, targetLang) {
+      const trimmed = (poseLabel || '').trim();
+      if (targetLang === 'zh') {
+        return POSE_NAME_ZH[trimmed] || trimmed;
+      }
+      for (const [enPose, zhPose] of Object.entries(POSE_NAME_ZH)) {
+        if (trimmed === zhPose) return enPose;
+      }
+      return trimmed;
+    }
+
+    function translateFmtLine(line, targetLang) {
+      const trimmed = line.trim();
+      if (!trimmed) return line;
+      const directMap = targetLang === 'zh' ? FMT_LINE_MAP.en_to_zh : FMT_LINE_MAP.zh_to_en;
+      if (directMap[trimmed]) return directMap[trimmed];
+
+      if (targetLang === 'zh') {
+        const m = trimmed.match(/^-\\s*Reused\\s+\\*\\*(.+?)\\s*\\((.+?)\\)\\*\\*\\s+into\\s+`([^`]+)`(.*)$/i);
+        if (m) {
+          const zhChar = translateCharDisplay(m[1], 'zh');
+          const zhPose = translatePoseDisplay(m[2], 'zh');
+          return `- 已复用 **${zhChar}（${zhPose}）** 至 \\`${m[3]}\\`${m[4] || ''}`;
+        }
+      } else {
+        const m = trimmed.match(/^-\\s*已复用\\s+\\*\\*(.+?)[（(](.+?)[）)]\\*\\*\\s+至\\s+`([^`]+)`(.*)$/);
+        if (m) {
+          const enChar = translateCharDisplay(m[1], 'en');
+          const enPose = translatePoseDisplay(m[2], 'en');
+          return `- Reused **${enChar} (${enPose})** into \\`${m[3]}\\`${m[4] || ''}`;
+        }
+      }
+      return line;
+    }
+
+    function translateFmtFields(prevLang, nextLang) {
+      const titleEl = document.getElementById('fmt-title');
+      const textEl = document.getElementById('fmt-text');
+      if (!titleEl || !textEl) return;
+
+      const prevDefaults = DEFAULT_FMT[prevLang];
+      const nextDefaults = DEFAULT_FMT[nextLang];
+      const curTitle = titleEl.value.trim();
+      const titleMap = nextLang === 'zh' ? FMT_LINE_MAP.title_en_to_zh : FMT_LINE_MAP.title_zh_to_en;
+      if (curTitle === prevDefaults.title) {
+        titleEl.value = nextDefaults.title;
+      } else if (titleMap[curTitle]) {
+        titleEl.value = titleMap[curTitle];
+      }
+
+      if (textEl.value.trim() === prevDefaults.text.trim()) {
+        textEl.value = nextDefaults.text;
+      } else {
+        textEl.value = textEl.value
+          .split('\\n')
+          .map(line => translateFmtLine(line, nextLang))
+          .join('\\n');
+      }
+      textEl.scrollTop = 0;
+    }
+
     function toggleLang() {
       const prevLang = CURRENT_LANG;
       CURRENT_LANG = CURRENT_LANG === 'en' ? 'zh' : 'en';
       localStorage.setItem('contentflow_lang', CURRENT_LANG);
 
-      const titleEl = document.getElementById('fmt-title');
-      const textEl = document.getElementById('fmt-text');
-      if (titleEl && textEl) {
-        const prevDefaults = DEFAULT_FMT[prevLang];
-        const nextDefaults = DEFAULT_FMT[CURRENT_LANG];
-        if (titleEl.value.trim() === prevDefaults.title) {
-          titleEl.value = nextDefaults.title;
-        }
-        if (textEl.value.trim() === prevDefaults.text.trim()) {
-          textEl.value = nextDefaults.text;
-        }
-      }
+      translateFmtFields(prevLang, CURRENT_LANG);
       applyTranslations();
       formatHtml();
     }
@@ -1317,18 +1410,51 @@ def inspect_project_counts(proj_dir: Path) -> Dict[str, int]:
 
 def resolve_project_layers(proj_dir: Path) -> Dict[str, str]:
     """Resolves 3-layer holographic compositing preview URLs for a project."""
-    z0_bg = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg"
-    z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png"
+    z0_bg = "/media/library/scenes/cyber_classroom_clean_bg.jpg"
+    z1_board = "/media/library/props/holographic_whiteboard_chassis.png"
     z2_cutout = "/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png"
     final_comp = "/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg"
 
     pname = proj_dir.name.lower()
-    if "005" in pname or "noshiro" in pname:
+    if "002" in pname or "yowane" in pname:
+        z0_bg = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg"
+        z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png"
+        z2_cutout = "/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png"
+        final_comp = "/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg"
+    elif "005" in pname or "noshiro" in pname:
+        z0_bg = "/media/projects/006_deepseek_whale_phone_number/assets/cyber_stage_bg.jpg"
+        z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_9_z9_流程图标组.png"
         z2_cutout = "/media/projects/005_transformer_noshiro_tutorial/assets/noshiro_transparent.png"
         final_comp = "/media/projects/005_transformer_noshiro_tutorial/images/scene_2.jpg"
     elif "004" in pname or "2b" in pname:
+        z0_bg = "/media/library/props/conveyor_robot_arm_inspection.jpg"
+        z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_4_z4_顶部功能文字组.png"
         z2_cutout = "/media/library/characters/yorha_2b/teaching/2b_teaching_base_url.jpg"
-        final_comp = "/media/projects/004_ai_api_tutorial_2b/assets/scene2_base_url.jpg"
+        final_comp = "/media/projects/004_ai_api_tutorial_2b/assets/scene6_success_thumbsup.jpg"
+    elif "001" in pname or "universal" in pname:
+        z0_bg = "/media/library/scenes/cyber_classroom_clean_bg.jpg"
+        z1_board = "/media/projects/001_universal_dev_engine/output/video/slides/slide_02.png"
+        z2_cutout = "/media/projects/001_universal_dev_engine/output/video/slides/slide_01.png"
+        final_comp = "/media/projects/001_universal_dev_engine/output/video/DevPulse_cover.jpg"
+    elif "003" in pname or "managing" in pname:
+        z0_bg = "/media/library/props/conveyor_robot_arm_inspection.jpg"
+        z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_3_z3_亮屏笔记本电脑.png"
+        z2_cutout = "/media/library/characters/yorha_2b/triage/2b_error_triage.jpg"
+        final_comp = "/media/projects/003_ai_managing_ai/assets/cover.jpg"
+    elif "006" in pname or "deepseek" in pname:
+        z0_bg = "/media/projects/006_deepseek_whale_phone_number/assets/cyber_stage_bg.jpg"
+        z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_10_z10_红色进度条组.png"
+        z2_cutout = (
+            "/media/projects/006_deepseek_whale_phone_number/assets/keyframes/pose1_call_me_sway_right_transparent.png"
+        )
+        final_comp = (
+            "/media/projects/006_deepseek_whale_phone_number/assets/composite_keyframes/composite_keyframe_01.jpg"
+        )
+    elif "007" in pname or "rem" in pname or "agenteverywhere" in pname:
+        z0_bg = "/media/library/scenes/cyber_classroom_clean_bg.jpg"
+        z1_board = "/media/library/props/holographic_whiteboard_chassis.png"
+        z2_cutout = "/media/projects/agenteverywhereflow_rem/assets/rem_crop.png"
+        final_comp = "/media/projects/agenteverywhereflow_rem/assets/rem_base_cover.jpg"
     else:
         assets_dir = proj_dir / "assets"
         if assets_dir.is_dir():
@@ -1336,12 +1462,26 @@ def resolve_project_layers(proj_dir: Path) -> Dict[str, str]:
                 if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
                     fname = f.name.lower()
                     if "2b" in fname:
+                        z0_bg = "/media/library/props/conveyor_robot_arm_inspection.jpg"
+                        z1_board = (
+                            "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_4_z4_顶部功能文字组.png"
+                        )
                         z2_cutout = "/media/library/characters/yorha_2b/teaching/2b_teaching_base_url.jpg"
-                        final_comp = "/media/projects/004_ai_api_tutorial_2b/assets/scene2_base_url.jpg"
+                        final_comp = "/media/projects/004_ai_api_tutorial_2b/assets/scene6_success_thumbsup.jpg"
                         break
                     if "noshiro" in fname:
+                        z0_bg = "/media/projects/006_deepseek_whale_phone_number/assets/cyber_stage_bg.jpg"
+                        z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_9_z9_流程图标组.png"
                         z2_cutout = "/media/projects/005_transformer_noshiro_tutorial/assets/noshiro_transparent.png"
                         final_comp = "/media/projects/005_transformer_noshiro_tutorial/images/scene_2.jpg"
+                        break
+                    if "yowane" in fname:
+                        z0_bg = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg"
+                        z1_board = (
+                            "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png"
+                        )
+                        z2_cutout = "/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png"
+                        final_comp = "/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg"
                         break
 
     return {

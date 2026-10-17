@@ -38,14 +38,11 @@ class CopywritingEngine:
 
     def generate_wechat(self, f: FactSheet) -> str:
         """Generates a deep, narrative-driven WeChat Official Account article."""
-        pain_list = "\n".join(f"- **痛点 {i+1}**：{p}" for i, p in enumerate(f.pain_points))
-        sol_list = "\n".join(f"- **方案 {i+1}**：{s}" for i, s in enumerate(f.solutions))
+        pain_list = "\n".join(f"- **痛点 {i + 1}**：{p}" for i, p in enumerate(f.pain_points))
+        sol_list = "\n".join(f"- **方案 {i + 1}**：{s}" for i, s in enumerate(f.solutions))
         feat_blocks = []
         for i, feat in enumerate(f.key_features):
-            feat_blocks.append(
-                f"### {i+1}. {feat.name} —— {feat.headline}\n\n"
-                f"{feat.detail}\n"
-            )
+            feat_blocks.append(f"### {i + 1}. {feat.name} —— {feat.headline}\n\n{feat.detail}\n")
         features_str = "\n".join(feat_blocks)
         tech_str = "、".join(f.tech_stack) if f.tech_stack else "现代云原生架构"
         target_str = "、".join(f.target_audience) if f.target_audience else "技术开发者与产品团队"
@@ -146,11 +143,15 @@ class CopywritingEngine:
 
     def generate_zhihu(self, f: FactSheet) -> str:
         """Generates analytical, technically rigorous Zhihu article/answer."""
-        pains_str = "".join(f"{i+1}. **{p}**：在传统方案中往往难以兼顾开发成本与运维可靠性；\n" for i, p in enumerate(f.pain_points))
+        pains_str = "".join(
+            f"{i + 1}. **{p}**：在传统方案中往往难以兼顾开发成本与运维可靠性；\n" for i, p in enumerate(f.pain_points)
+        )
         sols_str = "".join(f"- **{s}**\n" for s in f.solutions)
         tech_str = ", ".join(f.tech_stack)
         aud_str = ", ".join(f.target_audience)
-        feat_rows = "".join(f"| **{item.name}** | {item.headline} | {item.detail[:40]}... |\n" for item in f.key_features)
+        feat_rows = "".join(
+            f"| **{item.name}** | {item.headline} | {item.detail[:40]}... |\n" for item in f.key_features
+        )
 
         doc = f"""# 如何评价 {f.name}？它解决了 {f.category} 领域的哪些核心痛点？
 
@@ -202,7 +203,9 @@ class CopywritingEngine:
         pains_str = "".join(f"- {p}\n" for p in f.pain_points)
         sols_str = "".join(f"- {s}\n" for s in f.solutions)
         tech_str = ", ".join(f.tech_stack)
-        feat_str = "".join(f"{i+1}. **{item.name}**：{item.headline}。{item.detail}\n" for i, item in enumerate(f.key_features[:3]))
+        feat_str = "".join(
+            f"{i + 1}. **{item.name}**：{item.headline}。{item.detail}\n" for i, item in enumerate(f.key_features[:3])
+        )
         github_link = f.links.get("github", "GitHub 项目主页已公开")
 
         doc = f"""[分享创造] 做了个面向 {f.category} 的轻量开源项目：{f.name}，求 V 友真实反馈

@@ -32,10 +32,7 @@ class FactSheet:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> FactSheet:
-        features = [
-            FeatureItem(**f) if isinstance(f, dict) else f
-            for f in data.get("key_features", [])
-        ]
+        features = [FeatureItem(**f) if isinstance(f, dict) else f for f in data.get("key_features", [])]
         return cls(
             project_id=data.get("project_id", ""),
             name=data.get("name", ""),

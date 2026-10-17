@@ -141,10 +141,7 @@ def markdown_to_wechat_html(
         # Header 3
         if line.startswith("### "):
             h_title = html.escape(line[4:].strip())
-            h3_style = (
-                "font-size: 16px; font-weight: 600; color: #334155; "
-                "margin: 20px 0 10px 0;"
-            )
+            h3_style = "font-size: 16px; font-weight: 600; color: #334155; margin: 20px 0 10px 0;"
             html_out.append(f'<h3 style="{h3_style}">{h_title}</h3>')
             continue
 
@@ -220,5 +217,3 @@ class HTMLFormatter:
     ) -> str:
         """Formats raw markdown/script text into styled presentation HTML."""
         return markdown_to_wechat_html(text, theme_name=theme_name, title=title)
-
-

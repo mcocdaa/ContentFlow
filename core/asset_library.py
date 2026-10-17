@@ -227,7 +227,9 @@ class AssetLibrary:
                     for pose_dir in sorted(sub.iterdir()):
                         if pose_dir.is_dir():
                             pose_files = sorted(
-                                p for p in pose_dir.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+                                p
+                                for p in pose_dir.iterdir()
+                                if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
                             )
                             if pose_files and pose_dir.name not in entry["poses"]:
                                 entry["poses"][pose_dir.name] = pose_files[0].relative_to(self.root_dir).as_posix()
@@ -306,4 +308,3 @@ class AssetLibrary:
         }
         index_file.write_text(json.dumps(index_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return entry
-

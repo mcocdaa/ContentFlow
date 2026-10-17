@@ -90,20 +90,19 @@ class MotionInterpolator:
             pattern = f"{first_stem[:6]}%04d.png" if len(first_stem) >= 6 else "%04d.png"
 
         cmd = [
-            "ffmpeg", "-y",
-            "-r", str(fps),
-            "-pattern_type", "sequence",
-            "-i", str(Path(frames_dir) / pattern),
+            "ffmpeg",
+            "-y",
+            "-r",
+            str(fps),
+            "-pattern_type",
+            "sequence",
+            "-i",
+            str(Path(frames_dir) / pattern),
         ]
 
         if audio_file and Path(audio_file).exists():
             cmd.extend(["-i", str(audio_file), "-c:a", "aac", "-shortest"])
-        cmd.extend([
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-crf", "18",
-            str(output_mp4)
-        ])
+        cmd.extend(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(output_mp4)])
 
         subprocess.run(cmd, check=True, capture_output=True)
         return output_mp4

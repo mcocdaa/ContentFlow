@@ -23,13 +23,19 @@ def get_font(size: int, bold: bool = False):
 def draw_status_icon(d, center_x: int, center_y: int, status: str = "pass", radius: int = 10) -> None:
     if status == "pass":
         d.ellipse([center_x - radius, center_y - radius, center_x + radius, center_y + radius], fill=(30, 180, 80, 255))
-        d.line([(center_x - 5, center_y), (center_x - 1, center_y + 4), (center_x + 6, center_y - 4)], fill=(255, 255, 255, 255), width=2)
+        d.line(
+            [(center_x - 5, center_y), (center_x - 1, center_y + 4), (center_x + 6, center_y - 4)],
+            fill=(255, 255, 255, 255),
+            width=2,
+        )
     elif status == "fail":
         d.ellipse([center_x - radius, center_y - radius, center_x + radius, center_y + radius], fill=(220, 40, 40, 255))
         d.line([(center_x - 4, center_y - 4), (center_x + 4, center_y + 4)], fill=(255, 255, 255, 255), width=2)
         d.line([(center_x + 4, center_y - 4), (center_x - 4, center_y + 4)], fill=(255, 255, 255, 255), width=2)
     elif status == "warn":
-        d.ellipse([center_x - radius, center_y - radius, center_x + radius, center_y + radius], fill=(230, 140, 20, 255))
+        d.ellipse(
+            [center_x - radius, center_y - radius, center_x + radius, center_y + radius], fill=(230, 140, 20, 255)
+        )
         d.line([(center_x, center_y - 5), (center_x, center_y + 1)], fill=(255, 255, 255, 255), width=2)
         d.ellipse([center_x - 1, center_y + 3, center_x + 1, center_y + 5], fill=(255, 255, 255, 255))
 
@@ -60,7 +66,9 @@ def render_scene(
     bbox = font_badge.getbbox(badge)
     bw = bbox[2] - bbox[0]
     bx1 = 340 + int(len(title) * 16.5) + 30
-    d.rounded_rectangle([bx1, 93, bx1 + bw + 28, 131], radius=6, fill=(20, 140, 70, 220), outline=(80, 255, 150, 255), width=2)
+    d.rounded_rectangle(
+        [bx1, 93, bx1 + bw + 28, 131], radius=6, fill=(20, 140, 70, 220), outline=(80, 255, 150, 255), width=2
+    )
     d.text((bx1 + 14, 98), badge, font=font_badge, fill=(255, 255, 255, 255))
 
     d.text((340, 140), subtitle, font=get_font(17), fill=(200, 230, 215, 220))
@@ -196,7 +204,9 @@ def batch_composite_project(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Composite cyber classroom scene with whiteboard and character standee")
+    parser = argparse.ArgumentParser(
+        description="Composite cyber classroom scene with whiteboard and character standee"
+    )
     parser.add_argument("--project-dir", default=None, help="Project directory for batch scene compositing")
     parser.add_argument("--bg", default=None, help="Path to clean classroom background (2560x1440)")
     parser.add_argument("--board", default=None, help="Path to whiteboard chassis (1389x781)")
@@ -234,4 +244,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

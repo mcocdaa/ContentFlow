@@ -20,8 +20,7 @@ import requests
 
 
 DEFAULT_TTS_BASE_URL = os.environ.get(
-    "DOUBAO_TTS_BASE_URL",
-    "https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional"
+    "DOUBAO_TTS_BASE_URL", "https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional"
 )
 DEFAULT_RESOURCE_ID = os.environ.get("DOUBAO_TTS_RESOURCE_ID", "seed-tts-2.0")
 
@@ -66,9 +65,7 @@ class DoubaoSeedTTS:
             Path to generated audio file.
         """
         if not self.api_key:
-            raise ValueError(
-                "Doubao TTS API Key not provided. Set DOUBAO_TTS_API_KEY environment variable."
-            )
+            raise ValueError("Doubao TTS API Key not provided. Set DOUBAO_TTS_API_KEY environment variable.")
 
         output_path = Path(output_file).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,9 +79,7 @@ class DoubaoSeedTTS:
         }
 
         payload: Dict[str, Any] = {
-            "user": {
-                "uid": f"contentflow_{uuid.uuid4().hex[:8]}"
-            },
+            "user": {"uid": f"contentflow_{uuid.uuid4().hex[:8]}"},
             "audio": {
                 "voice_type": voice_type,
                 "encoding": audio_format,
@@ -121,15 +116,11 @@ class DoubaoSeedTTS:
                     err_json = response.json()
                     err_code = err_json.get("header", {}).get("code") or err_json.get("code")
                     err_msg = err_json.get("header", {}).get("message") or err_json.get("message")
-                    raise RuntimeError(
-                        f"Seed-TTS API Error [HTTP {response.status_code}, code {err_code}]: {err_msg}"
-                    )
+                    raise RuntimeError(f"Seed-TTS API Error [HTTP {response.status_code}, code {err_code}]: {err_msg}")
                 except Exception as parse_err:
                     if isinstance(parse_err, RuntimeError):
                         raise
-                    raise RuntimeError(
-                        f"Seed-TTS API Error [HTTP {response.status_code}]: {response.text}"
-                    )
+                    raise RuntimeError(f"Seed-TTS API Error [HTTP {response.status_code}]: {response.text}")
 
             total_bytes = 0
             with open(output_path, "wb") as out_fp:
@@ -138,13 +129,13 @@ class DoubaoSeedTTS:
                         continue
                     try:
                         data = json.loads(line.decode("utf-8"))
-                        code = data.get("code") if data.get("code") is not None else data.get("header", {}).get("code", 0)
+                        code = (
+                            data.get("code") if data.get("code") is not None else data.get("header", {}).get("code", 0)
+                        )
                         # In OpenSpeech V3: 0 is streaming chunk, 20000000 is final OK completion
                         if code not in (0, 20000000):
                             msg = data.get("message") or data.get("header", {}).get("message", "Unknown error")
-                            raise RuntimeError(
-                                f"Seed-TTS synthesis failed: code={code}, msg={msg}"
-                            )
+                            raise RuntimeError(f"Seed-TTS synthesis failed: code={code}, msg={msg}")
                         audio_b64 = data.get("data") or data.get("audio")
                         if audio_b64:
                             raw_chunk = base64.b64decode(audio_b64)

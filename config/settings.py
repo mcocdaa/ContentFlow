@@ -7,12 +7,14 @@ import os
 
 CONTENTFLOW_ROOT = Path(__file__).resolve().parent.parent
 
+
 # Auto-load .env configuration if present
 def _load_env_file(dotenv_path: Path):
     if not dotenv_path.exists():
         return
     try:
         from dotenv import load_dotenv
+
         load_dotenv(dotenv_path)
     except ImportError:
         with open(dotenv_path, "r", encoding="utf-8") as f:
@@ -25,6 +27,7 @@ def _load_env_file(dotenv_path: Path):
                 v = v.strip().strip("'\"")
                 if k and k not in os.environ:
                     os.environ[k] = v
+
 
 _load_env_file(CONTENTFLOW_ROOT / ".env")
 
@@ -56,6 +59,6 @@ DEFAULT_FONTS = [
 
 DEFAULT_ASPECT_RATIOS = {
     "landscape": "16:9",  # Bilibili, YouTube, Web, Presentation
-    "portrait": "9:16",    # Douyin, TikTok, Xiaohongshu video, WeChat Channels
-    "square": "1:1",       # Instagram, Feed
+    "portrait": "9:16",  # Douyin, TikTok, Xiaohongshu video, WeChat Channels
+    "square": "1:1",  # Instagram, Feed
 }

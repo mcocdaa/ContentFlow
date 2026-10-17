@@ -342,6 +342,8 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
         assert 'data-i18n="fmt_preview_placeholder"' in r_ui.text
         assert "document.title = t('page_title')" in r_ui.text
         assert "sanitizeAsciiFilename" in r_ui.text
+        assert "FMT_LINE_MAP" in r_ui.text
+        assert "translateFmtFields" in r_ui.text
 
         # 8. GET /media/ character asset
         r_media = requests.get(
@@ -355,3 +357,26 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
         server.server_close()
         thread.join(timeout=5)
 
+
+def test_resolve_project_layers_per_project(tmp_path: Path) -> None:
+    from core.server import resolve_project_layers
+
+    layers_002 = resolve_project_layers(tmp_path / "002_yowane_cicd")
+    assert "002_yowane_cicd" in layers_002["z1_whiteboard"]
+    assert "yowane" in layers_002["z2_cutout"]
+
+    layers_005 = resolve_project_layers(tmp_path / "005_transformer_noshiro_tutorial")
+    assert layers_005["z0_background"] != layers_002["z0_background"]
+    assert layers_005["z1_whiteboard"] != layers_002["z1_whiteboard"]
+    assert "noshiro" in layers_005["z2_cutout"]
+    assert "005_transformer_noshiro_tutorial" in layers_005["final_composited"]
+
+    layers_004 = resolve_project_layers(tmp_path / "004_ai_api_tutorial_2b")
+    assert layers_004["z0_background"] != layers_002["z0_background"]
+    assert layers_004["z1_whiteboard"] != layers_002["z1_whiteboard"]
+    assert "2b" in layers_004["z2_cutout"]
+    assert "004_ai_api_tutorial_2b" in layers_004["final_composited"]
+
+    layers_006 = resolve_project_layers(tmp_path / "006_deepseek_whale_phone_number")
+    assert layers_006["z1_whiteboard"] != layers_002["z1_whiteboard"]
+    assert "006_deepseek_whale_phone_number" in layers_006["final_composited"]

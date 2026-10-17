@@ -97,46 +97,46 @@ def cmd_init_project(args):
         "target_audience": [
             "Software Engineers and Architects",
             "Indie Hackers and Technical Founders",
-            "DevOps and Infrastructure Teams"
+            "DevOps and Infrastructure Teams",
         ],
         "pain_points": [
             "Excessive glue code and fragile manual scripts that break silently",
             "Heavyweight enterprise suites with steep learning curves and painful bloat",
-            "Lack of end-to-end visibility, audit trails, and deterministic execution"
+            "Lack of end-to-end visibility, audit trails, and deterministic execution",
         ],
         "solutions": [
             "Lightweight single-binary or container deployment with zero external lock-in",
             "Fully deterministic execution pipeline with sub-millisecond coordination",
-            "Native extensible protocol and open interoperability"
+            "Native extensible protocol and open interoperability",
         ],
         "key_features": [
             {
                 "name": "Zero-Overhead Core",
                 "headline": "Instant cold starts and minimal resource footprint",
-                "detail": "Engineered with modern best practices, consuming under 50MB RAM while handling concurrent pipelines effortlessly."
+                "detail": "Engineered with modern best practices, consuming under 50MB RAM while handling concurrent pipelines effortlessly.",
             },
             {
                 "name": "Deterministic Engine",
                 "headline": "Rock-solid reliability with full state snapshotting",
-                "detail": "Eliminates random flakiness and provides time-travel inspection of every execution step."
+                "detail": "Eliminates random flakiness and provides time-travel inspection of every execution step.",
             },
             {
                 "name": "Universal Interop",
                 "headline": "Drop-in compatibility with standard tooling and APIs",
-                "detail": "Seamlessly integrates into CI/CD, terminals, and webhooks without custom adapters."
-            }
+                "detail": "Seamlessly integrates into CI/CD, terminals, and webhooks without custom adapters.",
+            },
         ],
         "tech_stack": ["Python 3.11+", "FastAPI / Standard Library", "Modern Native Web Components"],
         "highlights": [
             "Zero cloud lock-in: 100% self-hosted & local-first",
             "Production-ready out of the box",
-            "Comprehensive test coverage and active open source community"
+            "Comprehensive test coverage and active open source community",
         ],
         "call_to_action": f"Star {args.name} on GitHub and deploy your first workflow in under 2 minutes!",
         "links": {
             "github": f"https://github.com/example/{project_id}",
-            "docs": f"https://example.com/docs/{project_id}"
-        }
+            "docs": f"https://example.com/docs/{project_id}",
+        },
     }
 
     with open(brief_file, "w", encoding="utf-8") as f:
@@ -264,11 +264,7 @@ def cmd_generate_video(args):
 
     assets_dir = proj_dir / "assets"
     existing_materials = sorted(
-        [
-            p
-            for p in assets_dir.glob("*")
-            if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".mp4"}
-        ]
+        [p for p in assets_dir.glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".mp4"}]
     )
 
     final_materials = []
@@ -337,6 +333,7 @@ def cmd_run_all(args):
 def cmd_list_assets(args):
     """Lists all cataloged reusable assets in the central library."""
     from core.asset_library import AssetLibrary
+
     lib = AssetLibrary(root_dir=CONTENTFLOW_ROOT)
     assets = lib.search_assets(
         character_id=args.character if args.character != "all" else None,
@@ -356,6 +353,7 @@ def cmd_list_assets(args):
 def cmd_reuse_asset(args):
     """Imports an asset from the central library into a project workspace."""
     from core.asset_library import AssetLibrary
+
     lib = AssetLibrary(root_dir=CONTENTFLOW_ROOT)
     asset_id = getattr(args, "asset", None)
     char_id = getattr(args, "char_id", None)
@@ -417,6 +415,7 @@ def cmd_reuse_asset(args):
 def cmd_figure_status(args):
     """Reports status of the 3 figure anime dance video pipelines."""
     from core.figure_orchestrator import FigureVideoOrchestrator
+
     fo = FigureVideoOrchestrator()
     readiness = fo.get_pipeline_readiness()
     print("\n=== ContentFlow 3D Figure Anime Dance Pipelines Readiness ===")
@@ -433,6 +432,7 @@ def cmd_figure_status(args):
 def cmd_figure_video(args):
     """Executes one of the 3 figure anime dance video pipelines."""
     from core.figure_orchestrator import FigureVideoOrchestrator
+
     fo = FigureVideoOrchestrator()
     proj_dir = resolve_project_dir(args.project)
     if not proj_dir.exists():
@@ -489,15 +489,11 @@ def cmd_serve(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="ContentFlow: Universal Multi-Modal Content & Video Engine"
-    )
+    parser = argparse.ArgumentParser(description="ContentFlow: Universal Multi-Modal Content & Video Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # init-project / init
-    p_init = subparsers.add_parser(
-        "init-project", aliases=["init"], help="Initialize a new project workspace"
-    )
+    p_init = subparsers.add_parser("init-project", aliases=["init"], help="Initialize a new project workspace")
     p_init.add_argument("name", help="Name of the product/topic (e.g. 'DevPulse')")
     p_init.add_argument("--mode", default="hybrid", help="Pipeline mode (default: hybrid)")
     p_init.add_argument("--force", action="store_true", help="Overwrite existing brief")
@@ -516,7 +512,9 @@ def main():
     p_video.add_argument("--voice", default="zh-CN-YunxiNeural", help="TTS Voice Name")
     p_video.add_argument("--bgm", default="random", choices=["random", "none", "custom"], help="Background music mode")
     p_video.add_argument("--font", default="STHeitiMedium.ttc", help="Subtitle font filename")
-    p_video.add_argument("--slow-zoom", action="store_true", help="Use MoviePy software zoom instead of fast ffmpeg conversion")
+    p_video.add_argument(
+        "--slow-zoom", action="store_true", help="Use MoviePy software zoom instead of fast ffmpeg conversion"
+    )
     p_video.add_argument("--theme", default="tech_blue", help="Fallback theme")
     p_video.set_defaults(func=cmd_generate_video)
 
@@ -527,7 +525,9 @@ def main():
     p_all.add_argument("--voice", default="zh-CN-YunxiNeural", help="TTS Voice Name")
     p_all.add_argument("--bgm", default="random", choices=["random", "none", "custom"], help="Background music mode")
     p_all.add_argument("--font", default="STHeitiMedium.ttc", help="Subtitle font filename")
-    p_all.add_argument("--slow-zoom", action="store_true", help="Use MoviePy software zoom instead of fast ffmpeg conversion")
+    p_all.add_argument(
+        "--slow-zoom", action="store_true", help="Use MoviePy software zoom instead of fast ffmpeg conversion"
+    )
     p_all.add_argument("--theme", default="tech_blue", help="HTML theme")
     p_all.set_defaults(func=cmd_run_all)
 
@@ -560,14 +560,20 @@ def main():
 
     # figure-video
     p_fvideo = subparsers.add_parser("figure-video", help="Generate 3D figure dance video (3d, keyframe, or api)")
-    p_fvideo.add_argument("--pipeline", required=True, choices=["3d", "keyframe", "api"], help="Pipeline mode to execute")
+    p_fvideo.add_argument(
+        "--pipeline", required=True, choices=["3d", "keyframe", "api"], help="Pipeline mode to execute"
+    )
     p_fvideo.add_argument("--project", required=True, help="Project name (e.g. transformer_noshiro_tutorial)")
-    p_fvideo.add_argument("--character", default="noshiro_reference.jpg", help="Character image filename in project assets")
+    p_fvideo.add_argument(
+        "--character", default="noshiro_reference.jpg", help="Character image filename in project assets"
+    )
     p_fvideo.add_argument("--model", default=None, help="PMX model name, keyword (e.g. 'miku', 'luka'), or path")
     p_fvideo.add_argument("--motion", default=None, help="VMD dance motion name or path")
     p_fvideo.add_argument("--frames", type=int, default=60, help="Number of 3D frames to render (default: 60)")
     p_fvideo.add_argument("--audio", default=None, help="Audio/BGM filename in project assets")
-    p_fvideo.add_argument("--prompt", default="3D anime figure girl dancing gracefully, studio lighting", help="Prompt description")
+    p_fvideo.add_argument(
+        "--prompt", default="3D anime figure girl dancing gracefully, studio lighting", help="Prompt description"
+    )
     p_fvideo.set_defaults(func=cmd_figure_video)
 
     # serve
@@ -582,5 +588,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-

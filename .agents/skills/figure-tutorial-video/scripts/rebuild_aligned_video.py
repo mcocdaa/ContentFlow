@@ -50,7 +50,7 @@ SCENES_DEF: list[dict[str, Any]] = [
         "subs": [
             ("为什么你的 AI 客户端总是连接失败报 401 或者 404？", 0.50),
             ("别慌，不是大模型变笨了，而是你的三大通信参数配错啦！", 0.50),
-        ]
+        ],
     },
     {
         "index": 2,
@@ -60,7 +60,7 @@ SCENES_DEF: list[dict[str, Any]] = [
         "subs": [
             ("第一把钥匙是 Base URL，也就是通信基地址，它决定请求飞向哪台服务器。", 0.52),
             ("大部分兼容客户端都必须加上斜杠 v1 路径哦！", 0.48),
-        ]
+        ],
     },
     {
         "index": 3,
@@ -70,7 +70,7 @@ SCENES_DEF: list[dict[str, Any]] = [
         "subs": [
             ("第二把钥匙是 API Key，也就是安全护照，它以 Bearer Token 格式鉴权。", 0.50),
             ("千万别写死在代码里提交开源，小心额度被盗刷！", 0.50),
-        ]
+        ],
     },
     {
         "index": 4,
@@ -80,7 +80,7 @@ SCENES_DEF: list[dict[str, Any]] = [
         "subs": [
             ("第三把钥匙是 Model Name，也就是模型代号，比如 deepseek-reasoner 或 gpt-4o。", 0.55),
             ("必须严格匹配官方代号，错一个字母都会报错！", 0.45),
-        ]
+        ],
     },
     {
         "index": 5,
@@ -90,7 +90,7 @@ SCENES_DEF: list[dict[str, Any]] = [
         "subs": [
             ("排查手册拿好：401 查 Key 和余额；404 查基地址路径和模型名；", 0.50),
             ("429 是并发或频率超限，按图索骥三秒搞定排障！", 0.50),
-        ]
+        ],
     },
     {
         "index": 6,
@@ -100,7 +100,7 @@ SCENES_DEF: list[dict[str, Any]] = [
         "subs": [
             ("参数全部配齐，点击测试看到 200 OK 绿灯全亮！恭喜你彻底打通大模型通信！", 0.55),
             ("觉得有用记得点赞收藏，下期带你解锁进阶玩法！", 0.45),
-        ]
+        ],
     },
 ]
 
@@ -116,10 +116,14 @@ def format_srt_time(seconds: float) -> str:
 
 def get_audio_duration(audio_file: Path) -> float:
     cmd = [
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(audio_file)
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(audio_file),
     ]
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return float(res.stdout.strip())
@@ -165,18 +169,20 @@ def main():
         clip_duration = duration + padding
         print(f"      Audio length: {duration:.2f}s (+ {padding}s buffer = {clip_duration:.2f}s)")
 
-        scene_data.append({
-            "index": idx,
-            "title": sc["title"],
-            "image": sc["image"],
-            "text": sc["text"],
-            "subs": sc["subs"],
-            "audio_path": audio_path,
-            "duration": duration,
-            "clip_duration": clip_duration,
-            "start_time": total_time,
-            "end_time": total_time + clip_duration,
-        })
+        scene_data.append(
+            {
+                "index": idx,
+                "title": sc["title"],
+                "image": sc["image"],
+                "text": sc["text"],
+                "subs": sc["subs"],
+                "audio_path": audio_path,
+                "duration": duration,
+                "clip_duration": clip_duration,
+                "start_time": total_time,
+                "end_time": total_time + clip_duration,
+            }
+        )
         total_time += clip_duration
 
     print(f"[+] All 6 scenes synthesized. Total timeline duration: {total_time:.2f}s")
@@ -199,11 +205,7 @@ def main():
             t_end = cur_offset + sub_len
             cur_offset += sub_len
 
-            srt_entries.append(
-                f"{sub_counter}\n"
-                f"{format_srt_time(t_start)} --> {format_srt_time(t_end)}\n"
-                f"{sub_text}\n"
-            )
+            srt_entries.append(f"{sub_counter}\n{format_srt_time(t_start)} --> {format_srt_time(t_end)}\n{sub_text}\n")
             sub_counter += 1
 
     with open(srt_file, "w", encoding="utf-8") as f:
@@ -224,27 +226,41 @@ def main():
 
         # Add pad audio filter to insert tail silence and normalize loudness to -14 LUFS (web video standard)
         pad_ms = int(round((sc["clip_duration"] - sc["duration"]) * 1000))
-        audio_filter = f"apad=pad_dur={pad_ms/1000.0:.3f},loudnorm=I=-14:LRA=7:TP=-1.5"
+        audio_filter = f"apad=pad_dur={pad_ms / 1000.0:.3f},loudnorm=I=-14:LRA=7:TP=-1.5"
 
         # Rock-solid, crystal-clear 1080P static presentation (ZERO JITTER!)
         vf_static = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,format=yuv420p"
 
         cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1",
-            "-i", str(sc["image"]),
-            "-i", str(sc["audio_path"]),
-            "-filter_complex", f"[0:v]{vf_static}[v];[1:a]{audio_filter}[a]",
-            "-map", "[v]",
-            "-map", "[a]",
-            "-t", f"{clip_dur:.3f}",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "18",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            str(seg_output)
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(sc["image"]),
+            "-i",
+            str(sc["audio_path"]),
+            "-filter_complex",
+            f"[0:v]{vf_static}[v];[1:a]{audio_filter}[a]",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-t",
+            f"{clip_dur:.3f}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            str(seg_output),
         ]
         print(f"    - Rendering Segment {idx} ({sc['title']}, {clip_dur:.2f}s)...")
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -262,12 +278,17 @@ def main():
 
     raw_concat_mp4 = work_dir / "raw_concat.mp4"
     cmd_concat = [
-        "ffmpeg", "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", str(concat_list_file),
-        "-c", "copy",
-        str(raw_concat_mp4)
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_list_file),
+        "-c",
+        "copy",
+        str(raw_concat_mp4),
     ]
     res = subprocess.run(cmd_concat, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if res.returncode != 0:
@@ -294,14 +315,21 @@ def main():
     sub_filter = f"subtitles={srt_file.resolve()}:force_style='{sub_style}'"
 
     cmd_sub = [
-        "ffmpeg", "-y",
-        "-i", str(raw_concat_mp4),
-        "-vf", sub_filter,
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
-        "-c:a", "copy",
-        str(final_mp4)
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(raw_concat_mp4),
+        "-vf",
+        sub_filter,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-c:a",
+        "copy",
+        str(final_mp4),
     ]
     res = subprocess.run(cmd_sub, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if res.returncode != 0:
@@ -312,14 +340,7 @@ def main():
 
     # 6. Extract full clean audio MP3
     full_audio = deliv_dir / "2B小姐姐教你大模型API核心三要素_doubao_2b.mp3"
-    cmd_audio = [
-        "ffmpeg", "-y",
-        "-i", str(final_mp4),
-        "-vn",
-        "-c:a", "libmp3lame",
-        "-b:a", "192k",
-        str(full_audio)
-    ]
+    cmd_audio = ["ffmpeg", "-y", "-i", str(final_mp4), "-vn", "-c:a", "libmp3lame", "-b:a", "192k", str(full_audio)]
     subprocess.run(cmd_audio, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     shutil.copy(full_audio, out_dir / "2B小姐姐教你大模型API核心三要素_doubao_2b.mp3")
 

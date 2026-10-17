@@ -243,11 +243,7 @@ print("Headless rendering complete!")
         script_file = output_dir / "_run_render.py"
         script_file.write_text(script_content, encoding="utf-8")
 
-        cmd = [
-            str(self.blender_path),
-            "-b",
-            "--python", str(script_file)
-        ]
+        cmd = [str(self.blender_path), "-b", "--python", str(script_file)]
 
         logger.info(f"Running Blender command: {' '.join(cmd)}")
         res = subprocess.run(cmd, capture_output=True, text=True)

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class VideoGenerationTask:
     """Represents an ongoing or completed video generation task."""
+
     def __init__(self, provider: str, task_id: str, status: str = "pending", video_url: Optional[str] = None):
         self.provider = provider
         self.task_id = task_id
@@ -91,7 +92,14 @@ class VideoApiRouter:
         output_path: Optional[Path],
     ) -> Path:
         """Call VolcEngine Seedance skill script with model fallback and simulator recovery."""
-        skill_wrapper = Path(__file__).resolve().parent.parent / ".agents" / "skills" / "byted-ark-seedance-skill" / "scripts" / "seedance.js"
+        skill_wrapper = (
+            Path(__file__).resolve().parent.parent
+            / ".agents"
+            / "skills"
+            / "byted-ark-seedance-skill"
+            / "scripts"
+            / "seedance.js"
+        )
         if not skill_wrapper.exists():
             raise RuntimeError("byted-ark-seedance-skill not installed.")
 
@@ -102,15 +110,24 @@ class VideoApiRouter:
         for model in candidate_models:
             logger.info(f"Attempting Seedance generation with model: {model}")
             cmd = [
-                "node", str(skill_wrapper), "run",
-                "--model", model,
-                "--prompt", prompt,
-                "--image-file", str(image_path),
-                "--duration", str(duration),
-                "--resolution", resolution,
-                "--ratio", ratio,
-                "--download-dir", download_dir,
-                "--wait"
+                "node",
+                str(skill_wrapper),
+                "run",
+                "--model",
+                model,
+                "--prompt",
+                prompt,
+                "--image-file",
+                str(image_path),
+                "--duration",
+                str(duration),
+                "--resolution",
+                resolution,
+                "--ratio",
+                ratio,
+                "--download-dir",
+                download_dir,
+                "--wait",
             ]
 
             env = os.environ.copy()
@@ -153,7 +170,7 @@ class VideoApiRouter:
         duration: int,
         output_path: Optional[Path],
         resolution: str = "720p",
-        ratio: str = "16:9"
+        ratio: str = "16:9",
     ) -> Path:
         """Generates a smooth simulated camera push and subtle rhythm sway from input image.
         Allows validating downstream RIFE/Audio/Assembly pipelines without an active API key.
@@ -177,20 +194,26 @@ class VideoApiRouter:
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1",
-            "-i", str(image_path),
-            "-vf", vf,
-            "-t", str(duration),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-pix_fmt", "yuv420p",
-            str(output_path)
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(image_path),
+            "-vf",
+            vf,
+            "-t",
+            str(duration),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-pix_fmt",
+            "yuv420p",
+            str(output_path),
         ]
         subprocess.run(cmd, check=True, capture_output=True)
         return output_path
 
 
 VideoAPIRouter = VideoApiRouter
-
-

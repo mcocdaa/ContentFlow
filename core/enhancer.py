@@ -33,11 +33,7 @@ class MediaEnhancer:
         return self.realesrgan_path.exists() and os.access(self.realesrgan_path, os.X_OK)
 
     def upscale_image(
-        self,
-        input_path: str | Path,
-        output_path: str | Path,
-        scale: int = 2,
-        model_name: str = "realesr-animevideov3"
+        self, input_path: str | Path, output_path: str | Path, scale: int = 2, model_name: str = "realesr-animevideov3"
     ) -> Path:
         """Upscale a single image (e.g. figure character anchor or render frame)."""
         input_path = Path(input_path).resolve()
@@ -50,11 +46,16 @@ class MediaEnhancer:
         model_dir = (self.realesrgan_path.parent / "models").resolve()
         cmd = [
             str(self.realesrgan_path),
-            "-i", str(input_path),
-            "-o", str(output_path),
-            "-s", str(scale),
-            "-m", str(model_dir),
-            "-n", model_name,
+            "-i",
+            str(input_path),
+            "-o",
+            str(output_path),
+            "-s",
+            str(scale),
+            "-m",
+            str(model_dir),
+            "-n",
+            model_name,
         ]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
@@ -79,10 +80,14 @@ class MediaEnhancer:
         model_dir = (self.rife_path.parent / model).resolve()
         cmd = [
             str(self.rife_path),
-            "-i", str(input_dir),
-            "-o", str(output_dir),
-            "-m", str(model_dir),
-            "-f", "%08d.png",
+            "-i",
+            str(input_dir),
+            "-o",
+            str(output_dir),
+            "-m",
+            str(model_dir),
+            "-f",
+            "%08d.png",
         ]
         if num_frames:
             cmd.extend(["-n", str(num_frames)])
@@ -91,7 +96,6 @@ class MediaEnhancer:
         if res.returncode != 0:
             raise RuntimeError(f"RIFE interpolation failed: {res.stderr or res.stdout}")
         return output_dir
-
 
     def interpolate_video_to_60fps(
         self,
@@ -117,15 +121,26 @@ class MediaEnhancer:
 
             # 1. Extract audio if present
             subprocess.run(
-                ["ffmpeg", "-y", "-i", str(input_video), "-vn", "-c:a", "copy", str(audio_track)],
-                capture_output=True
+                ["ffmpeg", "-y", "-i", str(input_video), "-vn", "-c:a", "copy", str(audio_track)], capture_output=True
             )
 
             # 2. Extract frames
             subprocess.run(
-                ["ffmpeg", "-y", "-i", str(input_video), "-qscale:v", "1", "-qmin", "1", "-qmax", "1",
-                 str(frames_in / "%08d.png")],
-                check=True, capture_output=True
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_video),
+                    "-qscale:v",
+                    "1",
+                    "-qmin",
+                    "1",
+                    "-qmax",
+                    "1",
+                    str(frames_in / "%08d.png"),
+                ],
+                check=True,
+                capture_output=True,
             )
 
             # 3. Run RIFE
@@ -140,20 +155,19 @@ class MediaEnhancer:
 
             # 5. Re-encode video at target FPS with audio
             mux_cmd = [
-                "ffmpeg", "-y",
-                "-r", str(target_fps),
-                "-pattern_type", "sequence",
-                "-i", str(seq_dir / "%08d.png"),
+                "ffmpeg",
+                "-y",
+                "-r",
+                str(target_fps),
+                "-pattern_type",
+                "sequence",
+                "-i",
+                str(seq_dir / "%08d.png"),
             ]
 
             if audio_track.exists() and audio_track.stat().st_size > 0:
                 mux_cmd.extend(["-i", str(audio_track), "-c:a", "aac", "-shortest"])
-            mux_cmd.extend([
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                "-crf", "18",
-                str(output_video)
-            ])
+            mux_cmd.extend(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(output_video)])
             res = subprocess.run(mux_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 raise RuntimeError(f"FFmpeg muxing failed: {res.stderr or res.stdout}")
@@ -177,10 +191,14 @@ class MediaEnhancer:
 
         cmd = [
             str(self.realesrgan_path),
-            "-i", str(input_dir),
-            "-o", str(output_dir),
-            "-s", str(scale),
-            "-n", model_name,
+            "-i",
+            str(input_dir),
+            "-o",
+            str(output_dir),
+            "-s",
+            str(scale),
+            "-n",
+            model_name,
         ]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
@@ -213,9 +231,21 @@ class MediaEnhancer:
 
             # 1. Extract frames from input video
             subprocess.run(
-                ["ffmpeg", "-y", "-i", str(input_video), "-qscale:v", "1", "-qmin", "1", "-qmax", "1",
-                 str(frames_raw / "%08d.png")],
-                check=True, capture_output=True
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_video),
+                    "-qscale:v",
+                    "1",
+                    "-qmin",
+                    "1",
+                    "-qmax",
+                    "1",
+                    str(frames_raw / "%08d.png"),
+                ],
+                check=True,
+                capture_output=True,
             )
 
             # 2. Run Real-ESRGAN super-resolution / edge sharpening
@@ -228,13 +258,18 @@ class MediaEnhancer:
                 frames_resized.mkdir()
                 subprocess.run(
                     [
-                        "ffmpeg", "-y",
-                        "-pattern_type", "sequence",
-                        "-i", str(frames_sr / "%08d.png"),
-                        "-vf", f"scale={w}:{h}:flags=lanczos",
-                        str(frames_resized / "%08d.png")
+                        "ffmpeg",
+                        "-y",
+                        "-pattern_type",
+                        "sequence",
+                        "-i",
+                        str(frames_sr / "%08d.png"),
+                        "-vf",
+                        f"scale={w}:{h}:flags=lanczos",
+                        str(frames_resized / "%08d.png"),
                     ],
-                    check=True, capture_output=True
+                    check=True,
+                    capture_output=True,
                 )
                 rife_input = frames_resized
             else:
@@ -252,10 +287,14 @@ class MediaEnhancer:
 
             # 6. Re-encode video at target FPS with audio
             mux_cmd = [
-                "ffmpeg", "-y",
-                "-r", str(target_fps),
-                "-pattern_type", "sequence",
-                "-i", str(seq_dir / "%08d.png"),
+                "ffmpeg",
+                "-y",
+                "-r",
+                str(target_fps),
+                "-pattern_type",
+                "sequence",
+                "-i",
+                str(seq_dir / "%08d.png"),
             ]
 
             if audio_file and Path(audio_file).exists():
@@ -265,21 +304,16 @@ class MediaEnhancer:
                 audio_track = tmp_path / "audio.aac"
                 subprocess.run(
                     ["ffmpeg", "-y", "-i", str(input_video), "-vn", "-c:a", "copy", str(audio_track)],
-                    capture_output=True
+                    capture_output=True,
                 )
                 if audio_track.exists() and audio_track.stat().st_size > 0:
                     mux_cmd.extend(["-i", str(audio_track), "-c:a", "aac", "-shortest"])
 
-            mux_cmd.extend([
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                "-preset", "fast",
-                "-crf", "18",
-                str(output_video)
-            ])
+            mux_cmd.extend(
+                ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "18", str(output_video)]
+            )
             res = subprocess.run(mux_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 raise RuntimeError(f"FFmpeg muxing failed: {res.stderr or res.stdout}")
 
         return output_video
-

@@ -44,7 +44,9 @@ class FigureVideoOrchestrator:
                 "mmd_tools_ready": self.blender_engine.is_mmd_tools_available(),
                 "rife_ready": self.enhancer.is_rife_available(),
                 "realesrgan_ready": self.enhancer.is_realesrgan_available(),
-                "status": "ready" if (self.blender_engine.is_blender_installed() and self.enhancer.is_rife_available()) else "pending_engine",
+                "status": "ready"
+                if (self.blender_engine.is_blender_installed() and self.enhancer.is_rife_available())
+                else "pending_engine",
             },
             "mode_2_keyframe": {
                 "name": "2D 关键帧生成 + 动作插帧平滑流",
@@ -163,14 +165,12 @@ class FigureVideoOrchestrator:
                     prompt=prompt,
                     provider="local_simulator",
                     duration=5,
-                    output_path=output_dir / "simulated_base.mp4"
+                    output_path=output_dir / "simulated_base.mp4",
                 )
                 return self.enhancer.interpolate_video_to_60fps(raw_video, final_output)
 
             self.interpolator.interpolate_keyframes_to_sequence(
-                keyframe_paths=keyframe_images,
-                output_dir=staged_frames_dir,
-                frames_per_transition=20
+                keyframe_paths=keyframe_images, output_dir=staged_frames_dir, frames_per_transition=20
             )
             raw_video = output_dir / "keyframe_raw.mp4"
             self.interpolator.assemble_sequence_to_video(staged_frames_dir, raw_video, fps=30, audio_file=audio_file)
@@ -185,7 +185,7 @@ class FigureVideoOrchestrator:
                 prompt=prompt,
                 provider="auto",
                 duration=5,
-                output_path=raw_video
+                output_path=raw_video,
             )
             # Boost to 60FPS using local RIFE
             return self.enhancer.interpolate_video_to_60fps(raw_video, final_output)
@@ -195,4 +195,3 @@ class FigureVideoOrchestrator:
 
 
 FigureOrchestrator = FigureVideoOrchestrator
-
