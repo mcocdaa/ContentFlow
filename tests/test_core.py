@@ -307,13 +307,29 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
         assert "Board Title" in html_str
         assert "<strong" in html_str
 
-        # 7. GET / Studio WebUI
+        # 7. GET / Studio WebUI & Bilingual (EN/ZH) I18N Dictionary
         r_ui = requests.get(f"{base_url}/", timeout=5)
         assert r_ui.status_code == 200
         assert "ContentFlow Studio" in r_ui.text
         assert "/api/v1/health" in r_ui.text
         assert "3-Layer Holographic Stage Compositing Gallery" in r_ui.text
         assert "curl -s" not in r_ui.text
+        assert 'id="lang-toggle-btn"' in r_ui.text
+        assert "localStorage.getItem('contentflow_lang')" in r_ui.text
+        for en_phrase in (
+            "3D Render + AI Frame Interpolation",
+            "2D Keyframe + Motion Smoothing",
+            "Single Figurine -> Video LLM Pipeline",
+        ):
+            assert en_phrase in r_ui.text
+        for zh_phrase in (
+            "多模态生产管线与视频引擎就绪状态",
+            "项目工作区",
+            "角色数字资产库与动作复用",
+            "三层全息舞台解耦合成预览",
+            "全渠道文案与全息白板排版引擎",
+        ):
+            assert zh_phrase in r_ui.text
 
         # 8. GET /media/ character asset
         r_media = requests.get(

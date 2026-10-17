@@ -132,25 +132,26 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
     .status-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
     }
     .subcard {
+      min-width: 0;
       background: var(--surface-alt);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 10px 12px;
+      padding: 9px 10px;
     }
     .subcard h3 {
-      font-size: 13px;
+      font-size: 12px;
       margin-bottom: 5px;
       color: #f1f5f9;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 6px;
+      gap: 5px;
     }
-    .muted { color: var(--text-muted); font-size: 12px; }
+    .muted { color: var(--text-muted); font-size: 11.5px; }
     input, select, textarea {
       width: 100%;
       background: var(--surface-elevated);
@@ -214,9 +215,9 @@ STUDIO_HTML = """<!DOCTYPE html>
       text-transform: uppercase;
       letter-spacing: 0.03em;
     }
-    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(51,65,85,0.65); }
-    th { color: var(--text-muted); font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 5px 5px; border-bottom: 1px solid rgba(51,65,85,0.65); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 11px; white-space: nowrap; }
     tr.proj-row { cursor: pointer; transition: background 0.12s; }
     tr.proj-row:hover { background: rgba(56, 189, 248, 0.08); }
     tr.proj-row.selected { background: rgba(56, 189, 248, 0.14); }
@@ -384,17 +385,30 @@ STUDIO_HTML = """<!DOCTYPE html>
       border: 1px solid var(--border);
       zoom: 0.78;
     }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .subcard h3 > span:first-child {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
-      <span>🎬 ContentFlow Studio</span>
-      <span class="brand-sub">2D/3D Figurine & Holographic Video Engine</span>
+      <span data-i18n="brand_title">🎬 ContentFlow Studio</span>
+      <span class="brand-sub" data-i18n="brand_sub">2D/3D Figurine & Holographic Video Engine</span>
     </div>
-    <div class="header-actions">
+    <div class="header-actions header-right">
       <span id="health-badge" class="badge ok">Checking Studio Engine...</span>
-      <button class="secondary" onclick="loadStatus()">↻ Refresh</button>
+      <button class="secondary" id="btn-refresh" data-i18n="btn_refresh" onclick="loadStatus()">↻ Refresh</button>
+      <button class="secondary" id="lang-toggle-btn" style="white-space: nowrap; flex-shrink: 0;" onclick="toggleLang()">🌐 中文</button>
     </div>
   </header>
 
@@ -402,8 +416,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     <!-- Pipeline & Video Provider Readiness -->
     <section class="card col-12" style="padding: 12px 16px;">
       <h2 style="margin-bottom: 8px;">
-        <span>⚡ Multi-Modal Pipeline & Video Provider Readiness</span>
-        <span class="badge cyan">3 Production Modes Ready</span>
+        <span data-i18n="sec_pipeline">⚡ Multi-Modal Pipeline & Video Provider Readiness</span>
+        <span class="badge cyan" data-i18n="badge_3_modes">3 Production Modes Ready</span>
       </h2>
       <div id="status-container" class="status-grid"></div>
     </section>
@@ -411,18 +425,18 @@ STUDIO_HTML = """<!DOCTYPE html>
     <!-- Projects Workspace -->
     <section class="card col-6">
       <h2>
-        <span>📁 Projects Workspace</span>
+        <span data-i18n="sec_projects">📁 Projects Workspace</span>
         <span id="projects-count-badge" class="badge">7 Projects</span>
       </h2>
       <div class="row">
-        <input id="new-proj-name" placeholder="New project (e.g. rag_demo)" style="flex: 1; min-width: 120px;" />
-        <select id="new-proj-mode" style="width: 132px; flex-shrink: 0;">
-          <option value="hybrid">Hybrid 2D/3D</option>
-          <option value="3d">3D Blender</option>
-          <option value="keyframe">Keyframe RIFE</option>
-          <option value="api">Cloud Video API</option>
+        <input id="new-proj-name" data-i18n-placeholder="ph_new_proj" placeholder="New project (e.g. rag_demo)" style="flex: 1; min-width: 120px;" />
+        <select id="new-proj-mode" style="width: 142px; flex-shrink: 0;">
+          <option value="hybrid" data-i18n="mode_hybrid">Hybrid 2D/3D</option>
+          <option value="3d" data-i18n="mode_3d">3D Blender</option>
+          <option value="keyframe" data-i18n="mode_keyframe">Keyframe RIFE</option>
+          <option value="api" data-i18n="mode_api">Cloud Video API</option>
         </select>
-        <button id="btn-create-project" onclick="createProject()">+ Create</button>
+        <button id="btn-create-project" data-i18n="btn_create" onclick="createProject()">+ Create</button>
       </div>
       <div id="projects-container" style="max-height: 215px; overflow-y: auto;"></div>
     </section>
@@ -430,37 +444,37 @@ STUDIO_HTML = """<!DOCTYPE html>
     <!-- Character Asset Library Browser & Reuse -->
     <section class="card col-6">
       <h2>
-        <span>🧝‍♀️ Character Asset Library & Reuse</span>
-        <span class="badge cyan">Click Pose Pill or Reuse</span>
+        <span data-i18n="sec_characters">🧝‍♀️ Character Asset Library & Reuse</span>
+        <span class="badge cyan" data-i18n="badge_click_pose">Click Pose Pill or Reuse</span>
       </h2>
       <div class="form-grid-2">
         <div>
-          <label class="field-label" for="reuse-project">Target Project</label>
+          <label class="field-label" for="reuse-project" data-i18n="lbl_target_project">Target Project</label>
           <select id="reuse-project"></select>
         </div>
         <div>
-          <label class="field-label" for="reuse-char">Character Anchor</label>
+          <label class="field-label" for="reuse-char" data-i18n="lbl_char_anchor">Character Anchor</label>
           <select id="reuse-char" onchange="syncCharacterPoseOptions()"></select>
         </div>
       </div>
       <div class="row">
         <select id="reuse-pose" style="flex: 1;"></select>
-        <button id="btn-reuse-asset" onclick="reuseAsset()">Reuse Pose Into Project</button>
+        <button id="btn-reuse-asset" data-i18n="btn_reuse_pose" onclick="reuseAsset()">Reuse Pose Into Project</button>
       </div>
-      <div id="reuse-msg" class="status-toast">Select any character pose pill below to copy into Target Project</div>
+      <div id="reuse-msg" class="status-toast" data-i18n="msg_reuse_default">Select any character pose pill below to copy into Target Project</div>
       <div id="characters-container" class="char-grid"></div>
     </section>
 
     <!-- Visual 3-Layer Holographic Compositing Gallery -->
     <section id="compositor-section" class="card col-12">
       <h2>
-        <span style="white-space: nowrap;">🖼️ 3-Layer Holographic Stage Compositing Gallery</span>
+        <span style="white-space: nowrap;" data-i18n="sec_compositor">🖼️ 3-Layer Holographic Stage Compositing Gallery</span>
         <div style="display: flex; align-items: center; gap: 6px;">
           <select id="compositor-project" onchange="selectCompositorProject(this.value)" style="width: 175px; padding: 5px 8px; font-size: 12px;"></select>
-          <button id="step-btn-z0" class="secondary" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('z0')">Z=0 Stage</button>
-          <button id="step-btn-z1" class="secondary" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('z1')">Z=1 Board</button>
-          <button id="step-btn-z2" class="secondary" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('z2')">Z=2 Cutout</button>
-          <button id="step-btn-final" class="secondary active" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('final')">Final 1080P</button>
+          <button id="step-btn-z0" class="secondary" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_z0" onclick="activateLayerStep('z0')">Z=0 Stage</button>
+          <button id="step-btn-z1" class="secondary" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_z1" onclick="activateLayerStep('z1')">Z=1 Board</button>
+          <button id="step-btn-z2" class="secondary" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_z2" onclick="activateLayerStep('z2')">Z=2 Cutout</button>
+          <button id="step-btn-final" class="secondary active" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_final" onclick="activateLayerStep('final')">Final 1080P</button>
         </div>
       </h2>
       <div class="compositor-layout">
@@ -471,7 +485,7 @@ STUDIO_HTML = """<!DOCTYPE html>
                 <img id="layer-img-z0" src="/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg" alt="Z=0 Stage Background" />
               </div>
               <div>
-                <div class="layer-title">Z=0 Stage BG</div>
+                <div class="layer-title" data-i18n="card_z0_title">Z=0 Stage BG</div>
                 <div class="layer-meta"><span class="badge">2560×1440</span></div>
               </div>
             </div>
@@ -481,8 +495,8 @@ STUDIO_HTML = """<!DOCTYPE html>
                 <img id="layer-img-z1" src="/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png" alt="Z=1 Glowing Holographic Whiteboard" />
               </div>
               <div>
-                <div class="layer-title">Z=1 Holo Board</div>
-                <div class="layer-meta"><span class="badge cyan">RGBA Glass</span></div>
+                <div class="layer-title" data-i18n="card_z1_title">Z=1 Holo Board</div>
+                <div class="layer-meta"><span class="badge cyan" data-i18n="card_z1_badge">RGBA Glass</span></div>
               </div>
             </div>
 
@@ -491,8 +505,8 @@ STUDIO_HTML = """<!DOCTYPE html>
                 <img id="layer-img-z2" src="/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png" alt="Z=2 Rembg Figurine Cutout" />
               </div>
               <div>
-                <div class="layer-title">Z=2 Cutout</div>
-                <div class="layer-meta"><span class="badge ok">Alpha PNG</span></div>
+                <div class="layer-title" data-i18n="card_z2_title">Z=2 Cutout</div>
+                <div class="layer-meta"><span class="badge ok" data-i18n="card_z2_badge">Alpha PNG</span></div>
               </div>
             </div>
 
@@ -501,13 +515,13 @@ STUDIO_HTML = """<!DOCTYPE html>
                 <img id="layer-img-final" src="/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg" alt="Final 1080P Composited Frame" />
               </div>
               <div>
-                <div class="layer-title">Final Composite</div>
-                <div class="layer-meta"><span class="badge ok">1080P Master</span></div>
+                <div class="layer-title" data-i18n="card_final_title">Final Composite</div>
+                <div class="layer-meta"><span class="badge ok" data-i18n="card_final_badge">1080P Master</span></div>
               </div>
             </div>
           </div>
-          <div class="subcard" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; padding: 8px 12px;">
-            <span class="muted">Z-Order: <strong>Z=0 Stage</strong> → <strong>Z=1 Holographic Board</strong> → <strong>Z=2 Figurine Cutout</strong></span>
+          <div class="subcard" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px;">
+            <span class="muted" id="z-order-caption" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;" data-i18n="z_order_caption">Z-Order: Z=0 Stage → Z=1 Board → Z=2 Cutout</span>
             <span id="compositor-layer-tag" class="badge ok">Active: Final 1080P Composite</span>
           </div>
         </div>
@@ -521,23 +535,23 @@ STUDIO_HTML = """<!DOCTYPE html>
               <div id="compositor-spotlight-title" style="font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Final 1080P Composite • 002_yowane_cicd</div>
               <div id="compositor-spotlight-desc" class="muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Merged Z=0 stage + Z=1 glass board + Z=2 figurine cutout</div>
             </div>
-            <span class="badge cyan">Zero Occlusion</span>
+            <span class="badge cyan" data-i18n="badge_zero_occlusion">Zero Occlusion</span>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Interactive Whiteboard & WeChat HTML Formatter Previewer -->
+    <!-- Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter -->
     <section id="formatter-section" class="card col-12">
       <h2>
-        <span>📝 Interactive Holographic Whiteboard & WeChat HTML Formatter</span>
-        <span class="badge">Inline CSS • Zero External Stylesheets</span>
+        <span data-i18n="sec_formatter">📝 Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter</span>
+        <span class="badge" data-i18n="badge_inline_css">Inline CSS • Zero External Stylesheets</span>
       </h2>
       <div class="formatter-grid">
         <div>
           <div class="row">
-            <input id="fmt-title" value="3-Layer Holographic Video Pipeline" placeholder="Presentation Title" style="flex: 1;" />
-            <button id="btn-render-html" onclick="formatHtml()">Render HTML</button>
+            <input id="fmt-title" value="3-Layer Holographic Video Pipeline" data-i18n-placeholder="ph_fmt_title" placeholder="Presentation Title" style="flex: 1;" />
+            <button id="btn-render-html" data-i18n="btn_render_html" onclick="formatHtml()">Render HTML</button>
           </div>
           <textarea id="fmt-text">1. **Deterministic Z-Order Stage** separating `Z=0` background, `Z=1` glass board, and `Z=2` figurine cutout.
 2. **Automated Quality Gates** across unit, API, and visual regression suites.
@@ -555,75 +569,361 @@ STUDIO_HTML = """<!DOCTYPE html>
   <script>
     let STUDIO_PROJECTS = [];
     let STUDIO_CHARACTERS = {};
+    let STUDIO_HEALTH_VERSION = '0.1.0';
+    let STUDIO_STATUS_DATA = null;
+    let LAST_REUSE_STATE = null;
     let ACTIVE_PROJECT_ID = '002_yowane_cicd';
     let ACTIVE_LAYER_STEP = 'final';
+    let CURRENT_LANG = localStorage.getItem('contentflow_lang') || 'en';
 
-    const LAYER_STEP_META = {
-      z0: {
-        short: 'Z=0 Stage Background',
-        desc: '16:9 2560×1440 background stage decomposed without foreground clutter'
+    const DEFAULT_FMT = {
+      en: {
+        title: '3-Layer Holographic Video Pipeline',
+        text: '1. **Deterministic Z-Order Stage** separating `Z=0` background, `Z=1` glass board, and `Z=2` figurine cutout.\\n2. **Automated Quality Gates** across unit, API, and visual regression suites.\\n\\n- Zero manual glue scripts on production servers\\n- Full artifact traceability from script to 1080P MP4'
       },
-      z1: {
-        short: 'Z=1 Holographic Board',
-        desc: 'Translucent cyan glass projection board rendered with typography cards'
-      },
-      z2: {
-        short: 'Z=2 Figurine Cutout',
-        desc: 'High-precision alpha-channel 3D figurine cutout positioned at x=2%..34%'
-      },
-      final: {
-        short: 'Final 1080P Composite',
-        desc: 'Merged Z=0 stage + Z=1 holographic whiteboard + Z=2 figurine cutout'
+      zh: {
+        title: '三层全息舞台解耦视频生产管线',
+        text: '1. **确定性 Z 轴全息舞台**：解耦 `Z=0` 远景演播室、`Z=1` 全息玻璃白板与 `Z=2` 手办抠图。\\n2. **全链路自动化质量门禁**：覆盖单元测试、标准 HTTP API 与多模态视觉校验。\\n\\n- 生产环境零手工胶水脚本依赖\\n- 从结构化脚本到 1080P 成片全链路可追溯'
       }
     };
+
+    const I18N = {
+      en: {
+        brand_title: '🎬 ContentFlow Studio',
+        brand_sub: '2D/3D Figurine & Holographic Video Engine',
+        btn_refresh: '↻ Refresh',
+        health_ready_prefix: 'Studio Ready • v',
+        sec_pipeline: '⚡ Multi-Modal Pipeline & Video Provider Readiness',
+        badge_3_modes: '3 Production Modes Ready',
+        pipe_mode_1_3d: '3D Render + AI Frame Interpolation',
+        pipe_mode_2_keyframe: '2D Keyframe + Motion Smoothing',
+        pipe_mode_3_api: 'Single Figurine -> Video LLM Pipeline',
+        pipe_desc: 'Deterministic stage & audio sync',
+        pipe_status_ready: 'READY',
+        pipe_status_pending: 'ENGINE PENDING',
+        pipe_status_missing_key: 'API KEY NEEDED',
+        pipe_status_missing_api: 'API NEEDED',
+        video_engines_title: 'Video Engines',
+        prov_on: 'ON',
+        prov_sim: 'SIM',
+        sec_projects: '📁 Projects Workspace',
+        projects_count_suffix: 'Projects',
+        ph_new_proj: 'New project (e.g. rag_demo)',
+        mode_hybrid: 'Hybrid 2D/3D',
+        mode_3d: '3D Blender',
+        mode_keyframe: 'Keyframe RIFE',
+        mode_api: 'Cloud Video API',
+        btn_create: '+ Create',
+        th_proj_id: 'Project ID',
+        th_mode: 'Mode',
+        th_assets: 'Assets',
+        th_comp: 'Comp',
+        th_scripts: 'Scripts',
+        sec_characters: '🧝‍♀️ Character Asset Library & Reuse',
+        badge_click_pose: 'Click Pose Pill or Reuse',
+        lbl_target_project: 'Target Project',
+        lbl_char_anchor: 'Character Anchor',
+        pose_option_prefix: 'Pose: ',
+        btn_reuse_pose: 'Reuse Pose Into Project',
+        msg_reuse_default: 'Select any character pose pill below to copy into Target Project',
+        poses_count_suffix: 'poses',
+        master_anchor_label: 'master anchor',
+        sec_compositor: '🖼️ 3-Layer Holographic Stage Compositing Gallery',
+        btn_step_z0: 'Z=0 Stage',
+        btn_step_z1: 'Z=1 Board',
+        btn_step_z2: 'Z=2 Cutout',
+        btn_step_final: 'Final 1080P',
+        card_z0_title: 'Z=0 Stage BG',
+        card_z1_title: 'Z=1 Holo Board',
+        card_z1_badge: 'RGBA Glass',
+        card_z2_title: 'Z=2 Cutout',
+        card_z2_badge: 'Alpha PNG',
+        card_final_title: 'Final Composite',
+        card_final_badge: '1080P Master',
+        z_order_caption: 'Z-Order: Z=0 Stage → Z=1 Board → Z=2 Cutout',
+        active_layer_prefix: 'Active: ',
+        badge_zero_occlusion: 'Zero Occlusion',
+        step_z0_short: 'Z=0 Stage Background',
+        step_z0_desc: '16:9 2560×1440 background stage decomposed without foreground clutter',
+        step_z1_short: 'Z=1 Holographic Board',
+        step_z1_desc: 'Translucent cyan glass projection board rendered with typography cards',
+        step_z2_short: 'Z=2 Figurine Cutout',
+        step_z2_desc: 'High-precision alpha-channel 3D figurine cutout positioned at x=2%..34%',
+        step_final_short: 'Final 1080P Composite',
+        step_final_desc: 'Merged Z=0 stage + Z=1 glass board + Z=2 figurine cutout',
+        sec_formatter: '📝 Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter',
+        badge_inline_css: 'Inline CSS • Zero External Stylesheets',
+        ph_fmt_title: 'Presentation Title',
+        btn_render_html: 'Render HTML'
+      },
+      zh: {
+        brand_title: '🎬 ContentFlow Studio',
+        brand_sub: '2D/3D 手办与全息视频创作工作台',
+        btn_refresh: '↻ 刷新状态',
+        health_ready_prefix: '引擎就绪 • v',
+        sec_pipeline: '⚡ 多模态生产管线与视频引擎就绪状态',
+        badge_3_modes: '3 大生产流就绪',
+        pipe_mode_1_3d: '3D 建模渲染 + AI 插帧优化流',
+        pipe_mode_2_keyframe: '2D 关键帧生成 + 动作插帧平滑流',
+        pipe_mode_3_api: '单图手办 -> 视频大模型 API 生成流',
+        pipe_desc: '确定性全息舞台合成与音画同步',
+        pipe_status_ready: '已就绪',
+        pipe_status_pending: '待配引擎',
+        pipe_status_missing_key: '待配密钥',
+        pipe_status_missing_api: '待配 API',
+        video_engines_title: '视频生成引擎路由',
+        prov_on: '已启用',
+        prov_sim: '本地模拟',
+        sec_projects: '📁 项目工作区',
+        projects_count_suffix: '个项目',
+        ph_new_proj: '新项目名 (如 rag_demo)',
+        mode_hybrid: '2D/3D 混合管线',
+        mode_3d: '3D Blender 渲染',
+        mode_keyframe: '关键帧 RIFE 插帧',
+        mode_api: '云端视频大模型',
+        btn_create: '+ 新建项目',
+        th_proj_id: '项目 ID',
+        th_mode: '模式',
+        th_assets: '素材数',
+        th_comp: '合成帧',
+        th_scripts: '脚本数',
+        sec_characters: '🧝‍♀️ 角色数字资产库与动作复用',
+        badge_click_pose: '点击姿态胶囊一键复用',
+        lbl_target_project: '目标项目',
+        lbl_char_anchor: '角色资产锚点',
+        pose_option_prefix: '姿态：',
+        btn_reuse_pose: '复用姿态至目标项目',
+        msg_reuse_default: '点击下方任意角色姿态胶囊，即可一键复用到目标项目',
+        poses_count_suffix: '个姿态',
+        master_anchor_label: '主锚点参考图',
+        sec_compositor: '🖼️ 三层全息舞台解耦合成预览',
+        btn_step_z0: 'Z=0 远景舞台',
+        btn_step_z1: 'Z=1 全息白板',
+        btn_step_z2: 'Z=2 手办抠图',
+        btn_step_final: '1080P 成片',
+        card_z0_title: 'Z=0 远景舞台',
+        card_z1_title: 'Z=1 全息白板',
+        card_z1_badge: 'RGBA 玻璃层',
+        card_z2_title: 'Z=2 手办前景',
+        card_z2_badge: '透明 PNG',
+        card_final_title: '最终三层合成',
+        card_final_badge: '1080P 主母版',
+        z_order_caption: '图层序：Z=0 远景舞台 → Z=1 全息白板 → Z=2 手办前景',
+        active_layer_prefix: '当前图层：',
+        badge_zero_occlusion: '零遮挡对齐',
+        step_z0_short: 'Z=0 远景舞台背景',
+        step_z0_desc: '16:9 2560×1440 纯净暗调科技演播室背景（无前景杂物干扰）',
+        step_z1_short: 'Z=1 全息玻璃白板',
+        step_z1_desc: '带发光青色玻璃边框与高对比度知识卡片的半透明全息投影层',
+        step_z2_short: 'Z=2 手办透明抠图',
+        step_z2_desc: '高精度 Alpha 通道 3D 手办角色抠图（黄金左置区 x=2%..34%）',
+        step_final_short: '1080P 最终合成帧',
+        step_final_desc: 'Z=0 远景舞台 + Z=1 全息玻璃白板 + Z=2 手办前景无损合成',
+        sec_formatter: '📝 全渠道文案与全息白板排版引擎',
+        badge_inline_css: '内联 CSS • 零外部样式表依赖',
+        ph_fmt_title: '输入演示白板标题',
+        btn_render_html: '渲染全息排版'
+      }
+    };
+
+    const CHAR_NAME_ZH = {
+      yowane_haku: '弱音白',
+      yorha_2b: '寄叶 2B',
+      tda_luka_dress: '巡音流歌 3D',
+      tda_miku_lace: '初音未来 3D',
+      noshiro: '能代'
+    };
+
+    const POSE_NAME_ZH = {
+      angry: '叉腰生气',
+      confident: '自信展示',
+      explaining: '手势讲解',
+      proud: '欣慰抱胸',
+      sigh: '无奈叹气',
+      teaching: '讲台授课',
+      thumbs_up: '竖起拇指',
+      triage: '排障诊断',
+      troubled: '苦恼思索',
+      warning: '教鞭警示',
+      '3d_rig': '3D 骨骼绑定',
+      pointer: '教鞭指向'
+    };
+
+    const MODE_BADGE_ZH = {
+      hybrid: '混合流',
+      '3d': '3D 渲染',
+      keyframe: '关键帧',
+      api: '视频 API'
+    };
+
+    const PROVIDER_NAME_ZH = {
+      volcengine_seedance: '即梦 Seedance',
+      kling_ai: '可灵 Kling',
+      minimax: '海螺 MiniMax',
+      local_simulator: '本地渲染器'
+    };
+
+    function t(key) {
+      const dict = I18N[CURRENT_LANG] || I18N.en;
+      return dict[key] !== undefined ? dict[key] : (I18N.en[key] || key);
+    }
+
+    function displayCharName(charObj) {
+      if (!charObj) return '';
+      if (CURRENT_LANG === 'zh' && CHAR_NAME_ZH[charObj.char_id]) {
+        return CHAR_NAME_ZH[charObj.char_id];
+      }
+      return charObj.name || charObj.char_id;
+    }
+
+    function displayPoseName(poseKey) {
+      if (CURRENT_LANG === 'zh' && POSE_NAME_ZH[poseKey]) {
+        return POSE_NAME_ZH[poseKey];
+      }
+      return poseKey;
+    }
+
+    function displayModeBadge(modeKey) {
+      const m = modeKey || 'hybrid';
+      if (CURRENT_LANG === 'zh' && MODE_BADGE_ZH[m]) {
+        return MODE_BADGE_ZH[m];
+      }
+      return m;
+    }
+
+    function getLayerStepMeta(step) {
+      const key = ['z0', 'z1', 'z2', 'final'].includes(step) ? step : 'final';
+      return {
+        short: t(`step_${key}_short`),
+        desc: t(`step_${key}_desc`)
+      };
+    }
+
+    function applyTranslations() {
+      document.documentElement.lang = CURRENT_LANG === 'zh' ? 'zh-CN' : 'en';
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (key === 'msg_reuse_default' && LAST_REUSE_STATE) return;
+        el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        el.placeholder = t(key);
+      });
+      const langBtn = document.getElementById('lang-toggle-btn');
+      if (langBtn) {
+        langBtn.textContent = CURRENT_LANG === 'zh' ? '🌐 EN' : '🌐 中文';
+      }
+      const badge = document.getElementById('health-badge');
+      if (badge && STUDIO_HEALTH_VERSION) {
+        badge.textContent = `${t('health_ready_prefix')}${STUDIO_HEALTH_VERSION}`;
+      }
+      renderStatusCards();
+      renderProjectsView();
+      if (Object.keys(STUDIO_CHARACTERS).length > 0) {
+        const charSelect = document.getElementById('reuse-char');
+        const currentChar = charSelect.value;
+        const currentPose = document.getElementById('reuse-pose').value;
+        charSelect.innerHTML = Object.values(STUDIO_CHARACTERS).map(c =>
+          `<option value="${c.char_id}">${displayCharName(c)}</option>`
+        ).join('');
+        if (currentChar && STUDIO_CHARACTERS[currentChar]) {
+          charSelect.value = currentChar;
+        }
+        syncCharacterPoseOptions(currentPose);
+      }
+      updateReuseToastText();
+      activateLayerStep(ACTIVE_LAYER_STEP);
+    }
+
+    function toggleLang() {
+      const prevLang = CURRENT_LANG;
+      CURRENT_LANG = CURRENT_LANG === 'en' ? 'zh' : 'en';
+      localStorage.setItem('contentflow_lang', CURRENT_LANG);
+
+      const titleEl = document.getElementById('fmt-title');
+      const textEl = document.getElementById('fmt-text');
+      if (titleEl && textEl) {
+        const prevDefaults = DEFAULT_FMT[prevLang];
+        const nextDefaults = DEFAULT_FMT[CURRENT_LANG];
+        if (titleEl.value.trim() === prevDefaults.title) {
+          titleEl.value = nextDefaults.title;
+        }
+        if (textEl.value.trim() === prevDefaults.text.trim()) {
+          textEl.value = nextDefaults.text;
+        }
+      }
+      applyTranslations();
+      formatHtml();
+    }
 
     async function loadHealth() {
       const res = await fetch('/api/v1/health');
       const data = await res.json();
+      STUDIO_HEALTH_VERSION = data.version || '0.1.0';
       const badge = document.getElementById('health-badge');
-      badge.textContent = `Studio Ready • v${data.version}`;
+      badge.textContent = `${t('health_ready_prefix')}${STUDIO_HEALTH_VERSION}`;
       badge.className = 'badge ok';
     }
 
-    async function loadStatus() {
-      const res = await fetch('/api/v1/status');
-      const data = await res.json();
+    function formatPipelineStatus(status) {
+      if (status === 'ready') return t('pipe_status_ready');
+      if (status === 'pending_engine') return t('pipe_status_pending');
+      if (status === 'missing_api_key') return t('pipe_status_missing_key');
+      if (status === 'missing_video_api') return t('pipe_status_missing_api');
+      return String(status || '').toUpperCase();
+    }
+
+    function renderStatusCards() {
+      if (!STUDIO_STATUS_DATA) return;
       const container = document.getElementById('status-container');
       container.innerHTML = '';
-      for (const [key, info] of Object.entries(data.pipelines || {})) {
+      for (const [key, info] of Object.entries(STUDIO_STATUS_DATA.pipelines || {})) {
         const ready = info.status === 'ready';
+        const pipeTitle = t(`pipe_${key}`) !== `pipe_${key}` ? t(`pipe_${key}`) : (info.name || key);
         const div = document.createElement('div');
         div.className = 'subcard';
         div.innerHTML = `
           <h3>
-            <span>${info.name || key}</span>
-            <span class="badge ${ready ? 'ok' : 'warn'}">${info.status.toUpperCase()}</span>
+            <span>${pipeTitle}</span>
+            <span class="badge ${ready ? 'ok' : 'warn'}">${formatPipelineStatus(info.status)}</span>
           </h3>
-          <div class="muted">Deterministic stage & audio sync</div>
+          <div class="muted">${t('pipe_desc')}</div>
         `;
         container.appendChild(div);
       }
       const provDiv = document.createElement('div');
       provDiv.className = 'subcard';
-      const provBadges = Object.entries(data.video_providers || {})
-        .map(([k, v]) => `<span class="badge ${v ? 'ok' : 'warn'}">${k.replace('volcengine_', '')}: ${v ? 'ON' : 'SIM'}</span>`)
+      const provBadges = Object.entries(STUDIO_STATUS_DATA.video_providers || {})
+        .map(([k, v]) => {
+          const label = CURRENT_LANG === 'zh'
+            ? (PROVIDER_NAME_ZH[k] || k.replace('volcengine_', ''))
+            : k.replace('volcengine_', '');
+          const stateText = v ? t('prov_on') : t('prov_sim');
+          return `<span class="badge ${v ? 'ok' : 'warn'}">${label}: ${stateText}</span>`;
+        })
         .join(' ');
-      provDiv.innerHTML = `<h3><span>Video Engines</span></h3><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${provBadges}</div>`;
+      provDiv.innerHTML = `<h3><span>${t('video_engines_title')}</span></h3><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${provBadges}</div>`;
       container.appendChild(provDiv);
     }
 
-    async function loadProjects() {
-      const res = await fetch('/api/v1/projects');
-      const data = await res.json();
-      STUDIO_PROJECTS = data.projects || [];
-      const countBadge = document.getElementById('projects-count-badge');
-      if (countBadge) countBadge.textContent = `${STUDIO_PROJECTS.length} Projects`;
+    async function loadStatus() {
+      const res = await fetch('/api/v1/status');
+      STUDIO_STATUS_DATA = await res.json();
+      renderStatusCards();
+    }
 
+    function renderProjectsView() {
+      const countBadge = document.getElementById('projects-count-badge');
+      if (countBadge) {
+        countBadge.textContent = `${STUDIO_PROJECTS.length} ${t('projects_count_suffix')}`;
+      }
       const container = document.getElementById('projects-container');
+      if (!container) return;
       const rows = STUDIO_PROJECTS.map(p => `
         <tr class="proj-row ${p.project_id === ACTIVE_PROJECT_ID ? 'selected' : ''}" onclick="selectCompositorProject('${p.project_id}')">
           <td><strong>${p.project_id}</strong></td>
-          <td><span class="badge">${p.mode || 'hybrid'}</span></td>
+          <td><span class="badge">${displayModeBadge(p.mode)}</span></td>
           <td>${p.raw_assets}</td>
           <td>${p.composited}</td>
           <td>${p.scripts}</td>
@@ -631,10 +931,17 @@ STUDIO_HTML = """<!DOCTYPE html>
       `).join('');
       container.innerHTML = `
         <table>
-          <thead><tr><th>Project ID</th><th>Mode</th><th>Assets</th><th>Comp</th><th>Scripts</th></tr></thead>
+          <thead><tr><th>${t('th_proj_id')}</th><th>${t('th_mode')}</th><th>${t('th_assets')}</th><th>${t('th_comp')}</th><th>${t('th_scripts')}</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       `;
+    }
+
+    async function loadProjects() {
+      const res = await fetch('/api/v1/projects');
+      const data = await res.json();
+      STUDIO_PROJECTS = data.projects || [];
+      renderProjectsView();
 
       const reuseProjSelect = document.getElementById('reuse-project');
       const compProjSelect = document.getElementById('compositor-project');
@@ -685,7 +992,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       const charSelect = document.getElementById('reuse-char');
       const charList = Object.values(STUDIO_CHARACTERS);
       charSelect.innerHTML = charList.map(c =>
-        `<option value="${c.char_id}">${c.name}</option>`
+        `<option value="${c.char_id}">${displayCharName(c)}</option>`
       ).join('');
 
       if (STUDIO_CHARACTERS['yowane_haku']) {
@@ -702,7 +1009,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       const poses = Object.keys(charInfo.poses || {});
       const poseList = poses.length > 0 ? poses : ['teaching', 'explaining', 'warning', 'thumbs_up'];
       poseSelect.innerHTML = poseList.map(pose =>
-        `<option value="${pose}">Pose: ${pose}</option>`
+        `<option value="${pose}">${t('pose_option_prefix')}${displayPoseName(pose)}</option>`
       ).join('');
       if (preferredPose && poseList.includes(preferredPose)) {
         poseSelect.value = preferredPose;
@@ -720,19 +1027,42 @@ STUDIO_HTML = """<!DOCTYPE html>
         const pills = poseKeys.length > 0
           ? poseKeys.map(p => {
               const isSelected = (c.char_id === activeChar && p === activePose);
-              return `<span class="pose-pill ${isSelected ? 'active' : ''}" onclick="quickReusePose('${c.char_id}', '${p}')">${p}</span>`;
+              return `<span class="pose-pill ${isSelected ? 'active' : ''}" onclick="quickReusePose('${c.char_id}', '${p}')">${displayPoseName(p)}</span>`;
             }).join('')
-          : '<span class="muted">master anchor</span>';
+          : `<span class="muted">${t('master_anchor_label')}</span>`;
         return `
           <div class="subcard" style="${c.char_id === activeChar ? 'border-color: rgba(56,189,248,0.6);' : ''}">
             <h3>
-              <span>${c.name}</span>
-              <span class="badge">${poseKeys.length} poses</span>
+              <span>${displayCharName(c)}</span>
+              <span class="badge">${poseKeys.length} ${t('poses_count_suffix')}</span>
             </h3>
             <div class="pose-pills">${pills}</div>
           </div>
         `;
       }).join('');
+    }
+
+    function updateReuseToastText() {
+      const msgEl = document.getElementById('reuse-msg');
+      if (!msgEl) return;
+      if (!LAST_REUSE_STATE) {
+        msgEl.className = 'status-toast';
+        msgEl.textContent = t('msg_reuse_default');
+        return;
+      }
+      msgEl.className = 'status-toast visible';
+      if (LAST_REUSE_STATE.ok) {
+        const cObj = STUDIO_CHARACTERS[LAST_REUSE_STATE.char_id] || { char_id: LAST_REUSE_STATE.char_id, name: LAST_REUSE_STATE.char_id };
+        const cLabel = CURRENT_LANG === 'zh' ? displayCharName(cObj) : LAST_REUSE_STATE.char_id;
+        const pLabel = displayPoseName(LAST_REUSE_STATE.pose);
+        if (CURRENT_LANG === 'zh') {
+          msgEl.textContent = `✅ 已复用 ${cLabel}（${pLabel}）至 ${LAST_REUSE_STATE.project} → ${LAST_REUSE_STATE.shortFile}`;
+        } else {
+          msgEl.textContent = `✅ Reused ${cLabel} (${pLabel}) into ${LAST_REUSE_STATE.project} → ${LAST_REUSE_STATE.shortFile}`;
+        }
+      } else {
+        msgEl.textContent = `❌ ${LAST_REUSE_STATE.error}`;
+      }
     }
 
     async function quickReusePose(char_id, pose) {
@@ -752,15 +1082,14 @@ STUDIO_HTML = """<!DOCTYPE html>
         body: JSON.stringify({ char_id, pose })
       });
       const data = await res.json();
-      const msgEl = document.getElementById('reuse-msg');
-      msgEl.className = 'status-toast visible';
       if (data.status === 'ok') {
         const shortFile = (data.dest_path || '').split('/').slice(-2).join('/');
-        msgEl.textContent = `✅ Reused ${char_id} (${pose}) into ${data.project} → ${shortFile}`;
+        LAST_REUSE_STATE = { ok: true, char_id, pose, project: data.project, shortFile };
         ACTIVE_PROJECT_ID = data.project;
       } else {
-        msgEl.textContent = `❌ ${data.error || 'Failed to reuse asset'}`;
+        LAST_REUSE_STATE = { ok: false, error: data.error || 'Failed to reuse asset' };
       }
+      updateReuseToastText();
       renderCharacterCards();
       await loadProjects();
     }
@@ -811,11 +1140,11 @@ STUDIO_HTML = """<!DOCTYPE html>
         if (card) card.classList.toggle('active', k === step);
         if (btn) btn.classList.toggle('active', k === step);
       });
-      const meta = LAYER_STEP_META[step] || LAYER_STEP_META.final;
+      const meta = getLayerStepMeta(step);
       document.getElementById('compositor-spotlight-img').src = stepMap[step] || stepMap.final;
       document.getElementById('compositor-spotlight-title').textContent = `${meta.short} • ${ACTIVE_PROJECT_ID}`;
       document.getElementById('compositor-spotlight-desc').textContent = meta.desc;
-      document.getElementById('compositor-layer-tag').textContent = `Active: ${meta.short}`;
+      document.getElementById('compositor-layer-tag').textContent = `${t('active_layer_prefix')}${meta.short}`;
     }
 
     async function formatHtml() {
@@ -831,6 +1160,11 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      if (CURRENT_LANG === 'zh') {
+        document.getElementById('fmt-title').value = DEFAULT_FMT.zh.title;
+        document.getElementById('fmt-text').value = DEFAULT_FMT.zh.text;
+      }
+      applyTranslations();
       loadHealth();
       loadStatus();
       loadProjects();
