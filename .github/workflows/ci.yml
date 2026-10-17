@@ -5,10 +5,19 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   quality-and-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,6 +39,9 @@ jobs:
 
       - name: Run Ruff linter
         run: ruff check cli.py core/ config/ .agents/skills/figure-tutorial-video/scripts/ tests/
+
+      - name: Run Ruff format check
+        run: ruff format --check .
 
       - name: Run Mypy type checker
         run: mypy cli.py core/ config/ .agents/skills/figure-tutorial-video/scripts/ tests/
