@@ -328,8 +328,15 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
             "角色数字资产库与动作复用",
             "三层全息舞台解耦合成预览",
             "全渠道文案与全息白板排版引擎",
+            "ContentFlow Studio — 2D/3D 手办与全息教学视频工作台",
+            "点击「渲染 HTML」预览排版效果...",
+            "复用资产失败",
+            "未找到角色资产",
         ):
             assert zh_phrase in r_ui.text
+        assert 'data-i18n="fmt_preview_placeholder"' in r_ui.text
+        assert "document.title = t('page_title')" in r_ui.text
+        assert "sanitizeAsciiFilename" in r_ui.text
 
         # 8. GET /media/ character asset
         r_media = requests.get(

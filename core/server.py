@@ -560,7 +560,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 - Full artifact traceability from script to 1080P MP4</textarea>
         </div>
         <div>
-          <div id="fmt-preview" class="preview-box">Click "Render HTML" to preview...</div>
+          <div id="fmt-preview" class="preview-box" data-i18n="fmt_preview_placeholder">Click "Render HTML" to preview...</div>
         </div>
       </div>
     </section>
@@ -589,6 +589,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     const I18N = {
       en: {
+        page_title: 'ContentFlow Studio — 2D/3D Figurine & Holographic Video Workspace',
         brand_title: '🎬 ContentFlow Studio',
         brand_sub: '2D/3D Figurine & Holographic Video Engine',
         btn_refresh: '↻ Refresh',
@@ -626,6 +627,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         pose_option_prefix: 'Pose: ',
         btn_reuse_pose: 'Reuse Pose Into Project',
         msg_reuse_default: 'Select any character pose pill below to copy into Target Project',
+        reuse_failed: 'Failed to reuse asset',
         poses_count_suffix: 'poses',
         master_anchor_label: 'master anchor',
         sec_compositor: '🖼️ 3-Layer Holographic Stage Compositing Gallery',
@@ -654,9 +656,11 @@ STUDIO_HTML = """<!DOCTYPE html>
         sec_formatter: '📝 Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter',
         badge_inline_css: 'Inline CSS • Zero External Stylesheets',
         ph_fmt_title: 'Presentation Title',
-        btn_render_html: 'Render HTML'
+        btn_render_html: 'Render HTML',
+        fmt_preview_placeholder: 'Click "Render HTML" to preview...'
       },
       zh: {
+        page_title: 'ContentFlow Studio — 2D/3D 手办与全息教学视频工作台',
         brand_title: '🎬 ContentFlow Studio',
         brand_sub: '2D/3D 手办与全息视频创作工作台',
         btn_refresh: '↻ 刷新状态',
@@ -690,10 +694,11 @@ STUDIO_HTML = """<!DOCTYPE html>
         sec_characters: '🧝‍♀️ 角色数字资产库与动作复用',
         badge_click_pose: '点击姿态胶囊一键复用',
         lbl_target_project: '目标项目',
-        lbl_char_anchor: '角色资产锚点',
+        lbl_char_anchor: '角色数字锚点',
         pose_option_prefix: '姿态：',
         btn_reuse_pose: '复用姿态至目标项目',
         msg_reuse_default: '点击下方任意角色姿态胶囊，即可一键复用到目标项目',
+        reuse_failed: '复用资产失败',
         poses_count_suffix: '个姿态',
         master_anchor_label: '主锚点参考图',
         sec_compositor: '🖼️ 三层全息舞台解耦合成预览',
@@ -722,7 +727,8 @@ STUDIO_HTML = """<!DOCTYPE html>
         sec_formatter: '📝 全渠道文案与全息白板排版引擎',
         badge_inline_css: '内联 CSS • 零外部样式表依赖',
         ph_fmt_title: '输入演示白板标题',
-        btn_render_html: '渲染全息排版'
+        btn_render_html: '渲染全息排版',
+        fmt_preview_placeholder: '点击「渲染 HTML」预览排版效果...'
       }
     };
 
@@ -801,6 +807,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     function applyTranslations() {
       document.documentElement.lang = CURRENT_LANG === 'zh' ? 'zh-CN' : 'en';
+      document.title = t('page_title');
       document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         if (key === 'msg_reuse_default' && LAST_REUSE_STATE) return;
@@ -1042,6 +1049,34 @@ STUDIO_HTML = """<!DOCTYPE html>
       }).join('');
     }
 
+    function sanitizeAsciiFilename(pathStr) {
+      if (!pathStr) return '';
+      return pathStr
+        .replace(/[^\\x00-\\x7F]+/g, '')
+        .replace(/\\s+\\./g, '.')
+        .replace(/\\s{2,}/g, ' ')
+        .replace(/\\/\\.([a-zA-Z0-9]+)$/, '/asset.$1')
+        .trim();
+    }
+
+    function localizeReuseError(rawErr) {
+      let errText = rawErr || t('reuse_failed');
+      if (CURRENT_LANG === 'zh') {
+        if (errText === 'Failed to reuse asset') {
+          return t('reuse_failed');
+        }
+        if (errText.startsWith('Asset not found')) {
+          return errText
+            .replace('Asset not found for char_id=', '未找到角色资产：角色=')
+            .replace(', pose=', '，姿态=')
+            .replace('Asset not found', '未找到角色资产');
+        }
+      } else if (CURRENT_LANG === 'en' && errText === '复用资产失败') {
+        return t('reuse_failed');
+      }
+      return errText;
+    }
+
     function updateReuseToastText() {
       const msgEl = document.getElementById('reuse-msg');
       if (!msgEl) return;
@@ -1055,13 +1090,14 @@ STUDIO_HTML = """<!DOCTYPE html>
         const cObj = STUDIO_CHARACTERS[LAST_REUSE_STATE.char_id] || { char_id: LAST_REUSE_STATE.char_id, name: LAST_REUSE_STATE.char_id };
         const cLabel = CURRENT_LANG === 'zh' ? displayCharName(cObj) : LAST_REUSE_STATE.char_id;
         const pLabel = displayPoseName(LAST_REUSE_STATE.pose);
+        const dispFile = CURRENT_LANG === 'en' ? sanitizeAsciiFilename(LAST_REUSE_STATE.shortFile) : LAST_REUSE_STATE.shortFile;
         if (CURRENT_LANG === 'zh') {
-          msgEl.textContent = `✅ 已复用 ${cLabel}（${pLabel}）至 ${LAST_REUSE_STATE.project} → ${LAST_REUSE_STATE.shortFile}`;
+          msgEl.textContent = `✅ 已复用 ${cLabel}（${pLabel}）至 ${LAST_REUSE_STATE.project} → ${dispFile}`;
         } else {
-          msgEl.textContent = `✅ Reused ${cLabel} (${pLabel}) into ${LAST_REUSE_STATE.project} → ${LAST_REUSE_STATE.shortFile}`;
+          msgEl.textContent = `✅ Reused ${cLabel} (${pLabel}) into ${LAST_REUSE_STATE.project} → ${dispFile}`;
         }
       } else {
-        msgEl.textContent = `❌ ${LAST_REUSE_STATE.error}`;
+        msgEl.textContent = `❌ ${localizeReuseError(LAST_REUSE_STATE.error)}`;
       }
     }
 
@@ -1083,11 +1119,12 @@ STUDIO_HTML = """<!DOCTYPE html>
       });
       const data = await res.json();
       if (data.status === 'ok') {
-        const shortFile = (data.dest_path || '').split('/').slice(-2).join('/');
+        const rawDest = data.dest_path || data.copied_to || '';
+        const shortFile = rawDest.split('/').slice(-2).join('/');
         LAST_REUSE_STATE = { ok: true, char_id, pose, project: data.project, shortFile };
         ACTIVE_PROJECT_ID = data.project;
       } else {
-        LAST_REUSE_STATE = { ok: false, error: data.error || 'Failed to reuse asset' };
+        LAST_REUSE_STATE = { ok: false, error: data.error || t('reuse_failed') };
       }
       updateReuseToastText();
       renderCharacterCards();
