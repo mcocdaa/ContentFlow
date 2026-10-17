@@ -312,7 +312,16 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
         assert r_ui.status_code == 200
         assert "ContentFlow Studio" in r_ui.text
         assert "/api/v1/health" in r_ui.text
-        assert "AI API Docs" in r_ui.text
+        assert "3-Layer Holographic Stage Compositing Gallery" in r_ui.text
+        assert "curl -s" not in r_ui.text
+
+        # 8. GET /media/ character asset
+        r_media = requests.get(
+            f"{base_url}/media/library/characters/yowane_haku/teaching/yowane_teaching_pose.png",
+            timeout=5,
+        )
+        assert r_media.status_code == 200
+        assert r_media.headers["Content-Type"] == "image/png"
     finally:
         server.shutdown()
         server.server_close()

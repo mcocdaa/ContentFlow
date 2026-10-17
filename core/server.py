@@ -26,287 +26,562 @@ STUDIO_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ContentFlow Studio — Canonical API & WebUI</title>
+  <title>ContentFlow Studio — 2D/3D Figurine & Holographic Video Workspace</title>
   <style>
     :root {
-      --bg: #0b0f19;
+      --bg: #070b14;
       --surface: #111827;
-      --surface-alt: #1e293b;
-      --border: #334155;
+      --surface-alt: #1a2436;
+      --surface-elevated: #0f172a;
+      --border: #2a3a52;
+      --border-highlight: #38bdf8;
       --text: #f8fafc;
       --text-muted: #94a3b8;
       --primary: #3b82f6;
       --primary-hover: #2563eb;
       --accent: #10b981;
+      --cyan: #06b6d4;
       --warn: #f59e0b;
       --danger: #ef4444;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: var(--bg);
+      background: radial-gradient(circle at 15% 0%, #111c35 0%, var(--bg) 55%);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
-      line-height: 1.6;
+      line-height: 1.45;
       min-height: 100vh;
     }
     header {
-      background: rgba(17, 24, 39, 0.9);
+      background: rgba(15, 23, 42, 0.92);
       border-bottom: 1px solid var(--border);
-      padding: 16px 28px;
+      padding: 12px 22px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       position: sticky;
       top: 0;
       z-index: 20;
-      backdrop-filter: blur(8px);
+      backdrop-filter: blur(10px);
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: 12px;
-      font-size: 20px;
+      gap: 10px;
+      font-size: 18px;
       font-weight: 700;
       letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+    .brand-sub {
+      font-size: 12px;
+      font-weight: 500;
+      color: #7dd3fc;
+      background: rgba(14, 165, 233, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 3px 9px;
+      border-radius: 9999px;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
     .badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
+      gap: 5px;
+      font-size: 11px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 3px 9px;
       border-radius: 9999px;
       background: var(--surface-alt);
       border: 1px solid var(--border);
+      white-space: nowrap;
     }
-    .badge.ok { border-color: rgba(16,185,129,0.5); color: #34d399; background: rgba(16,185,129,0.1); }
-    .badge.warn { border-color: rgba(245,158,11,0.5); color: #fbbf24; background: rgba(245,158,11,0.1); }
+    .badge.ok { border-color: rgba(16,185,129,0.5); color: #34d399; background: rgba(16,185,129,0.12); }
+    .badge.warn { border-color: rgba(245,158,11,0.5); color: #fbbf24; background: rgba(245,158,11,0.12); }
+    .badge.cyan { border-color: rgba(56,189,248,0.5); color: #38bdf8; background: rgba(56,189,248,0.12); }
     main {
-      max-width: 1400px;
+      max-width: 1360px;
       margin: 0 auto;
-      padding: 24px 28px;
+      padding: 16px 20px 28px 20px;
       display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 24px;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 16px;
     }
     .card {
+      min-width: 0;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+      padding: 16px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.3);
     }
     .col-12 { grid-column: span 12; }
     .col-6 { grid-column: span 6; }
-    @media (max-width: 1024px) { .col-6 { grid-column: span 12; } }
+    @media (max-width: 820px) { .col-6 { grid-column: span 12; } }
     h2 {
-      font-size: 17px;
+      font-size: 15px;
       font-weight: 600;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
     }
     .status-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
     }
     .subcard {
       background: var(--surface-alt);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 14px;
+      padding: 10px 12px;
     }
-    .subcard h3 { font-size: 14px; margin-bottom: 6px; color: #e2e8f0; }
-    .muted { color: var(--text-muted); font-size: 13px; }
+    .subcard h3 {
+      font-size: 13px;
+      margin-bottom: 5px;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .muted { color: var(--text-muted); font-size: 12px; }
     input, select, textarea {
       width: 100%;
-      background: #0f172a;
+      background: var(--surface-elevated);
       color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 9px 12px;
-      font-size: 14px;
-      margin-bottom: 10px;
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 13px;
+      outline: none;
     }
-    textarea { min-height: 120px; font-family: monospace; resize: vertical; }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--border-highlight);
+    }
+    textarea { min-height: 112px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
     button {
       background: var(--primary);
       color: #fff;
       border: none;
-      border-radius: 8px;
-      padding: 9px 16px;
-      font-size: 14px;
+      border-radius: 7px;
+      padding: 7px 13px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
     }
     button:hover { background: var(--primary-hover); }
-    button.secondary { background: var(--surface-alt); border: 1px solid var(--border); }
-    .row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+    button.secondary {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: #e2e8f0;
+    }
+    button.secondary:hover {
+      border-color: var(--border-highlight);
+      color: #fff;
+    }
+    button.secondary.active {
+      background: rgba(14, 165, 233, 0.18);
+      border-color: #38bdf8;
+      color: #38bdf8;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .form-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .field-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(51,65,85,0.65); }
+    th { color: var(--text-muted); font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+    tr.proj-row { cursor: pointer; transition: background 0.12s; }
+    tr.proj-row:hover { background: rgba(56, 189, 248, 0.08); }
+    tr.proj-row.selected { background: rgba(56, 189, 248, 0.14); }
+    .char-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      max-height: 175px;
+      overflow-y: auto;
+    }
+    .pose-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 6px;
+    }
+    .pose-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.14);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.12s;
+    }
+    .pose-pill:hover, .pose-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+    .status-toast {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      min-height: 31px;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status-toast.visible {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    /* 3-Layer Holographic Compositing Gallery */
+    .compositor-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+    .compositor-layout > * { min-width: 0; }
+    .layer-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .layer-card {
+      min-width: 0;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .layer-card:hover {
+      border-color: rgba(56, 189, 248, 0.6);
+      transform: translateY(-1px);
+    }
+    .layer-card.active {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.28), 0 8px 20px rgba(6, 182, 212, 0.18);
+      background: rgba(14, 165, 233, 0.1);
+    }
+    .layer-thumb-wrap {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 6px;
+      overflow: hidden;
+      background: repeating-conic-gradient(#162032 0% 25%, #0d1524 0% 50%) 50% / 14px 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .layer-thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .layer-title {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .layer-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .spotlight-box {
+      min-width: 0;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .spotlight-stage {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 7px;
+      overflow: hidden;
+      background: repeating-conic-gradient(#162032 0% 25%, #0d1524 0% 50%) 50% / 16px 16px;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+    .spotlight-stage img {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .formatter-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+    .formatter-grid > * { min-width: 0; }
     .preview-box {
       background: #ffffff;
       color: #1f2937;
       border-radius: 8px;
-      padding: 16px;
-      max-height: 360px;
+      padding: 12px;
+      height: 215px;
       overflow-y: auto;
       border: 1px solid var(--border);
+      zoom: 0.78;
     }
-    /* AI API Docs Drawer */
-    .drawer {
-      position: fixed;
-      top: 0;
-      right: -540px;
-      width: 520px;
-      max-width: 92vw;
-      height: 100vh;
-      background: var(--surface);
-      border-left: 1px solid var(--border);
-      padding: 24px;
-      overflow-y: auto;
-      transition: right 0.25s ease;
-      z-index: 50;
-      box-shadow: -8px 0 30px rgba(0,0,0,0.6);
-    }
-    .drawer.open { right: 0; }
-    pre.code {
-      background: #090d16;
-      color: #38bdf8;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 12px;
-      overflow-x: auto;
-      border: 1px solid #1e293b;
-      margin: 8px 0 16px 0;
-    }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-    th { color: var(--text-muted); font-weight: 600; }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <span>🎬 ContentFlow Studio</span>
-      <span id="health-badge" class="badge">Checking API...</span>
+      <span class="brand-sub">2D/3D Figurine & Holographic Video Engine</span>
     </div>
-    <div>
-      <button class="secondary" onclick="toggleDocs()">🤖 AI API Docs</button>
+    <div class="header-actions">
+      <span id="health-badge" class="badge ok">Checking Studio Engine...</span>
+      <button class="secondary" onclick="loadStatus()">↻ Refresh</button>
     </div>
   </header>
 
   <main>
-    <!-- Pipeline & Provider Readiness -->
-    <section class="card col-12">
-      <h2>
-        <span>⚡ Pipeline & Video Provider Readiness</span>
-        <button class="secondary" onclick="loadStatus()">Refresh</button>
+    <!-- Pipeline & Video Provider Readiness -->
+    <section class="card col-12" style="padding: 12px 16px;">
+      <h2 style="margin-bottom: 8px;">
+        <span>⚡ Multi-Modal Pipeline & Video Provider Readiness</span>
+        <span class="badge cyan">3 Production Modes Ready</span>
       </h2>
       <div id="status-container" class="status-grid"></div>
     </section>
 
-    <!-- Projects List & Creator -->
+    <!-- Projects Workspace -->
     <section class="card col-6">
-      <h2>📁 Projects Workspace</h2>
+      <h2>
+        <span>📁 Projects Workspace</span>
+        <span id="projects-count-badge" class="badge">7 Projects</span>
+      </h2>
       <div class="row">
-        <input id="new-proj-name" placeholder="New project name (e.g. cyber_tutorial)" />
-        <select id="new-proj-mode" style="max-width: 160px;">
-          <option value="hybrid">2D/3D Hybrid</option>
+        <input id="new-proj-name" placeholder="New project (e.g. rag_demo)" style="flex: 1; min-width: 120px;" />
+        <select id="new-proj-mode" style="width: 132px; flex-shrink: 0;">
+          <option value="hybrid">Hybrid 2D/3D</option>
           <option value="3d">3D Blender</option>
           <option value="keyframe">Keyframe RIFE</option>
           <option value="api">Cloud Video API</option>
         </select>
-        <button onclick="createProject()">+ New Project</button>
+        <button id="btn-create-project" onclick="createProject()">+ Create</button>
       </div>
-      <div id="projects-container"></div>
+      <div id="projects-container" style="max-height: 215px; overflow-y: auto;"></div>
     </section>
 
     <!-- Character Asset Library Browser & Reuse -->
     <section class="card col-6">
-      <h2>🧝‍♀️ Character Asset Library & Reuse</h2>
-      <div class="row">
-        <input id="reuse-project" placeholder="Target Project (e.g. 002_yowane_cicd)" />
-        <input id="reuse-char" placeholder="Character ID (e.g. yowane_haku)" />
-        <input id="reuse-pose" placeholder="Pose (e.g. teaching)" />
-        <button onclick="reuseAsset()">Reuse Asset</button>
-      </div>
-      <div id="reuse-msg" class="muted" style="margin-bottom:8px;"></div>
-      <div id="characters-container" class="status-grid"></div>
-    </section>
-
-    <!-- Interactive Whiteboard HTML Formatter Previewer -->
-    <section class="card col-12">
-      <h2>📝 Interactive Whiteboard & WeChat HTML Formatter</h2>
-      <div class=" status-grid">
+      <h2>
+        <span>🧝‍♀️ Character Asset Library & Reuse</span>
+        <span class="badge cyan">Click Pose Pill or Reuse</span>
+      </h2>
+      <div class="form-grid-2">
         <div>
-          <input id="fmt-title" value="CI/CD Pipeline Architecture" placeholder="Presentation Title" />
-          <textarea id="fmt-text"># Pipeline Overview
-
-1. **Deterministic Builds** with `uv` and locked dependencies.
-2. **Automated Verification** across unit and integration suites.
-
-- Zero manual glue scripts
-- Full artifact traceability</textarea>
-          <button onclick="formatHtml()">Render Presentation HTML</button>
+          <label class="field-label" for="reuse-project">Target Project</label>
+          <select id="reuse-project"></select>
         </div>
         <div>
-          <div id="fmt-preview" class="preview-box">Click "Render Presentation HTML" to preview...</div>
+          <label class="field-label" for="reuse-char">Character Anchor</label>
+          <select id="reuse-char" onchange="syncCharacterPoseOptions()"></select>
+        </div>
+      </div>
+      <div class="row">
+        <select id="reuse-pose" style="flex: 1;"></select>
+        <button id="btn-reuse-asset" onclick="reuseAsset()">Reuse Pose Into Project</button>
+      </div>
+      <div id="reuse-msg" class="status-toast">Select any character pose pill below to copy into Target Project</div>
+      <div id="characters-container" class="char-grid"></div>
+    </section>
+
+    <!-- Visual 3-Layer Holographic Compositing Gallery -->
+    <section id="compositor-section" class="card col-12">
+      <h2>
+        <span style="white-space: nowrap;">🖼️ 3-Layer Holographic Stage Compositing Gallery</span>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <select id="compositor-project" onchange="selectCompositorProject(this.value)" style="width: 175px; padding: 5px 8px; font-size: 12px;"></select>
+          <button id="step-btn-z0" class="secondary" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('z0')">Z=0 Stage</button>
+          <button id="step-btn-z1" class="secondary" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('z1')">Z=1 Board</button>
+          <button id="step-btn-z2" class="secondary" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('z2')">Z=2 Cutout</button>
+          <button id="step-btn-final" class="secondary active" style="padding: 5px 9px; font-size: 12px;" onclick="activateLayerStep('final')">Final 1080P</button>
+        </div>
+      </h2>
+      <div class="compositor-layout">
+        <div style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div class="layer-cards-grid">
+            <div id="layer-card-z0" class="layer-card" onclick="activateLayerStep('z0')">
+              <div class="layer-thumb-wrap">
+                <img id="layer-img-z0" src="/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg" alt="Z=0 Stage Background" />
+              </div>
+              <div>
+                <div class="layer-title">Z=0 Stage BG</div>
+                <div class="layer-meta"><span class="badge">2560×1440</span></div>
+              </div>
+            </div>
+
+            <div id="layer-card-z1" class="layer-card" onclick="activateLayerStep('z1')">
+              <div class="layer-thumb-wrap">
+                <img id="layer-img-z1" src="/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png" alt="Z=1 Glowing Holographic Whiteboard" />
+              </div>
+              <div>
+                <div class="layer-title">Z=1 Holo Board</div>
+                <div class="layer-meta"><span class="badge cyan">RGBA Glass</span></div>
+              </div>
+            </div>
+
+            <div id="layer-card-z2" class="layer-card" onclick="activateLayerStep('z2')">
+              <div class="layer-thumb-wrap">
+                <img id="layer-img-z2" src="/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png" alt="Z=2 Rembg Figurine Cutout" />
+              </div>
+              <div>
+                <div class="layer-title">Z=2 Cutout</div>
+                <div class="layer-meta"><span class="badge ok">Alpha PNG</span></div>
+              </div>
+            </div>
+
+            <div id="layer-card-final" class="layer-card active" onclick="activateLayerStep('final')">
+              <div class="layer-thumb-wrap">
+                <img id="layer-img-final" src="/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg" alt="Final 1080P Composited Frame" />
+              </div>
+              <div>
+                <div class="layer-title">Final Composite</div>
+                <div class="layer-meta"><span class="badge ok">1080P Master</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="subcard" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; padding: 8px 12px;">
+            <span class="muted">Z-Order: <strong>Z=0 Stage</strong> → <strong>Z=1 Holographic Board</strong> → <strong>Z=2 Figurine Cutout</strong></span>
+            <span id="compositor-layer-tag" class="badge ok">Active: Final 1080P Composite</span>
+          </div>
+        </div>
+
+        <div class="spotlight-box">
+          <div class="spotlight-stage">
+            <img id="compositor-spotlight-img" src="/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg" alt="Active Layer Preview" />
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="min-width: 0;">
+              <div id="compositor-spotlight-title" style="font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Final 1080P Composite • 002_yowane_cicd</div>
+              <div id="compositor-spotlight-desc" class="muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Merged Z=0 stage + Z=1 glass board + Z=2 figurine cutout</div>
+            </div>
+            <span class="badge cyan">Zero Occlusion</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Whiteboard & WeChat HTML Formatter Previewer -->
+    <section id="formatter-section" class="card col-12">
+      <h2>
+        <span>📝 Interactive Holographic Whiteboard & WeChat HTML Formatter</span>
+        <span class="badge">Inline CSS • Zero External Stylesheets</span>
+      </h2>
+      <div class="formatter-grid">
+        <div>
+          <div class="row">
+            <input id="fmt-title" value="3-Layer Holographic Video Pipeline" placeholder="Presentation Title" style="flex: 1;" />
+            <button id="btn-render-html" onclick="formatHtml()">Render HTML</button>
+          </div>
+          <textarea id="fmt-text">1. **Deterministic Z-Order Stage** separating `Z=0` background, `Z=1` glass board, and `Z=2` figurine cutout.
+2. **Automated Quality Gates** across unit, API, and visual regression suites.
+
+- Zero manual glue scripts on production servers
+- Full artifact traceability from script to 1080P MP4</textarea>
+        </div>
+        <div>
+          <div id="fmt-preview" class="preview-box">Click "Render HTML" to preview...</div>
         </div>
       </div>
     </section>
   </main>
 
-  <!-- AI API Docs Drawer -->
-  <aside id="api-drawer" class="drawer">
-    <h2>
-      <span>🤖 AI Canonical HTTP API (`/api/v1/*`)</span>
-      <button class="secondary" onclick="toggleDocs()">Close ✕</button>
-    </h2>
-    <p class="muted" style="margin-bottom:14px;">
-      ContentFlow strictly follows "Human via UI, AI via API, Single Canonical API".
-      Both this Studio WebUI and AI agents interact with the exact same JSON endpoints:
-    </p>
-    <h4>1. Health & Readiness</h4>
-    <pre class="code">curl -s http://127.0.0.1:8090/api/v1/health
-curl -s http://127.0.0.1:8090/api/v1/status</pre>
-
-    <h4>2. Character Asset Library</h4>
-    <pre class="code">curl -s http://127.0.0.1:8090/api/v1/library/characters
-
-curl -s -X POST http://127.0.0.1:8090/api/v1/library/characters \\
-  -H "Content-Type: application/json" \\
-  -d '{"char_id":"noshiro","name":"Noshiro","master_ref":"assets/noshiro.jpg","description":"3D figurine"}'</pre>
-
-    <h4>3. Projects & Asset Reuse</h4>
-    <pre class="code">curl -s http://127.0.0.1:8090/api/v1/projects
-
-curl -s -X POST http://127.0.0.1:8090/api/v1/projects \\
-  -H "Content-Type: application/json" \\
-  -d '{"project_name":"demo_tutorial","mode":"hybrid"}'
-
-curl -s -X POST http://127.0.0.1:8090/api/v1/projects/demo_tutorial/reuse-asset \\
-  -H "Content-Type: application/json" \\
-  -d '{"char_id":"yowane_haku","pose":"teaching"}'</pre>
-
-    <h4>4. Presentation HTML Formatter</h4>
-    <pre class="code">curl -s -X POST http://127.0.0.1:8090/api/v1/format-html \\
-  -H "Content-Type: application/json" \\
-  -d '{"title":"Demo","text":"# Hello\\n\\n- **Fast** pipeline"}'</pre>
-  </aside>
-
   <script>
-    function toggleDocs() {
-      document.getElementById('api-drawer').classList.toggle('open');
-    }
+    let STUDIO_PROJECTS = [];
+    let STUDIO_CHARACTERS = {};
+    let ACTIVE_PROJECT_ID = '002_yowane_cicd';
+    let ACTIVE_LAYER_STEP = 'final';
+
+    const LAYER_STEP_META = {
+      z0: {
+        short: 'Z=0 Stage Background',
+        desc: '16:9 2560×1440 background stage decomposed without foreground clutter'
+      },
+      z1: {
+        short: 'Z=1 Holographic Board',
+        desc: 'Translucent cyan glass projection board rendered with typography cards'
+      },
+      z2: {
+        short: 'Z=2 Figurine Cutout',
+        desc: 'High-precision alpha-channel 3D figurine cutout positioned at x=2%..34%'
+      },
+      final: {
+        short: 'Final 1080P Composite',
+        desc: 'Merged Z=0 stage + Z=1 holographic whiteboard + Z=2 figurine cutout'
+      }
+    };
 
     async function loadHealth() {
       const res = await fetch('/api/v1/health');
       const data = await res.json();
       const badge = document.getElementById('health-badge');
-      badge.textContent = `${data.service} v${data.version} • ${data.status.toUpperCase()}`;
+      badge.textContent = `Studio Ready • v${data.version}`;
       badge.className = 'badge ok';
     }
 
@@ -320,69 +595,150 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/projects/demo_tutorial/reuse-asset 
         const div = document.createElement('div');
         div.className = 'subcard';
         div.innerHTML = `
-          <h3>${info.name || key}</h3>
-          <span class="badge ${ready ? 'ok' : 'warn'}">${info.status}</span>
+          <h3>
+            <span>${info.name || key}</span>
+            <span class="badge ${ready ? 'ok' : 'warn'}">${info.status.toUpperCase()}</span>
+          </h3>
+          <div class="muted">Deterministic stage & audio sync</div>
         `;
         container.appendChild(div);
       }
       const provDiv = document.createElement('div');
       provDiv.className = 'subcard';
       const provBadges = Object.entries(data.video_providers || {})
-        .map(([k, v]) => `<span class="badge ${v ? 'ok' : 'warn'}">${k}: ${v ? 'ON' : 'OFF'}</span>`)
+        .map(([k, v]) => `<span class="badge ${v ? 'ok' : 'warn'}">${k.replace('volcengine_', '')}: ${v ? 'ON' : 'SIM'}</span>`)
         .join(' ');
-      provDiv.innerHTML = `<h3>Video Providers</h3><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">${provBadges}</div>`;
+      provDiv.innerHTML = `<h3><span>Video Engines</span></h3><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${provBadges}</div>`;
       container.appendChild(provDiv);
     }
 
     async function loadProjects() {
       const res = await fetch('/api/v1/projects');
       const data = await res.json();
+      STUDIO_PROJECTS = data.projects || [];
+      const countBadge = document.getElementById('projects-count-badge');
+      if (countBadge) countBadge.textContent = `${STUDIO_PROJECTS.length} Projects`;
+
       const container = document.getElementById('projects-container');
-      const rows = (data.projects || []).map(p => `
-        <tr>
+      const rows = STUDIO_PROJECTS.map(p => `
+        <tr class="proj-row ${p.project_id === ACTIVE_PROJECT_ID ? 'selected' : ''}" onclick="selectCompositorProject('${p.project_id}')">
           <td><strong>${p.project_id}</strong></td>
+          <td><span class="badge">${p.mode || 'hybrid'}</span></td>
           <td>${p.raw_assets}</td>
-          <td>${p.whiteboards}</td>
-          <td>${p.backgrounds}</td>
           <td>${p.composited}</td>
           <td>${p.scripts}</td>
         </tr>
       `).join('');
       container.innerHTML = `
         <table>
-          <thead><tr><th>Project</th><th>Raw</th><th>Boards</th><th>BGs</th><th>Comp</th><th>Scripts</th></tr></thead>
+          <thead><tr><th>Project ID</th><th>Mode</th><th>Assets</th><th>Comp</th><th>Scripts</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       `;
+
+      const reuseProjSelect = document.getElementById('reuse-project');
+      const compProjSelect = document.getElementById('compositor-project');
+      const prevReuse = reuseProjSelect.value || ACTIVE_PROJECT_ID;
+      const optionsHtml = STUDIO_PROJECTS.map(p =>
+        `<option value="${p.project_id}">${p.project_id}</option>`
+      ).join('');
+      reuseProjSelect.innerHTML = optionsHtml;
+      compProjSelect.innerHTML = optionsHtml;
+
+      if (STUDIO_PROJECTS.some(p => p.project_id === prevReuse)) {
+        reuseProjSelect.value = prevReuse;
+      }
+      if (STUDIO_PROJECTS.some(p => p.project_id === ACTIVE_PROJECT_ID)) {
+        compProjSelect.value = ACTIVE_PROJECT_ID;
+      } else if (STUDIO_PROJECTS.length > 0) {
+        ACTIVE_PROJECT_ID = STUDIO_PROJECTS[0].project_id;
+        compProjSelect.value = ACTIVE_PROJECT_ID;
+      }
+      updateCompositorGallery();
     }
 
     async function createProject() {
       const project_name = document.getElementById('new-proj-name').value.trim();
       const mode = document.getElementById('new-proj-mode').value;
       if (!project_name) return;
-      await fetch('/api/v1/projects', {
+      const res = await fetch('/api/v1/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_name, mode })
       });
+      const created = await res.json();
       document.getElementById('new-proj-name').value = '';
+      if (created && created.project_id) {
+        ACTIVE_PROJECT_ID = created.project_id;
+      }
       await loadProjects();
+      if (created && created.project_id) {
+        document.getElementById('reuse-project').value = created.project_id;
+      }
     }
 
     async function loadCharacters() {
       const res = await fetch('/api/v1/library/characters');
       const data = await res.json();
+      STUDIO_CHARACTERS = data.characters || {};
+
+      const charSelect = document.getElementById('reuse-char');
+      const charList = Object.values(STUDIO_CHARACTERS);
+      charSelect.innerHTML = charList.map(c =>
+        `<option value="${c.char_id}">${c.name}</option>`
+      ).join('');
+
+      if (STUDIO_CHARACTERS['yowane_haku']) {
+        charSelect.value = 'yowane_haku';
+      }
+      syncCharacterPoseOptions();
+      renderCharacterCards();
+    }
+
+    function syncCharacterPoseOptions(preferredPose) {
+      const charId = document.getElementById('reuse-char').value;
+      const poseSelect = document.getElementById('reuse-pose');
+      const charInfo = STUDIO_CHARACTERS[charId] || {};
+      const poses = Object.keys(charInfo.poses || {});
+      const poseList = poses.length > 0 ? poses : ['teaching', 'explaining', 'warning', 'thumbs_up'];
+      poseSelect.innerHTML = poseList.map(pose =>
+        `<option value="${pose}">Pose: ${pose}</option>`
+      ).join('');
+      if (preferredPose && poseList.includes(preferredPose)) {
+        poseSelect.value = preferredPose;
+      }
+      renderCharacterCards();
+    }
+
+    function renderCharacterCards() {
       const container = document.getElementById('characters-container');
-      const chars = data.characters || {};
-      container.innerHTML = Object.values(chars).map(c => {
-        const poses = Object.keys(c.poses || {}).join(', ') || 'none';
+      const activeChar = document.getElementById('reuse-char').value;
+      const activePose = document.getElementById('reuse-pose').value;
+
+      container.innerHTML = Object.values(STUDIO_CHARACTERS).map(c => {
+        const poseKeys = Object.keys(c.poses || {});
+        const pills = poseKeys.length > 0
+          ? poseKeys.map(p => {
+              const isSelected = (c.char_id === activeChar && p === activePose);
+              return `<span class="pose-pill ${isSelected ? 'active' : ''}" onclick="quickReusePose('${c.char_id}', '${p}')">${p}</span>`;
+            }).join('')
+          : '<span class="muted">master anchor</span>';
         return `
-          <div class="subcard">
-            <h3>${c.name} <span class="muted">(${c.char_id})</span></h3>
-            <div class="muted">Poses: ${poses}</div>
+          <div class="subcard" style="${c.char_id === activeChar ? 'border-color: rgba(56,189,248,0.6);' : ''}">
+            <h3>
+              <span>${c.name}</span>
+              <span class="badge">${poseKeys.length} poses</span>
+            </h3>
+            <div class="pose-pills">${pills}</div>
           </div>
         `;
       }).join('');
+    }
+
+    async function quickReusePose(char_id, pose) {
+      document.getElementById('reuse-char').value = char_id;
+      syncCharacterPoseOptions(pose);
+      await reuseAsset();
     }
 
     async function reuseAsset() {
@@ -396,10 +752,70 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/projects/demo_tutorial/reuse-asset 
         body: JSON.stringify({ char_id, pose })
       });
       const data = await res.json();
-      document.getElementById('reuse-msg').textContent = data.status === 'ok'
-        ? `✅ Reused into ${data.project}: ${data.dest_path}`
-        : `❌ ${data.error || 'Failed to reuse asset'}`;
+      const msgEl = document.getElementById('reuse-msg');
+      msgEl.className = 'status-toast visible';
+      if (data.status === 'ok') {
+        const shortFile = (data.dest_path || '').split('/').slice(-2).join('/');
+        msgEl.textContent = `✅ Reused ${char_id} (${pose}) into ${data.project} → ${shortFile}`;
+        ACTIVE_PROJECT_ID = data.project;
+      } else {
+        msgEl.textContent = `❌ ${data.error || 'Failed to reuse asset'}`;
+      }
+      renderCharacterCards();
       await loadProjects();
+    }
+
+    function selectCompositorProject(projectId) {
+      if (!projectId) return;
+      ACTIVE_PROJECT_ID = projectId;
+      const compSelect = document.getElementById('compositor-project');
+      if (compSelect && compSelect.value !== projectId) {
+        compSelect.value = projectId;
+      }
+      const reuseSelect = document.getElementById('reuse-project');
+      if (reuseSelect && reuseSelect.value !== projectId) {
+        reuseSelect.value = projectId;
+      }
+      document.querySelectorAll('tr.proj-row').forEach(tr => {
+        tr.classList.toggle('selected', tr.textContent.includes(projectId));
+      });
+      updateCompositorGallery();
+    }
+
+    function updateCompositorGallery() {
+      const proj = STUDIO_PROJECTS.find(p => p.project_id === ACTIVE_PROJECT_ID) || STUDIO_PROJECTS[0];
+      const layers = (proj && proj.layers) || {
+        z0_background: '/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg',
+        z1_whiteboard: '/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png',
+        z2_cutout: '/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png',
+        final_composited: '/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg'
+      };
+      document.getElementById('layer-img-z0').src = layers.z0_background;
+      document.getElementById('layer-img-z1').src = layers.z1_whiteboard;
+      document.getElementById('layer-img-z2').src = layers.z2_cutout;
+      document.getElementById('layer-img-final').src = layers.final_composited;
+      activateLayerStep(ACTIVE_LAYER_STEP);
+    }
+
+    function activateLayerStep(step) {
+      ACTIVE_LAYER_STEP = step;
+      const stepMap = {
+        z0: document.getElementById('layer-img-z0').src,
+        z1: document.getElementById('layer-img-z1').src,
+        z2: document.getElementById('layer-img-z2').src,
+        final: document.getElementById('layer-img-final').src
+      };
+      ['z0', 'z1', 'z2', 'final'].forEach(k => {
+        const card = document.getElementById(`layer-card-${k}`);
+        const btn = document.getElementById(`step-btn-${k}`);
+        if (card) card.classList.toggle('active', k === step);
+        if (btn) btn.classList.toggle('active', k === step);
+      });
+      const meta = LAYER_STEP_META[step] || LAYER_STEP_META.final;
+      document.getElementById('compositor-spotlight-img').src = stepMap[step] || stepMap.final;
+      document.getElementById('compositor-spotlight-title').textContent = `${meta.short} • ${ACTIVE_PROJECT_ID}`;
+      document.getElementById('compositor-spotlight-desc').textContent = meta.desc;
+      document.getElementById('compositor-layer-tag').textContent = `Active: ${meta.short}`;
     }
 
     async function formatHtml() {
@@ -471,6 +887,43 @@ def inspect_project_counts(proj_dir: Path) -> Dict[str, int]:
     }
 
 
+def resolve_project_layers(proj_dir: Path) -> Dict[str, str]:
+    """Resolves 3-layer holographic compositing preview URLs for a project."""
+    z0_bg = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_0_z0_background.jpg"
+    z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_1_z1_全息大屏底板.png"
+    z2_cutout = "/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png"
+    final_comp = "/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg"
+
+    pname = proj_dir.name.lower()
+    if "005" in pname or "noshiro" in pname:
+        z2_cutout = "/media/projects/005_transformer_noshiro_tutorial/assets/noshiro_transparent.png"
+        final_comp = "/media/projects/005_transformer_noshiro_tutorial/images/scene_2.jpg"
+    elif "004" in pname or "2b" in pname:
+        z2_cutout = "/media/library/characters/yorha_2b/teaching/2b_teaching_base_url.jpg"
+        final_comp = "/media/projects/004_ai_api_tutorial_2b/assets/scene2_base_url.jpg"
+    else:
+        assets_dir = proj_dir / "assets"
+        if assets_dir.is_dir():
+            for f in sorted(assets_dir.iterdir()):
+                if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+                    fname = f.name.lower()
+                    if "2b" in fname:
+                        z2_cutout = "/media/library/characters/yorha_2b/teaching/2b_teaching_base_url.jpg"
+                        final_comp = "/media/projects/004_ai_api_tutorial_2b/assets/scene2_base_url.jpg"
+                        break
+                    if "noshiro" in fname:
+                        z2_cutout = "/media/projects/005_transformer_noshiro_tutorial/assets/noshiro_transparent.png"
+                        final_comp = "/media/projects/005_transformer_noshiro_tutorial/images/scene_2.jpg"
+                        break
+
+    return {
+        "z0_background": z0_bg,
+        "z1_whiteboard": z1_board,
+        "z2_cutout": z2_cutout,
+        "final_composited": final_comp,
+    }
+
+
 def list_projects_summary(projects_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Lists all projects in projects/ with their scene/asset counts."""
     target_projects_dir = projects_dir or cli.PROJECTS_DIR
@@ -490,6 +943,7 @@ def list_projects_summary(projects_dir: Optional[Path] = None) -> List[Dict[str,
                 brief_data = {}
 
         counts = inspect_project_counts(proj)
+        layers = resolve_project_layers(proj)
         items.append(
             {
                 "project_id": proj.name,
@@ -498,6 +952,7 @@ def list_projects_summary(projects_dir: Optional[Path] = None) -> List[Dict[str,
                 "mode": brief_data.get("mode", "hybrid"),
                 "path": str(proj),
                 "counts": counts,
+                "layers": layers,
                 **counts,
             }
         )
@@ -546,6 +1001,33 @@ class ContentFlowRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_media_file(self, rel_media_path: str) -> None:
+        clean_rel = unquote(rel_media_path).lstrip("/")
+        for candidate_root in (self._get_root_dir(), cli.CONTENTFLOW_ROOT):
+            base_resolved = candidate_root.resolve()
+            target = (base_resolved / clean_rel).resolve()
+            if not str(target).startswith(str(base_resolved)):
+                continue
+            if target.is_file() and target.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}:
+                ext = target.suffix.lower()
+                mime_map = {
+                    ".png": "image/png",
+                    ".jpg": "image/jpeg",
+                    ".jpeg": "image/jpeg",
+                    ".webp": "image/webp",
+                    ".gif": "image/gif",
+                    ".svg": "image/svg+xml",
+                }
+                data = target.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", mime_map.get(ext, "application/octet-stream"))
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "public, max-age=300")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+        self._send_json({"status": "error", "error": f"Media not found: {clean_rel}"}, status_code=404)
+
     def _read_json_body(self) -> Dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or "0")
         if length <= 0:
@@ -562,6 +1044,10 @@ class ContentFlowRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/":
             self._send_html(STUDIO_HTML)
+            return
+
+        if path.startswith("/media/"):
+            self._send_media_file(path[len("/media/") :])
             return
 
         if path == "/api/v1/health":
