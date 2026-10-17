@@ -135,6 +135,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
     }
+    @media (max-width: 1180px) { .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .subcard {
       min-width: 0;
       background: var(--surface-alt);
@@ -251,7 +252,8 @@ STUDIO_HTML = """<!DOCTYPE html>
       color: #ffffff;
     }
     .status-toast {
-      font-size: 12px;
+      font-size: 11.5px;
+      line-height: 1.35;
       padding: 6px 10px;
       border-radius: 6px;
       background: rgba(30, 41, 59, 0.7);
@@ -261,9 +263,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       min-height: 31px;
       display: flex;
       align-items: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      word-break: break-word;
     }
     .status-toast.visible {
       background: rgba(16, 185, 129, 0.12);
@@ -470,7 +470,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       <h2>
         <span style="white-space: nowrap;" data-i18n="sec_compositor">🖼️ 3-Layer Holographic Stage Compositing Gallery</span>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <select id="compositor-project" onchange="selectCompositorProject(this.value)" style="width: 175px; padding: 5px 8px; font-size: 12px;"></select>
+          <select id="compositor-project" onchange="selectCompositorProject(this.value)" style="width: 190px; padding: 5px 8px; font-size: 12px;"></select>
           <button id="step-btn-z0" class="secondary" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_z0" onclick="activateLayerStep('z0')">Z=0 Stage</button>
           <button id="step-btn-z1" class="secondary" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_z1" onclick="activateLayerStep('z1')">Z=1 Board</button>
           <button id="step-btn-z2" class="secondary" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_z2" onclick="activateLayerStep('z2')">Z=2 Cutout</button>
@@ -522,7 +522,7 @@ STUDIO_HTML = """<!DOCTYPE html>
           </div>
           <div class="subcard" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px;">
             <span class="muted" id="z-order-caption" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;" data-i18n="z_order_caption">Z-Order: Z=0 Stage → Z=1 Board → Z=2 Cutout</span>
-            <span id="compositor-layer-tag" class="badge ok">Active: Final 1080P Composite</span>
+            <span id="compositor-layer-tag" class="badge ok">Active: Final 1080P</span>
           </div>
         </div>
 
@@ -532,8 +532,8 @@ STUDIO_HTML = """<!DOCTYPE html>
           </div>
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
             <div style="min-width: 0;">
-              <div id="compositor-spotlight-title" style="font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Final 1080P Composite • 002_yowane_cicd</div>
-              <div id="compositor-spotlight-desc" class="muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Merged Z=0 stage + Z=1 glass board + Z=2 figurine cutout</div>
+              <div id="compositor-spotlight-title" style="font-size: 12px; font-weight: 700; color: #f8fafc;">Final 1080P • 002 · Yowane Haku CI/CD</div>
+              <div id="compositor-spotlight-desc" class="muted" style="font-size: 11px;">Merged Z=0 stage + Z=1 board + Z=2 cutout</div>
             </div>
             <span class="badge cyan" data-i18n="badge_zero_occlusion">Zero Occlusion</span>
           </div>
@@ -596,9 +596,9 @@ STUDIO_HTML = """<!DOCTYPE html>
         health_ready_prefix: 'Studio Ready • v',
         sec_pipeline: '⚡ Multi-Modal Pipeline & Video Provider Readiness',
         badge_3_modes: '3 Production Modes Ready',
-        pipe_mode_1_3d: '3D Render + AI Frame Interpolation',
-        pipe_mode_2_keyframe: '2D Keyframe + Motion Smoothing',
-        pipe_mode_3_api: 'Single Figurine -> Video LLM Pipeline',
+        pipe_mode_1_3d: '3D Render + AI Interpolation',
+        pipe_mode_2_keyframe: '2D Keyframe + Motion Synthesis',
+        pipe_mode_3_api: 'Single Figurine -> Video LLM',
         pipe_desc: 'Deterministic stage & audio sync',
         pipe_status_ready: 'READY',
         pipe_status_pending: 'ENGINE PENDING',
@@ -645,14 +645,14 @@ STUDIO_HTML = """<!DOCTYPE html>
         z_order_caption: 'Z-Order: Z=0 Stage → Z=1 Board → Z=2 Cutout',
         active_layer_prefix: 'Active: ',
         badge_zero_occlusion: 'Zero Occlusion',
-        step_z0_short: 'Z=0 Stage Background',
-        step_z0_desc: '16:9 2560×1440 background stage decomposed without foreground clutter',
-        step_z1_short: 'Z=1 Holographic Board',
-        step_z1_desc: 'Translucent cyan glass projection board rendered with typography cards',
+        step_z0_short: 'Z=0 Stage BG',
+        step_z0_desc: '16:9 2560×1440 clean studio stage background',
+        step_z1_short: 'Z=1 Holo Board',
+        step_z1_desc: 'Translucent cyan glass projection whiteboard',
         step_z2_short: 'Z=2 Figurine Cutout',
-        step_z2_desc: 'High-precision alpha-channel 3D figurine cutout positioned at x=2%..34%',
-        step_final_short: 'Final 1080P Composite',
-        step_final_desc: 'Merged Z=0 stage + Z=1 glass board + Z=2 figurine cutout',
+        step_z2_desc: 'Alpha-channel 3D figurine cutout (x=2%..34%)',
+        step_final_short: 'Final 1080P',
+        step_final_desc: 'Merged Z=0 stage + Z=1 board + Z=2 cutout',
         sec_formatter: '📝 Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter',
         badge_inline_css: 'Inline CSS • Zero External Stylesheets',
         ph_fmt_title: 'Presentation Title',
@@ -667,9 +667,9 @@ STUDIO_HTML = """<!DOCTYPE html>
         health_ready_prefix: '引擎就绪 • v',
         sec_pipeline: '⚡ 多模态生产管线与视频引擎就绪状态',
         badge_3_modes: '3 大生产流就绪',
-        pipe_mode_1_3d: '3D 建模渲染 + AI 插帧优化流',
-        pipe_mode_2_keyframe: '2D 关键帧生成 + 动作插帧平滑流',
-        pipe_mode_3_api: '单图手办 -> 视频大模型 API 生成流',
+        pipe_mode_1_3d: '3D 建模渲染 + AI 插帧',
+        pipe_mode_2_keyframe: '2D 关键帧 + 动作平滑',
+        pipe_mode_3_api: '单图手办 -> 视频大模型',
         pipe_desc: '确定性全息舞台合成与音画同步',
         pipe_status_ready: '已就绪',
         pipe_status_pending: '待配引擎',
@@ -716,29 +716,61 @@ STUDIO_HTML = """<!DOCTYPE html>
         z_order_caption: '图层序：Z=0 远景舞台 → Z=1 全息白板 → Z=2 手办前景',
         active_layer_prefix: '当前图层：',
         badge_zero_occlusion: '零遮挡对齐',
-        step_z0_short: 'Z=0 远景舞台背景',
-        step_z0_desc: '16:9 2560×1440 纯净暗调科技演播室背景（无前景杂物干扰）',
-        step_z1_short: 'Z=1 全息玻璃白板',
-        step_z1_desc: '带发光青色玻璃边框与高对比度知识卡片的半透明全息投影层',
-        step_z2_short: 'Z=2 手办透明抠图',
-        step_z2_desc: '高精度 Alpha 通道 3D 手办角色抠图（黄金左置区 x=2%..34%）',
-        step_final_short: '1080P 最终合成帧',
-        step_final_desc: 'Z=0 远景舞台 + Z=1 全息玻璃白板 + Z=2 手办前景无损合成',
+        step_z0_short: 'Z=0 远景舞台',
+        step_z0_desc: '16:9 2560×1440 纯净暗调科技演播室背景',
+        step_z1_short: 'Z=1 全息白板',
+        step_z1_desc: '半透明青色发光玻璃与高对比度知识卡片',
+        step_z2_short: 'Z=2 手办抠图',
+        step_z2_desc: '高精度 Alpha 通道 3D 手办抠图 (x=2%..34%)',
+        step_final_short: '1080P 成片',
+        step_final_desc: 'Z=0 远景舞台 + Z=1 全息白板 + Z=2 手办无损合成',
         sec_formatter: '📝 全渠道文案与全息白板排版引擎',
         badge_inline_css: '内联 CSS • 零外部样式表依赖',
         ph_fmt_title: '输入演示白板标题',
         btn_render_html: '渲染全息排版',
-        fmt_preview_placeholder: '点击「渲染 HTML」预览排版效果...'
+        fmt_preview_placeholder: '点击「渲染全息排版」预览排版效果...'
       }
     };
 
-    const CHAR_NAME_ZH = {
-      yowane_haku: '弱音白',
-      yorha_2b: '寄叶 2B',
-      tda_luka_dress: '巡音流歌 3D',
-      tda_miku_lace: '初音未来 3D',
-      noshiro: '能代'
+    const PROJECT_LABELS = {
+      en: {
+        '001_universal_dev_engine': '001 · Universal Dev Engine',
+        '002_yowane_cicd': '002 · Yowane Haku CI/CD',
+        '003_ai_managing_ai': '003 · AI Managing AI',
+        '004_ai_api_tutorial_2b': '004 · 2B AI API Tutorial',
+        '005_transformer_noshiro_tutorial': '005 · Noshiro Transformer',
+        '006_deepseek_whale_phone_number': '006 · DeepSeek Whale Auth',
+        'agenteverywhereflow_rem': '007 · AgentEverywhere Rem'
+      },
+      zh: {
+        '001_universal_dev_engine': '001 · 通用开发引擎科普',
+        '002_yowane_cicd': '002 · 弱音白 CI/CD 教程',
+        '003_ai_managing_ai': '003 · AI 协同自治架构',
+        '004_ai_api_tutorial_2b': '004 · 2B 大模型 API 教程',
+        '005_transformer_noshiro_tutorial': '005 · 能代 Transformer 详解',
+        '006_deepseek_whale_phone_number': '006 · DeepSeek 原理科普',
+        'agenteverywhereflow_rem': '007 · 全域智能体工作流'
+      }
     };
+
+    const CHAR_LABELS = {
+      en: {
+        yowane_haku: 'Yowane Haku',
+        yorha_2b: 'YoRHa 2B',
+        tda_luka_dress: 'Megurine Luka 3D',
+        tda_miku_lace: 'Hatsune Miku 3D',
+        noshiro: 'Noshiro'
+      },
+      zh: {
+        yowane_haku: '弱音白',
+        yorha_2b: '寄叶 2B',
+        tda_luka_dress: '巡音流歌 3D',
+        tda_miku_lace: '初音未来 3D',
+        noshiro: '能代'
+      }
+    };
+
+    const CHAR_NAME_ZH = CHAR_LABELS.zh;
 
     const POSE_NAME_ZH = {
       angry: '叉腰生气',
@@ -774,12 +806,19 @@ STUDIO_HTML = """<!DOCTYPE html>
       return dict[key] !== undefined ? dict[key] : (I18N.en[key] || key);
     }
 
+    function displayProjectName(projectId) {
+      if (!projectId) return '';
+      const map = PROJECT_LABELS[CURRENT_LANG] || PROJECT_LABELS.en;
+      if (map[projectId]) return map[projectId];
+      return projectId;
+    }
+
     function displayCharName(charObj) {
       if (!charObj) return '';
-      if (CURRENT_LANG === 'zh' && CHAR_NAME_ZH[charObj.char_id]) {
-        return CHAR_NAME_ZH[charObj.char_id];
-      }
-      return charObj.name || charObj.char_id;
+      const cid = typeof charObj === 'string' ? charObj : charObj.char_id;
+      const map = CHAR_LABELS[CURRENT_LANG] || CHAR_LABELS.en;
+      if (map[cid]) return map[cid];
+      return (typeof charObj === 'object' && charObj.name) ? charObj.name : cid;
     }
 
     function displayPoseName(poseKey) {
@@ -805,6 +844,25 @@ STUDIO_HTML = """<!DOCTYPE html>
       };
     }
 
+    function syncProjectSelectLabels() {
+      const reuseProjSelect = document.getElementById('reuse-project');
+      const compProjSelect = document.getElementById('compositor-project');
+      if (!reuseProjSelect || !compProjSelect || STUDIO_PROJECTS.length === 0) return;
+      const prevReuse = reuseProjSelect.value || ACTIVE_PROJECT_ID;
+      const prevComp = compProjSelect.value || ACTIVE_PROJECT_ID;
+      const optionsHtml = STUDIO_PROJECTS.map(p =>
+        `<option value="${p.project_id}">${displayProjectName(p.project_id)}</option>`
+      ).join('');
+      reuseProjSelect.innerHTML = optionsHtml;
+      compProjSelect.innerHTML = optionsHtml;
+      if (STUDIO_PROJECTS.some(p => p.project_id === prevReuse)) {
+        reuseProjSelect.value = prevReuse;
+      }
+      if (STUDIO_PROJECTS.some(p => p.project_id === prevComp)) {
+        compProjSelect.value = prevComp;
+      }
+    }
+
     function applyTranslations() {
       document.documentElement.lang = CURRENT_LANG === 'zh' ? 'zh-CN' : 'en';
       document.title = t('page_title');
@@ -827,6 +885,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       }
       renderStatusCards();
       renderProjectsView();
+      syncProjectSelectLabels();
       if (Object.keys(STUDIO_CHARACTERS).length > 0) {
         const charSelect = document.getElementById('reuse-char');
         const currentChar = charSelect.value;
@@ -928,8 +987,8 @@ STUDIO_HTML = """<!DOCTYPE html>
       const container = document.getElementById('projects-container');
       if (!container) return;
       const rows = STUDIO_PROJECTS.map(p => `
-        <tr class="proj-row ${p.project_id === ACTIVE_PROJECT_ID ? 'selected' : ''}" onclick="selectCompositorProject('${p.project_id}')">
-          <td><strong>${p.project_id}</strong></td>
+        <tr class="proj-row ${p.project_id === ACTIVE_PROJECT_ID ? 'selected' : ''}" data-project-id="${p.project_id}" onclick="selectCompositorProject('${p.project_id}')">
+          <td><strong>${displayProjectName(p.project_id)}</strong></td>
           <td><span class="badge">${displayModeBadge(p.mode)}</span></td>
           <td>${p.raw_assets}</td>
           <td>${p.composited}</td>
@@ -953,11 +1012,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       const reuseProjSelect = document.getElementById('reuse-project');
       const compProjSelect = document.getElementById('compositor-project');
       const prevReuse = reuseProjSelect.value || ACTIVE_PROJECT_ID;
-      const optionsHtml = STUDIO_PROJECTS.map(p =>
-        `<option value="${p.project_id}">${p.project_id}</option>`
-      ).join('');
-      reuseProjSelect.innerHTML = optionsHtml;
-      compProjSelect.innerHTML = optionsHtml;
+      syncProjectSelectLabels();
 
       if (STUDIO_PROJECTS.some(p => p.project_id === prevReuse)) {
         reuseProjSelect.value = prevReuse;
@@ -1053,6 +1108,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       if (!pathStr) return '';
       return pathStr
         .replace(/[^\\x00-\\x7F]+/g, '')
+        .replace(/_+\\./g, '.')
         .replace(/\\s+\\./g, '.')
         .replace(/\\s{2,}/g, ' ')
         .replace(/\\/\\.([a-zA-Z0-9]+)$/, '/asset.$1')
@@ -1087,14 +1143,15 @@ STUDIO_HTML = """<!DOCTYPE html>
       }
       msgEl.className = 'status-toast visible';
       if (LAST_REUSE_STATE.ok) {
-        const cObj = STUDIO_CHARACTERS[LAST_REUSE_STATE.char_id] || { char_id: LAST_REUSE_STATE.char_id, name: LAST_REUSE_STATE.char_id };
-        const cLabel = CURRENT_LANG === 'zh' ? displayCharName(cObj) : LAST_REUSE_STATE.char_id;
+        const cLabel = (CHAR_LABELS[CURRENT_LANG] && CHAR_LABELS[CURRENT_LANG][LAST_REUSE_STATE.char_id]) || displayCharName(STUDIO_CHARACTERS[LAST_REUSE_STATE.char_id] || LAST_REUSE_STATE.char_id);
         const pLabel = displayPoseName(LAST_REUSE_STATE.pose);
-        const dispFile = CURRENT_LANG === 'en' ? sanitizeAsciiFilename(LAST_REUSE_STATE.shortFile) : LAST_REUSE_STATE.shortFile;
+        const projId = LAST_REUSE_STATE.project_id || LAST_REUSE_STATE.project;
+        const projLabel = (PROJECT_LABELS[CURRENT_LANG] && PROJECT_LABELS[CURRENT_LANG][projId]) || displayProjectName(projId);
+        const dispFile = sanitizeAsciiFilename(LAST_REUSE_STATE.shortFile);
         if (CURRENT_LANG === 'zh') {
-          msgEl.textContent = `✅ 已复用 ${cLabel}（${pLabel}）至 ${LAST_REUSE_STATE.project} → ${dispFile}`;
+          msgEl.textContent = `✅ 已复用 ${cLabel}（${pLabel}）至「${projLabel}」 → ${dispFile}`;
         } else {
-          msgEl.textContent = `✅ Reused ${cLabel} (${pLabel}) into ${LAST_REUSE_STATE.project} → ${dispFile}`;
+          msgEl.textContent = `✅ Reused ${cLabel} (${pLabel}) into "${projLabel}" → ${dispFile}`;
         }
       } else {
         msgEl.textContent = `❌ ${localizeReuseError(LAST_REUSE_STATE.error)}`;
@@ -1120,8 +1177,8 @@ STUDIO_HTML = """<!DOCTYPE html>
       const data = await res.json();
       if (data.status === 'ok') {
         const rawDest = data.dest_path || data.copied_to || '';
-        const shortFile = rawDest.split('/').slice(-2).join('/');
-        LAST_REUSE_STATE = { ok: true, char_id, pose, project: data.project, shortFile };
+        const shortFile = rawDest.split('/').pop() || '';
+        LAST_REUSE_STATE = { ok: true, char_id, pose, project: data.project, project_id: data.project, shortFile };
         ACTIVE_PROJECT_ID = data.project;
       } else {
         LAST_REUSE_STATE = { ok: false, error: data.error || t('reuse_failed') };
@@ -1143,7 +1200,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         reuseSelect.value = projectId;
       }
       document.querySelectorAll('tr.proj-row').forEach(tr => {
-        tr.classList.toggle('selected', tr.textContent.includes(projectId));
+        tr.classList.toggle('selected', tr.dataset.projectId === projectId);
       });
       updateCompositorGallery();
     }
@@ -1179,7 +1236,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       });
       const meta = getLayerStepMeta(step);
       document.getElementById('compositor-spotlight-img').src = stepMap[step] || stepMap.final;
-      document.getElementById('compositor-spotlight-title').textContent = `${meta.short} • ${ACTIVE_PROJECT_ID}`;
+      document.getElementById('compositor-spotlight-title').textContent = `${meta.short} • ${displayProjectName(ACTIVE_PROJECT_ID)}`;
       document.getElementById('compositor-spotlight-desc').textContent = meta.desc;
       document.getElementById('compositor-layer-tag').textContent = `${t('active_layer_prefix')}${meta.short}`;
     }
@@ -1565,16 +1622,22 @@ class ContentFlowRequestHandler(BaseHTTPRequestHandler):
                 )
                 rc = cli.cmd_reuse_asset(reuse_args)
                 if rc == 0:
-                    assets_dir = proj_dir / "assets"
-                    files = sorted(assets_dir.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
-                    dest_path = str(files[0]) if files else str(assets_dir)
+                    reused_dest = getattr(reuse_args, "_reused_dest_path", None)
+                    if not reused_dest:
+                        assets_dir = proj_dir / "assets"
+                        files = sorted(
+                            [p for p in assets_dir.glob("*") if p.is_file()],
+                            key=lambda p: p.stat().st_mtime,
+                            reverse=True,
+                        )
+                        reused_dest = str(files[0]) if files else str(assets_dir)
                     self._send_json(
                         {
                             "status": "ok",
                             "project": proj_dir.name,
                             "char_id": req_char_id,
                             "pose": req_pose,
-                            "dest_path": dest_path,
+                            "dest_path": reused_dest,
                         }
                     )
                     return
@@ -1658,4 +1721,3 @@ def run_server(host: str = "127.0.0.1", port: int = 8090, root_dir: Optional[Pat
     finally:
         server.server_close()
     return 0
-

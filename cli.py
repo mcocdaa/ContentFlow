@@ -365,6 +365,7 @@ def cmd_reuse_asset(args):
     if asset_id and asset_id in lib.assets:
         item = lib.assets[asset_id]
     elif char_id or pose:
+        matches = []
         for candidate in lib.assets.values():
             if char_id:
                 c_match = (
@@ -382,8 +383,16 @@ def cmd_reuse_asset(args):
                 )
                 if not p_match:
                     continue
-            item = candidate
-            break
+            matches.append(candidate)
+        if matches:
+            matches.sort(
+                key=lambda c: (
+                    0 if (pose and c.emotion == pose) else 1,
+                    1 if "master_reference" in (c.file_path or "") else 0,
+                    0 if all(ord(ch) < 128 for ch in Path(c.file_path or "").name) else 1,
+                )
+            )
+            item = matches[0]
 
     if item is None:
         target_desc = asset_id or f"char_id={char_id}, pose={pose}"
@@ -395,6 +404,8 @@ def cmd_reuse_asset(args):
     src_file = CONTENTFLOW_ROOT / item.file_path
     dest_file = proj_dir / src_file.name
     shutil.copy2(src_file, dest_file)
+    dest_file.touch()
+    setattr(args, "_reused_dest_path", str(dest_file))
     project_name = resolve_project_dir(args.project).name
     if project_name not in item.used_in_projects:
         item.used_in_projects.append(project_name)

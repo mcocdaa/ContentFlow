@@ -317,9 +317,12 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
         assert 'id="lang-toggle-btn"' in r_ui.text
         assert "localStorage.getItem('contentflow_lang')" in r_ui.text
         for en_phrase in (
-            "3D Render + AI Frame Interpolation",
-            "2D Keyframe + Motion Smoothing",
-            "Single Figurine -> Video LLM Pipeline",
+            "3D Render + AI Interpolation",
+            "2D Keyframe + Motion Synthesis",
+            "Single Figurine -> Video LLM",
+            "001 · Universal Dev Engine",
+            "002 · Yowane Haku CI/CD",
+            "Yowane Haku",
         ):
             assert en_phrase in r_ui.text
         for zh_phrase in (
@@ -329,7 +332,9 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
             "三层全息舞台解耦合成预览",
             "全渠道文案与全息白板排版引擎",
             "ContentFlow Studio — 2D/3D 手办与全息教学视频工作台",
-            "点击「渲染 HTML」预览排版效果...",
+            "点击「渲染全息排版」预览排版效果...",
+            "001 · 通用开发引擎科普",
+            "002 · 弱音白 CI/CD 教程",
             "复用资产失败",
             "未找到角色资产",
         ):
