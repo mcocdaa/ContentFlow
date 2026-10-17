@@ -449,6 +449,27 @@ def cmd_figure_video(args):
 cmd_init = cmd_init_project
 
 
+def cmd_format_html(args):
+    """Formats a Markdown/text file into standalone inline-CSS HTML."""
+    from core.html_formatter import HTMLFormatter
+
+    in_path = Path(args.input)
+    if not in_path.exists():
+        print(f"[-] Input file not found: {in_path}")
+        return 1
+    text = in_path.read_text(encoding="utf-8")
+    html_out = HTMLFormatter.format_text_to_html(
+        text=text,
+        title=getattr(args, "title", None),
+        theme_name=getattr(args, "theme", "tech_blue"),
+    )
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html_out, encoding="utf-8")
+    print(f"[+] Formatted inline-CSS HTML written to: {out_path}")
+    return 0
+
+
 def cmd_serve(args):
     """Starts the ContentFlow Canonical HTTP JSON API server and Studio WebUI."""
     from core.server import run_server
@@ -462,9 +483,12 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # init-project
-    p_init = subparsers.add_parser("init-project", help="Initialize a new project workspace")
+    # init-project / init
+    p_init = subparsers.add_parser(
+        "init-project", aliases=["init"], help="Initialize a new project workspace"
+    )
     p_init.add_argument("name", help="Name of the product/topic (e.g. 'DevPulse')")
+    p_init.add_argument("--mode", default="hybrid", help="Pipeline mode (default: hybrid)")
     p_init.add_argument("--force", action="store_true", help="Overwrite existing brief")
     p_init.set_defaults(func=cmd_init_project)
 
@@ -507,9 +531,17 @@ def main():
     p_reuse = subparsers.add_parser("reuse-asset", help="Reuse an asset from central library in a project")
     p_reuse.add_argument("--project", required=True, help="Target project ID/name")
     p_reuse.add_argument("--asset", default=None, help="Asset ID in central library")
-    p_reuse.add_argument("--char-id", default=None, help="Character ID in central library")
+    p_reuse.add_argument("--char-id", "--char", dest="char_id", default=None, help="Character ID in central library")
     p_reuse.add_argument("--pose", default=None, help="Pose or emotion tag in central library")
     p_reuse.set_defaults(func=cmd_reuse_asset)
+
+    # format-html
+    p_fmt = subparsers.add_parser("format-html", help="Format Markdown/text into inline-CSS WeChat/Whiteboard HTML")
+    p_fmt.add_argument("--input", required=True, help="Input Markdown/text file path")
+    p_fmt.add_argument("--output", required=True, help="Output HTML file path")
+    p_fmt.add_argument("--title", default=None, help="Optional HTML title")
+    p_fmt.add_argument("--theme", default="tech_blue", choices=["tech_blue", "emerald"], help="HTML theme")
+    p_fmt.set_defaults(func=cmd_format_html)
 
     # figure-status
     p_fstatus = subparsers.add_parser("figure-status", help="Inspect readiness of 3 figure animation pipelines")

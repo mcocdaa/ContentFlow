@@ -1,101 +1,118 @@
-# ContentFlow: 通用多模态内容与视频生产工作区
+<div align="center">
 
-**ContentFlow** 是一个通用、解耦的自动化全媒体内容与短视频生产工作台。它不绑定任何单一产品或系统，任何软件、开源项目、技术主题或知识概念均可通过定义结构化素材（FactSheet），一键自动生产全渠道图文与高清配音字幕短视频。
+# ContentFlow
 
-<p align="center">
-  <img src="docs/assets/demo_contentflow.gif" alt="ContentFlow Studio & 3-Layer Compositing Demo" width="820">
-</p>
+**Decoupled 3-layer holographic video & multi-channel content studio for AI figurine tutorials.**
 
----
+[![Family: *Flow](https://img.shields.io/badge/Family-*Flow-6366f1?style=flat-square)](https://github.com/mcocdaa/ContentFlow)
+[![CI](https://img.shields.io/github/actions/workflow/status/mcocdaa/ContentFlow/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/mcocdaa/ContentFlow/actions)
+[![Release](https://img.shields.io/github/v/release/mcocdaa/ContentFlow?style=flat-square)](https://github.com/mcocdaa/ContentFlow/releases)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=flat-square)](LICENSE)
 
-## 核心架构与设计理念
+[English](README.md) · [简体中文](README_CN.md)
 
-```
-ContentFlow/
-├── config/                  # 渠道规范、音色预设、字体与全局配置
-│   ├── settings.py          # 路径管理与 MoneyPrinterTurbo 集成配置
-│   └── channel_specs.json   # 微信/小红书/知乎/V2EX/发布通知渠道规格
-├── core/                    # 核心流水线与引擎适配层
-│   ├── models.py            # FactSheet、Storyboard 与 ContentPackage 数据模型
-│   ├── copywriting.py       # 通用全渠道文案生成引擎
-│   ├── html_formatter.py    # 微信公众号专属内联 CSS HTML 转换器
-│   ├── asset_builder.py     # 视觉幻灯片绘制与 FFmpeg 秒级视频预转引擎
-│   └── video_engine.py      # MoneyPrinterTurbo 无头 CLI 调度与产物管理
-├── projects/                # 通用项目/主题工作区
-│   └── universal_dev_engine/# 示例工程（DevPulse 效能引擎）
-│       ├── brief.json       # 结构化事实档案（痛点、解法、特性、技术栈）
-│       └── assets/          # 用户自定义图片/视频素材（若为空则自动生成幻灯片）
-├── output/                  # 生成产物目录（按项目与渠道归档）
-│   └── <project_id>/
-│       ├── copy/            # 全渠道文案、内联 HTML、分镜脚本
-│       └── video/           # 成片 MP4、SRT 字幕、MP3 配音、封面 JPG
-├── vendor/                  # 第三方开源引擎复用
-│   └── MoneyPrinterTurbo/   # 复用 upstream 视频合成底座
-├── cli.py                   # ContentFlow 统一命令行入口
-└── README.md
-```
+<img src="docs/assets/demo_contentflow.gif" alt="ContentFlow Demo" width="840">
 
-### 1. 为什么复用并深度封装 MoneyPrinterTurbo？
-- **避免重复造轮子**：视频合成涉及复杂的字体排版、动态换行、Whisper/Edge 时间戳对齐、音频混音防爆音、多分辨率适配等底层细节。`MoneyPrinterTurbo` 拥有成熟稳定的视频流水线与丰富的免版权商用 BGM/字体库。
-- **免 API Key 本地闭环**：通过 ContentFlow 直接向 MoneyPrinterTurbo CLI 注入高质量分镜文案（`--video-script`）与本地素材（`--video-source local`），完全跳过外部收费大模型 API，实现 100% 免费、离线/本地可用。
-- **高性能加速层（50x 提速）**：针对 MoneyPrinterTurbo 在 CPU 上使用 MoviePy `resized(lambda t: ...)` 逐帧软件缩放静态图片导致的长达 45 秒耗时问题，ContentFlow 内置了 `AssetBuilder.convert_image_to_mp4_fast()`，在调用上游前先以原生 FFmpeg 完成秒级硬件级封装，大幅压缩成片耗时。
+</div>
 
 ---
 
-## 核心能力矩阵
+## ✨ Highlights
 
-| 模块 | 输出产物 | 核心特性 |
-| :--- | :--- | :--- |
-| **微信公众号深度长文** | `wechat.md` & `wechat.html` | 1500~2500字深度叙事、痛点根因分析、免外部样式排版的全内联 CSS HTML，直接粘贴即发布 |
-| **小红书爆款图文卡片** | `xiaohongshu.md` | 3套高点击率钩子标题、视觉封面与卡片排版指导、Emoji结构化排版、痛点清单与互动引导 |
-| **知乎专业深度问答** | `zhihu.md` | 1200~2000字客观评测、第一性原理拆解、架构特性矩阵对比、落地适用边界分析 |
-| **开发者社区分享帖** | `v2ex.md` | 真实极客第一人称口吻、不做虚浮宣传、技术选型探讨、求试用与诚恳求反馈 |
-| **版本发布通知** | `release.md` | 亮点 Banner、核心功能发布清单、技术基石、快速上手指南 |
-| **高清短视频成片** | `final.mp4` / `subtitle.srt` | 1080P 高清画质、Edge-TTS 真实自然人声配音、高精字幕对齐、动态镜头与智能 BGM 混音 |
+- **3-Layer Decoupled Visual Compositing**: Strictly separates `Z=0` 3D Studio Stage, `Z=1` HTML-rendered Holographic Whiteboard (`1920x1080` crisp text/charts), and `Z=2` Rembg Alpha Figurine Cutout—eliminating AI text garbling and character occlusion.
+- **Central Character Asset Library (`library/`)**: Catalogs reusable 3D figurine characters, master reference sheets, and multi-emotion pose cutouts (`teaching`, `warning`, `proud`, `pointing`) across projects.
+- **Multi-Channel Copywriting & Inline-CSS HTML Formatter**: Generates publication-ready copy for WeChat Official Accounts, Xiaohongshu, Zhihu, V2EX, and release notes, with an XSS-safe inline-CSS HTML formatter (`core/html_formatter.py`).
+- **Built-in Studio WebUI & Canonical HTTP API**: Follows the *"Human via UI, AI via API, Single Canonical API"* architecture (`python3 cli.py serve`) powered purely by Python's standard library.
+- **50x Faster FFmpeg + MoneyPrinterTurbo 1080P Rendering**: Pre-converts static scene slides into hardware-accelerated MP4 streams via FFmpeg before invoking MoneyPrinterTurbo with Edge-TTS/Seed-TTS voiceover and frame-accurate subtitles.
 
 ---
 
-## 快速上手与 CLI 命令
+## 🚀 Quick Start
 
-所有命令均可通过项目根目录下的 `cli.py` 驱动：
+### 1. Launch Studio WebUI & Canonical API
 
 ```bash
-# 进入工作区
+git clone https://github.com/mcocdaa/ContentFlow.git
 cd ContentFlow
 
-# 使用 vendor 内部环境执行
-VENV_PY=vendor/MoneyPrinterTurbo/.venv/bin/python
+# Start the Studio WebUI and Canonical HTTP JSON API server
+python3 cli.py serve --port 8090
 ```
 
-### 1. 初始化一个新项目
-```bash
-$VENV_PY cli.py init-project my_product
-```
-将在 `projects/my_product/` 创建模板 `brief.json` 和 `assets/` 目录。
+Open **`http://127.0.0.1:8090`** in your browser to inspect pipeline readiness, browse the character asset library, initialize projects, and preview inline-CSS HTML boards.
 
-### 2. 仅生成全渠道文案
-```bash
-$VENV_PY cli.py generate-copy --project my_product
-```
-在 `output/my_product/copy/` 自动生成全套微信 MD/HTML、小红书、知乎、V2EX、发布通知与分镜脚本 `storyboard.json`。
+### 2. CLI 3-Step Workflow
 
-### 3. 渲染高清视频
 ```bash
-# 默认 16:9 横屏（B站/YouTube/技术演播）
-$VENV_PY cli.py generate-video --project my_product --aspect 16:9 --voice zh-CN-YunxiNeural
+# Step 1: Initialize a sequential project workspace (hybrid / 3d / keyframe / api)
+python3 cli.py init my_topic --mode hybrid
 
-# 或 9:16 竖屏（抖音/小红书视频/微信视频号）
-$VENV_PY cli.py generate-video --project my_product --aspect 9:16 --voice zh-CN-XiaoxiaoNeural
+# Step 2: Reuse a pre-cut figurine pose from the central character library
+python3 cli.py reuse-asset --project my_topic --char yorha_2b --pose teaching
+
+# Step 3: Format Markdown/script notes into standalone inline-CSS HTML for WeChat or Z=1 Whiteboards
+python3 cli.py format-html --input script.txt --output board.html
 ```
 
-### 4. 一键全流程（文案 + 视频）
+To generate full multi-channel copywriting and render the 1080P MP4 video end-to-end:
+
 ```bash
-$VENV_PY cli.py run-all --project my_product
+python3 cli.py run-all --project my_topic --aspect 16:9 --voice zh-CN-YunxiNeural
 ```
 
 ---
 
-## 自定义扩展
+## 🤖 AI & Headless API
 
-1. **自定义素材**：将产品的实际截图、系统架构图或实录短视频放入 `projects/<project_id>/assets/`，ContentFlow 会优先按顺序采用真实素材进行混剪与配音字幕对齐；若无素材，系统自动调用 `AssetBuilder` 绘制高质感暗黑极客幻灯片。
-2. **多语言支持**：支持注入英语、日语等音色（如 `en-US-JennyNeural`），自动生成国际化宣发素材。
+AI agents and automation pipelines interact with the exact same `/api/v1/*` backend used by the Studio WebUI:
+
+```bash
+# 1. Inspect 3D / Keyframe / API pipeline readiness & video providers
+curl -s http://127.0.0.1:8090/api/v1/status | python3 -m json.tool
+
+# 2. Create a new project workspace headlessly
+curl -s -X POST http://127.0.0.1:8090/api/v1/projects \
+  -H "Content-Type: application/json" \
+  -d '{"project_name": "transformer_tutorial", "mode": "hybrid"}'
+
+# 3. Render Markdown into inline-CSS HTML via API
+curl -s -X POST http://127.0.0.1:8090/api/v1/format-html \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Self-Attention Mechanics", "theme": "tech_blue", "text": "# Core Formula\n\n- **Query / Key / Value** projection"}'
+```
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/v1/health` | `GET` | Service liveness & version check |
+| `/api/v1/status` | `GET` | Readiness of 3D Blender, ComfyUI Keyframe, and Seedance/Kling APIs |
+| `/api/v1/library/characters` | `GET` / `POST` | List or register reusable figurine characters & poses |
+| `/api/v1/projects` | `GET` / `POST` | List project asset counts or initialize a new project workspace |
+| `/api/v1/projects/{name}/reuse-asset` | `POST` | Import a character pose from `library/` into a project |
+| `/api/v1/format-html` | `POST` | Convert Markdown/text into inline-CSS HTML (`tech_blue` / `emerald`) |
+
+---
+
+## 📁 Project Structure
+
+```text
+ContentFlow/
+├── cli.py                   # Unified CLI entry point (init, reuse-asset, format-html, run-all, serve)
+├── config/                  # Channel specs, voice presets, and global paths
+├── core/
+│   ├── server.py            # Zero-dependency Canonical HTTP API & Studio WebUI
+│   ├── asset_library.py     # Central character & multi-pose asset registry
+│   ├── figure_orchestrator.py # 3D Blender / Keyframe / Seedance API pipeline router
+│   ├── html_formatter.py    # XSS-safe inline-CSS WeChat & Z=1 Whiteboard formatter
+│   ├── copywriting.py       # Multi-channel copy generator (WeChat, XHS, Zhihu, V2EX)
+│   ├── asset_builder.py     # Slide synthesizer & 50x faster FFmpeg image-to-MP4 converter
+│   └── video_engine.py      # Headless MoneyPrinterTurbo 1080P video & subtitle compositor
+├── library/                 # Reusable figurine master references, cutouts, and PMX/VMD assets
+├── projects/                # Sequential 00x_<topic> project workspaces
+├── docs/assets/             # Showcase GIFs and documentation media
+└── tests/                   # Pytest unit & canonical API integration test suite
+```
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
