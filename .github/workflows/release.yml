@@ -42,11 +42,15 @@ jobs:
           node --test .agents/skills/byted-ark-seedance-skill/tests/*.test.js .agents/skills/byted-ark-seedream-skill/tests/*.test.js
 
       - name: Build Python package
-        run: python -m build
+        run: |
+          python -m build
+          python -c "import glob, zipfile; z = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist(); assert 'cli.py' in z and 'config/channel_specs.json' in z, z"
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
           generate_release_notes: true
