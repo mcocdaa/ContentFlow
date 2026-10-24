@@ -126,11 +126,11 @@
 
 | 项目目录 | 主题与形式 | 主角角色 | 核心技术亮点 | 交付状态 |
 | :--- | :--- | :---: | :--- | :---: |
-| [`projects/001_universal_dev_engine`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/001_universal_dev_engine) | DevPulse 开发者效能引擎 | 幻灯片 | 结构化 FactSheet 提取、全平台文案自动生成、极简单二进制与时间旅行回放介绍 | 🟢 **已交付** |
-| [`projects/002_yowane_cicd`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/002_yowane_cicd) | 3D 手办弱音白 CI/CD 避坑指南 | 弱音白 (Yowane Haku) | 首创发丝级 rembg 抠图、图层级全息科技教室解耦合成、入库中央资产库 | 🟢 **已交付** |
-| [`projects/003_ai_managing_ai`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/003_ai_managing_ai) | AI 管理 AI 工作深度调研与 TermFlow 评测 | 极客分析师 | 万字架构调研长文、多 Agent 协同闭环、TermFlow 审批网关分析、CSDN/知乎专属排版 | 🟢 **已交付** |
-| [`projects/004_ai_api_tutorial_2b`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/004_ai_api_tutorial_2b) | 2B 小姐姐教你大模型 API 核心三要素 | 2B (YoRHa No.2 Type B) | 顶奢 3D 手办视觉、豆包 Seed-TTS 2.0 纯净配音、1:1 绝对卡点与 Ken Burns 运镜成片 | 🟢 **已交付** |
-| [`projects/005_transformer_noshiro_tutorial`](file:///home/mcocdaa/AI_CODE/ContentFlow/projects/005_transformer_noshiro_tutorial) | 能代 Transformer 原理解析 & 3D 手办舞蹈 | 能代 (Noshiro) / 3D 手办 Miku/Luka | MoneyPrinterTurbo 教学成片 + 路线一 Blender Cycles GPU 光追 60FPS 竖屏舞蹈 | 🟢 **已交付** |
+| [`projects/001_universal_dev_engine`](../projects/001_universal_dev_engine) | DevPulse 开发者效能引擎 | 幻灯片 | 结构化 FactSheet 提取、全平台文案自动生成、极简单二进制与时间旅行回放介绍 | 🟢 **已交付** |
+| [`projects/002_yowane_cicd`](../projects/002_yowane_cicd) | 3D 手办弱音白 CI/CD 避坑指南 | 弱音白 (Yowane Haku) | 首创发丝级 rembg 抠图、图层级全息科技教室解耦合成、入库中央资产库 | 🟢 **已交付** |
+| [`projects/003_ai_managing_ai`](../projects/003_ai_managing_ai) | AI 管理 AI 工作深度调研与 TermFlow 评测 | 极客分析师 | 万字架构调研长文、多 Agent 协同闭环、TermFlow 审批网关分析、CSDN/知乎专属排版 | 🟢 **已交付** |
+| [`projects/004_ai_api_tutorial_2b`](../projects/004_ai_api_tutorial_2b) | 2B 小姐姐教你大模型 API 核心三要素 | 2B (YoRHa No.2 Type B) | 顶奢 3D 手办视觉、豆包 Seed-TTS 2.0 纯净配音、1:1 绝对卡点与 Ken Burns 运镜成片 | 🟢 **已交付** |
+| [`projects/005_transformer_noshiro_tutorial`](../projects/005_transformer_noshiro_tutorial) | 能代 Transformer 原理解析 & 3D 手办舞蹈 | 能代 (Noshiro) / 3D 手办 Miku/Luka | MoneyPrinterTurbo 教学成片 + 路线一 Blender Cycles GPU 光追 60FPS 竖屏舞蹈 | 🟢 **已交付** |
 
 ---
 

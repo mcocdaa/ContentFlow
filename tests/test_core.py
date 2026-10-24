@@ -340,6 +340,12 @@ def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
         ):
             assert zh_phrase in r_ui.text
         assert 'data-i18n="fmt_preview_placeholder"' in r_ui.text
+        assert 'data-i18n="health_checking"' in r_ui.text
+        assert 'data-i18n-alt="alt_layer_z0"' in r_ui.text
+        assert "No video projects yet" in r_ui.text
+        assert "暂无短视频工程" in r_ui.text
+        assert "No character assets yet" in r_ui.text
+        assert "暂无角色立绘资产" in r_ui.text
         assert "document.title = t('page_title')" in r_ui.text
         assert "sanitizeAsciiFilename" in r_ui.text
         assert "FMT_LINE_MAP" in r_ui.text
