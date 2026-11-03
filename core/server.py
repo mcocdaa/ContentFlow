@@ -29,57 +29,67 @@ STUDIO_HTML = """<!DOCTYPE html>
   <title>ContentFlow Studio — 2D/3D Figurine & Holographic Video Workspace</title>
   <style>
     :root {
-      --bg: #070b14;
-      --surface: #111827;
-      --surface-alt: #1a2436;
-      --surface-elevated: #0f172a;
-      --border: #2a3a52;
-      --border-highlight: #38bdf8;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
+      --bg: #0f1115;
+      --surface: #171a21;
+      --surface-alt: #1d212b;
+      --surface-elevated: #12151c;
+      --border: #262b36;
+      --border-highlight: #818cf8;
+      --text: #e8eaed;
+      --text-muted: #9aa1ac;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
       --accent: #10b981;
-      --cyan: #06b6d4;
+      --cyan: #38bdf8;
       --warn: #f59e0b;
       --danger: #ef4444;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: radial-gradient(circle at 15% 0%, #111c35 0%, var(--bg) 55%);
+      background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
-      line-height: 1.45;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", Inter, sans-serif;
+      line-height: 1.5;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .icon {
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
     }
     header {
-      background: rgba(15, 23, 42, 0.92);
+      background: rgba(15, 17, 21, 0.88);
       border-bottom: 1px solid var(--border);
-      padding: 12px 22px;
+      padding: 14px 28px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       position: sticky;
       top: 0;
       z-index: 20;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
     }
     .brand {
       display: flex;
       align-items: center;
       gap: 10px;
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 700;
       letter-spacing: -0.02em;
       white-space: nowrap;
+      color: var(--text);
+    }
+    .brand-icon {
+      color: var(--border-highlight);
     }
     .brand-sub {
       font-size: 12px;
       font-weight: 500;
-      color: #7dd3fc;
-      background: rgba(14, 165, 233, 0.12);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      padding: 3px 9px;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 3px 10px;
       border-radius: 9999px;
     }
     .header-actions {
@@ -92,65 +102,78 @@ STUDIO_HTML = """<!DOCTYPE html>
       align-items: center;
       gap: 5px;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 500;
       padding: 3px 9px;
       border-radius: 9999px;
       background: var(--surface-alt);
       border: 1px solid var(--border);
+      color: var(--text-muted);
       white-space: nowrap;
+      flex-shrink: 0;
     }
-    .badge.ok { border-color: rgba(16,185,129,0.5); color: #34d399; background: rgba(16,185,129,0.12); }
-    .badge.warn { border-color: rgba(245,158,11,0.5); color: #fbbf24; background: rgba(245,158,11,0.12); }
-    .badge.cyan { border-color: rgba(56,189,248,0.5); color: #38bdf8; background: rgba(56,189,248,0.12); }
+    .badge.ok { border-color: rgba(16, 185, 129, 0.35); color: #34d399; background: rgba(16, 185, 129, 0.08); }
+    .badge.warn { border-color: rgba(245, 158, 11, 0.35); color: #fbbf24; background: rgba(245, 158, 11, 0.08); }
+    .badge.cyan { border-color: rgba(129, 140, 248, 0.35); color: #a5b4fc; background: rgba(79, 70, 229, 0.1); }
     main {
       max-width: 1360px;
       margin: 0 auto;
-      padding: 16px 20px 28px 20px;
+      padding: 20px 28px 36px 28px;
       display: grid;
       grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 16px;
+      gap: 18px;
     }
     .card {
       min-width: 0;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
     }
     .col-12 { grid-column: span 12; }
     .col-6 { grid-column: span 6; }
     @media (max-width: 820px) { .col-6 { grid-column: span 12; } }
     h2 {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 10px;
+      color: var(--text);
+    }
+    .sec-title {
+      display: inline-flex;
+      align-items: center;
       gap: 8px;
+      min-width: 0;
+    }
+    .sec-title .icon {
+      color: var(--text-muted);
     }
     .status-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
+      gap: 10px;
     }
     @media (max-width: 1180px) { .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .subcard {
       min-width: 0;
-      background: var(--surface-alt);
+      background: var(--surface-elevated);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 9px 10px;
+      border-radius: 10px;
+      padding: 10px 12px;
     }
     .subcard h3 {
       font-size: 12px;
+      font-weight: 600;
       margin-bottom: 5px;
-      color: #f1f5f9;
+      color: var(--text);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 5px;
+      gap: 6px;
     }
     .muted { color: var(--text-muted); font-size: 11.5px; }
     input, select, textarea {
@@ -158,23 +181,28 @@ STUDIO_HTML = """<!DOCTYPE html>
       background: var(--surface-elevated);
       color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 7px 10px;
-      font-size: 13px;
+      border-radius: 8px;
+      padding: 7px 11px;
+      font-size: 12.5px;
       outline: none;
+      transition: border-color 0.15s ease;
     }
     input:focus, select:focus, textarea:focus {
       border-color: var(--border-highlight);
     }
-    textarea { min-height: 176px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; line-height: 1.45; }
+    textarea { min-height: 176px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; line-height: 1.5; }
     button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       background: var(--primary);
       color: #fff;
-      border: none;
-      border-radius: 7px;
+      border: 1px solid transparent;
+      border-radius: 8px;
       padding: 7px 13px;
-      font-size: 13px;
-      font-weight: 600;
+      font-size: 12.5px;
+      font-weight: 500;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
@@ -182,18 +210,19 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
     button:hover { background: var(--primary-hover); }
     button.secondary {
-      background: var(--surface-alt);
+      background: var(--surface-elevated);
       border: 1px solid var(--border);
-      color: #e2e8f0;
+      color: var(--text);
     }
     button.secondary:hover {
-      border-color: var(--border-highlight);
+      background: var(--surface-alt);
+      border-color: #374151;
       color: #fff;
     }
     button.secondary.active {
-      background: rgba(14, 165, 233, 0.18);
-      border-color: #38bdf8;
-      color: #38bdf8;
+      background: rgba(79, 70, 229, 0.16);
+      border-color: var(--border-highlight);
+      color: #c7d2fe;
     }
     .row {
       display: flex;
@@ -204,8 +233,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     .form-grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 10px;
+      margin-bottom: 10px;
     }
     .field-label {
       display: block;
@@ -214,14 +243,14 @@ STUDIO_HTML = """<!DOCTYPE html>
       color: var(--text-muted);
       margin-bottom: 4px;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.04em;
     }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { text-align: left; padding: 5px 5px; border-bottom: 1px solid rgba(51,65,85,0.65); }
-    th { color: var(--text-muted); font-weight: 600; font-size: 11px; white-space: nowrap; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 500; font-size: 11px; white-space: nowrap; }
     tr.proj-row { cursor: pointer; transition: background 0.12s; }
-    tr.proj-row:hover { background: rgba(56, 189, 248, 0.08); }
-    tr.proj-row.selected { background: rgba(56, 189, 248, 0.14); }
+    tr.proj-row:hover { background: rgba(255, 255, 255, 0.03); }
+    tr.proj-row.selected { background: rgba(79, 70, 229, 0.12); }
     .char-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -237,11 +266,11 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
     .pose-pill {
       font-size: 11px;
-      padding: 2px 8px;
+      padding: 2px 9px;
       border-radius: 999px;
-      background: rgba(59, 130, 246, 0.14);
-      border: 1px solid rgba(59, 130, 246, 0.4);
-      color: #93c5fd;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
       cursor: pointer;
       white-space: nowrap;
       transition: all 0.12s;
@@ -253,65 +282,66 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
     .status-toast {
       font-size: 11.5px;
-      line-height: 1.35;
-      padding: 6px 10px;
-      border-radius: 6px;
-      background: rgba(30, 41, 59, 0.7);
+      line-height: 1.4;
+      padding: 7px 11px;
+      border-radius: 8px;
+      background: var(--surface-elevated);
       border: 1px solid var(--border);
       color: var(--text-muted);
-      margin-bottom: 8px;
-      min-height: 31px;
+      margin-bottom: 10px;
+      min-height: 32px;
       display: flex;
       align-items: center;
+      gap: 7px;
       word-break: break-word;
     }
     .status-toast.visible {
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.08);
+      border-color: rgba(16, 185, 129, 0.35);
       color: #6ee7b7;
     }
     /* 3-Layer Holographic Compositing Gallery */
     .compositor-layout {
       display: grid;
       grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-      gap: 14px;
+      gap: 16px;
       align-items: stretch;
     }
     .compositor-layout > * { min-width: 0; }
     .layer-cards-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
+      gap: 10px;
     }
     .layer-card {
       min-width: 0;
       background: var(--surface-elevated);
       border: 1px solid var(--border);
-      border-radius: 9px;
-      padding: 8px;
+      border-radius: 10px;
+      padding: 9px;
       cursor: pointer;
-      transition: all 0.18s ease;
+      transition: all 0.16s ease;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
     }
     .layer-card:hover {
-      border-color: rgba(56, 189, 248, 0.6);
+      border-color: #374151;
       transform: translateY(-1px);
     }
     .layer-card.active {
-      border-color: #38bdf8;
-      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.28), 0 8px 20px rgba(6, 182, 212, 0.18);
-      background: rgba(14, 165, 233, 0.1);
+      border-color: var(--border-highlight);
+      box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.3);
+      background: rgba(79, 70, 229, 0.08);
     }
     .layer-thumb-wrap {
       width: 100%;
       aspect-ratio: 16 / 9;
       border-radius: 6px;
       overflow: hidden;
-      background: repeating-conic-gradient(#162032 0% 25%, #0d1524 0% 50%) 50% / 14px 14px;
-      border: 1px solid rgba(255,255,255,0.08);
-      margin-bottom: 7px;
+      background: repeating-conic-gradient(#161922 0% 25%, #10131a 0% 50%) 50% / 14px 14px;
+      border: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -326,7 +356,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     .layer-title {
       font-size: 11.5px;
       font-weight: 600;
-      color: #f1f5f9;
+      color: var(--text);
       margin-bottom: 4px;
       white-space: nowrap;
       overflow: hidden;
@@ -344,7 +374,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       background: var(--surface-elevated);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px 12px;
+      padding: 12px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -354,12 +384,12 @@ STUDIO_HTML = """<!DOCTYPE html>
       aspect-ratio: 16 / 9;
       border-radius: 7px;
       overflow: hidden;
-      background: repeating-conic-gradient(#162032 0% 25%, #0d1524 0% 50%) 50% / 16px 16px;
-      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: repeating-conic-gradient(#161922 0% 25%, #10131a 0% 50%) 50% / 16px 16px;
+      border: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .spotlight-stage img {
       width: 100%;
@@ -371,15 +401,15 @@ STUDIO_HTML = """<!DOCTYPE html>
     .formatter-grid {
       display: grid;
       grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-      gap: 14px;
+      gap: 16px;
       align-items: stretch;
     }
     .formatter-grid > * { min-width: 0; }
     .preview-box {
       background: #ffffff;
       color: #1f2937;
-      border-radius: 8px;
-      padding: 10px 12px;
+      border-radius: 10px;
+      padding: 12px 14px;
       height: 356px;
       overflow-y: auto;
       border: 1px solid var(--border);
@@ -402,21 +432,31 @@ STUDIO_HTML = """<!DOCTYPE html>
 <body>
   <header>
     <div class="brand">
-      <span data-i18n="brand_title">🎬 ContentFlow Studio</span>
+      <svg class="icon brand-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>
+      <span data-i18n="brand_title">ContentFlow Studio</span>
       <span class="brand-sub" data-i18n="brand_sub">2D/3D Figurine & Holographic Video Engine</span>
     </div>
     <div class="header-actions header-right">
       <span id="health-badge" class="badge ok" data-i18n="health_checking">Checking Studio Engine...</span>
-      <button class="secondary" id="btn-refresh" data-i18n="btn_refresh" onclick="loadStatus()">↻ Refresh</button>
-      <button class="secondary" id="lang-toggle-btn" style="white-space: nowrap; flex-shrink: 0;" onclick="toggleLang()">🌐 中文</button>
+      <button class="secondary" id="btn-refresh" onclick="loadStatus()">
+        <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        <span data-i18n="btn_refresh">Refresh</span>
+      </button>
+      <button class="secondary" id="lang-toggle-btn" data-action="toggle-locale" style="white-space: nowrap; flex-shrink: 0;" onclick="toggleLang()">
+        <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        <span class="lang-label">中文</span>
+      </button>
     </div>
   </header>
 
   <main>
     <!-- Pipeline & Video Provider Readiness -->
-    <section class="card col-12" style="padding: 12px 16px;">
-      <h2 style="margin-bottom: 8px;">
-        <span data-i18n="sec_pipeline">⚡ Multi-Modal Pipeline & Video Provider Readiness</span>
+    <section class="card col-12" style="padding: 14px 20px;">
+      <h2 style="margin-bottom: 10px;">
+        <span class="sec-title">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span data-i18n="sec_pipeline">Multi-Modal Pipeline & Video Provider Readiness</span>
+        </span>
         <span class="badge cyan" data-i18n="badge_3_modes">3 Production Modes Ready</span>
       </h2>
       <div id="status-container" class="status-grid"></div>
@@ -425,7 +465,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     <!-- Projects Workspace -->
     <section class="card col-6">
       <h2>
-        <span data-i18n="sec_projects">📁 Projects Workspace</span>
+        <span class="sec-title">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          <span data-i18n="sec_projects">Projects Workspace</span>
+        </span>
         <span id="projects-count-badge" class="badge">7 Projects</span>
       </h2>
       <div class="row">
@@ -444,7 +487,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     <!-- Character Asset Library Browser & Reuse -->
     <section class="card col-6">
       <h2>
-        <span data-i18n="sec_characters">🧝‍♀️ Character Asset Library & Reuse</span>
+        <span class="sec-title">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+          <span data-i18n="sec_characters">Character Asset Library & Reuse</span>
+        </span>
         <span class="badge cyan" data-i18n="badge_click_pose">Click Pose Pill or Reuse</span>
       </h2>
       <div class="form-grid-2">
@@ -468,7 +514,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     <!-- Visual 3-Layer Holographic Compositing Gallery -->
     <section id="compositor-section" class="card col-12">
       <h2 style="flex-wrap: wrap; gap: 8px;">
-        <span style="white-space: nowrap;" data-i18n="sec_compositor">🖼️ 3-Layer Holographic Stage Compositing Gallery</span>
+        <span class="sec-title" style="white-space: nowrap;">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+          <span data-i18n="sec_compositor">3-Layer Holographic Stage Compositing Gallery</span>
+        </span>
         <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
           <select id="compositor-project" onchange="selectCompositorProject(this.value)" style="width: 190px; padding: 5px 8px; font-size: 12px;"></select>
           <button id="step-btn-z0" class="secondary" style="padding: 5px 9px; font-size: 12px;" data-i18n="btn_step_z0" onclick="activateLayerStep('z0')">Z=0 Stage</button>
@@ -544,7 +593,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     <!-- Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter -->
     <section id="formatter-section" class="card col-12">
       <h2>
-        <span data-i18n="sec_formatter">📝 Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter</span>
+        <span class="sec-title">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+          <span data-i18n="sec_formatter">Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter</span>
+        </span>
         <span class="badge" data-i18n="badge_inline_css">Inline CSS • Zero External Stylesheets</span>
       </h2>
       <div class="formatter-grid">
@@ -591,13 +643,13 @@ STUDIO_HTML = """<!DOCTYPE html>
     const I18N = {
       en: {
         page_title: 'ContentFlow Studio — 2D/3D Figurine & Holographic Video Workspace',
-        brand_title: '🎬 ContentFlow Studio',
+        brand_title: 'ContentFlow Studio',
         brand_sub: '2D/3D Figurine & Holographic Video Engine',
-        btn_refresh: '↻ Refresh',
+        btn_refresh: 'Refresh',
         health_checking: 'Checking Studio Engine...',
         health_ready_prefix: 'Studio Ready • v',
         health_error: 'Engine Offline',
-        sec_pipeline: '⚡ Multi-Modal Pipeline & Video Provider Readiness',
+        sec_pipeline: 'Multi-Modal Pipeline & Video Provider Readiness',
         badge_3_modes: '3 Production Modes Ready',
         pipe_mode_1_3d: '3D Render + AI Interpolation',
         pipe_mode_2_keyframe: '2D Keyframe + Motion Synthesis',
@@ -610,7 +662,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         video_engines_title: 'Video Engines',
         prov_on: 'ON',
         prov_sim: 'SIM',
-        sec_projects: '📁 Projects Workspace',
+        sec_projects: 'Projects Workspace',
         projects_count_suffix: 'Projects',
         ph_new_proj: 'New project (e.g. rag_demo)',
         mode_hybrid: 'Hybrid 2D/3D',
@@ -624,7 +676,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         th_comp: 'Comp',
         th_scripts: 'Scripts',
         empty_projects: 'No video projects yet',
-        sec_characters: '🧝‍♀️ Character Asset Library & Reuse',
+        sec_characters: 'Character Asset Library & Reuse',
         badge_click_pose: 'Click Pose Pill or Reuse',
         lbl_target_project: 'Target Project',
         lbl_char_anchor: 'Character Anchor',
@@ -635,7 +687,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         poses_count_suffix: 'poses',
         master_anchor_label: 'master anchor',
         empty_characters: 'No character assets yet',
-        sec_compositor: '🖼️ 3-Layer Holographic Stage Compositing Gallery',
+        sec_compositor: '3-Layer Holographic Stage Compositing Gallery',
         btn_step_z0: 'Z=0 Stage',
         btn_step_z1: 'Z=1 Board',
         btn_step_z2: 'Z=2 Cutout',
@@ -663,7 +715,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         step_z2_desc: 'Alpha-channel 3D figurine cutout (x=2%..34%)',
         step_final_short: 'Final 1080P',
         step_final_desc: 'Merged Z=0 stage + Z=1 board + Z=2 cutout',
-        sec_formatter: '📝 Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter',
+        sec_formatter: 'Multi-Channel Copywriting & Holographic Whiteboard HTML Formatter',
         badge_inline_css: 'Inline CSS • Zero External Stylesheets',
         ph_fmt_title: 'Presentation Title',
         btn_render_html: 'Render HTML',
@@ -671,13 +723,13 @@ STUDIO_HTML = """<!DOCTYPE html>
       },
       zh: {
         page_title: 'ContentFlow Studio — 2D/3D 手办与全息教学视频工作台',
-        brand_title: '🎬 ContentFlow Studio',
+        brand_title: 'ContentFlow Studio',
         brand_sub: '2D/3D 手办与全息视频创作工作台',
-        btn_refresh: '↻ 刷新状态',
+        btn_refresh: '刷新状态',
         health_checking: '正在检测工作室引擎...',
         health_ready_prefix: '引擎就绪 • v',
         health_error: '引擎离线',
-        sec_pipeline: '⚡ 多模态生产管线与视频引擎就绪状态',
+        sec_pipeline: '多模态生产管线与视频引擎就绪状态',
         badge_3_modes: '3 大生产流就绪',
         pipe_mode_1_3d: '3D 建模渲染 + AI 插帧',
         pipe_mode_2_keyframe: '2D 关键帧 + 动作平滑',
@@ -690,7 +742,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         video_engines_title: '视频生成引擎路由',
         prov_on: '已启用',
         prov_sim: '本地模拟',
-        sec_projects: '📁 项目工作区',
+        sec_projects: '项目工作区',
         projects_count_suffix: '个项目',
         ph_new_proj: '新项目名 (如 rag_demo)',
         mode_hybrid: '2D/3D 混合管线',
@@ -704,7 +756,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         th_comp: '合成帧',
         th_scripts: '脚本数',
         empty_projects: '暂无短视频工程',
-        sec_characters: '🧝‍♀️ 角色数字资产库与动作复用',
+        sec_characters: '角色数字资产库与动作复用',
         badge_click_pose: '点击姿态胶囊一键复用',
         lbl_target_project: '目标项目',
         lbl_char_anchor: '角色数字锚点',
@@ -715,7 +767,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         poses_count_suffix: '个姿态',
         master_anchor_label: '主锚点参考图',
         empty_characters: '暂无角色立绘资产',
-        sec_compositor: '🖼️ 三层全息舞台解耦合成预览',
+        sec_compositor: '三层全息舞台解耦合成预览',
         btn_step_z0: 'Z=0 远景舞台',
         btn_step_z1: 'Z=1 全息白板',
         btn_step_z2: 'Z=2 手办抠图',
@@ -743,7 +795,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         step_z2_desc: '高精度 Alpha 通道 3D 手办抠图 (x=2%..34%)',
         step_final_short: '1080P 成片',
         step_final_desc: 'Z=0 远景舞台 + Z=1 全息白板 + Z=2 手办无损合成',
-        sec_formatter: '📝 全渠道文案与全息白板排版引擎',
+        sec_formatter: '全渠道文案与全息白板排版引擎',
         badge_inline_css: '内联 CSS • 零外部样式表依赖',
         ph_fmt_title: '输入演示白板标题',
         btn_render_html: '渲染全息排版',
@@ -898,9 +950,9 @@ STUDIO_HTML = """<!DOCTYPE html>
         const key = el.getAttribute('data-i18n-alt');
         el.alt = t(key);
       });
-      const langBtn = document.getElementById('lang-toggle-btn');
-      if (langBtn) {
-        langBtn.textContent = CURRENT_LANG === 'zh' ? '🌐 EN' : '🌐 中文';
+      const langLabel = document.querySelector('#lang-toggle-btn .lang-label');
+      if (langLabel) {
+        langLabel.textContent = CURRENT_LANG === 'zh' ? 'EN' : '中文';
       }
       const badge = document.getElementById('health-badge');
       if (badge) {
@@ -1292,13 +1344,15 @@ STUDIO_HTML = """<!DOCTYPE html>
         const projId = LAST_REUSE_STATE.project_id || LAST_REUSE_STATE.project;
         const projLabel = (PROJECT_LABELS[CURRENT_LANG] && PROJECT_LABELS[CURRENT_LANG][projId]) || displayProjectName(projId);
         const dispFile = sanitizeAsciiFilename(LAST_REUSE_STATE.shortFile);
-        if (CURRENT_LANG === 'zh') {
-          msgEl.textContent = `✅ 已复用 ${cLabel}（${pLabel}）至「${projLabel}」 → ${dispFile}`;
-        } else {
-          msgEl.textContent = `✅ Reused ${cLabel} (${pLabel}) into "${projLabel}" → ${dispFile}`;
-        }
+        const textMsg = CURRENT_LANG === 'zh'
+          ? `已复用 ${cLabel}（${pLabel}）至「${projLabel}」 → ${dispFile}`
+          : `Reused ${cLabel} (${pLabel}) into "${projLabel}" → ${dispFile}`;
+        msgEl.innerHTML = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span></span>';
+        msgEl.querySelector('span').textContent = textMsg;
       } else {
-        msgEl.textContent = `❌ ${localizeReuseError(LAST_REUSE_STATE.error)}`;
+        const errMsg = localizeReuseError(LAST_REUSE_STATE.error);
+        msgEl.innerHTML = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg><span></span>';
+        msgEl.querySelector('span').textContent = errMsg;
       }
     }
 
