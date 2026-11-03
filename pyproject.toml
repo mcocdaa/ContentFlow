@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,16 +10,16 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
-    "pillow>=10.0.0",
-    "requests>=2.31.0",
+    "pillow>=12.3.0",
+    "requests>=2.34.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=9.1.1",
     "ruff>=0.4.0",
-    "mypy>=1.10.0",
-    "types-requests>=2.31.0",
+    "mypy>=2.4.0",
+    "types-requests>=2.33.0.20261006",
 ]
 
 [project.scripts]

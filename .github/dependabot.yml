@@ -2,6 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "pip"
     directory: "/"
+    versioning-strategy: "increase-if-necessary"
     schedule:
       interval: "cron"
       cronjob: "0 8 1 * *"
@@ -14,6 +15,8 @@ updates:
     open-pull-requests-limit: 5
     groups:
       pip-minor-patch:
+        patterns:
+          - "*"
         update-types:
           - "minor"
           - "patch"
@@ -29,6 +32,8 @@ updates:
     open-pull-requests-limit: 5
     groups:
       actions:
+        patterns:
+          - "*"
         update-types:
           - "minor"
           - "patch"
