@@ -61,6 +61,22 @@ To generate full multi-channel copywriting and render the 1080P MP4 video end-to
 python3 cli.py run-all --project my_topic --aspect 16:9 --voice zh-CN-YunxiNeural
 ```
 
+### 3. Social Matrix Auth Vault, Publishing & Autonomous Analytics
+
+All platform sessions (`cookies.json`, `storage_state.json`) and account analytics snapshots are stored locally in `~/.contentflow/` with strict `0700`/`0600` permissions—never inside the Git repository:
+
+```bash
+# 1. Authenticate Bilibili via terminal/PNG QR scan (saved to ~/.contentflow/accounts/bilibili/)
+python3 cli.py auth login --platform bilibili
+python3 cli.py auth status --verify
+
+# 2. Stage locally (draft) or upload to Bilibili Creator Center (schedule / direct)
+python3 cli.py publish --project 007_deepseek_dafeiyu_phone_number --platforms bilibili --mode schedule --schedule-at "18:30"
+
+# 3. Inspect account views, submitted archive metrics, and real-time Bilibili partition radar
+python3 cli.py analytics --radar
+```
+
 ---
 
 ## 🤖 AI & Headless API
@@ -97,12 +113,16 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/format-html \
 
 ```text
 ContentFlow/
-├── cli.py                   # Unified CLI entry point (init, reuse-asset, format-html, run-all, serve)
+├── cli.py                   # Unified CLI entry point (init, reuse-asset, format-html, run-all, auth, publish, analytics, serve)
 ├── config/                  # Channel specs, voice presets, and global paths
 ├── core/
 │   ├── server.py            # Zero-dependency Canonical HTTP API & Studio WebUI
 │   ├── asset_library.py     # Central character & multi-pose asset registry
-│   ├── figure_orchestrator.py # 3D Blender / Keyframe / Seedance API pipeline router
+│   ├── figure_orchestrator.py # 3D Blender / Keyframe / Seedance & Kling API pipeline router
+│   ├── video_api_router.py  # VolcEngine Seedance, Kling 3.0/4.0 CLI/JWT & MiniMax video router
+│   ├── auth_vault.py        # 0600-permissioned local session vault (~/.contentflow/) & QR login
+│   ├── publisher.py         # Bilibili UPOS chunked uploader, WeChat MP Draft Box & Advisor Receipts
+│   ├── analytics.py         # Autonomous Bilibili archive telemetry & trending track radar
 │   ├── html_formatter.py    # XSS-safe inline-CSS WeChat & Z=1 Whiteboard formatter
 │   ├── copywriting.py       # Multi-channel copy generator (WeChat, XHS, Zhihu, V2EX)
 │   ├── asset_builder.py     # Slide synthesizer & 50x faster FFmpeg image-to-MP4 converter

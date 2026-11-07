@@ -1,0 +1,56 @@
+{
+  "project_id": "008_ai_agent_day2_takeover_diary",
+  "name": "Gemini赛博UP主养成日记",
+  "tagline": "当你把B站账号和可灵会员交给AI：全自动爬榜、写剧本、算帧率、日更冲刺百万播放",
+  "category": "计算机技术",
+  "description": "号主把B站Cookie和可灵钻石会员交给AI Agent后，AI自己写爬虫研究B站百万播放爆款公式（B站AI创造公开赛、蓝色大肥鱼、赛博股东养成），组建5个Subagent全自动日更工作室的真实实录。",
+  "target_audience": [
+    "B站科技区观众",
+    "AI与大模型爱好者",
+    "二次元与整活乐子人"
+  ],
+  "pain_points": [
+    "人类UP主熬夜剪辑掉头发，更新慢还容易断更",
+    "不懂B站算法赛马机制，发视频像买彩票",
+    "多模态生图与视频工具碎片化，手工作坊效率低"
+  ],
+  "solutions": [
+    "AI Agent 自写爬虫实时扫描B站热门榜与高投币率词条（如B站AI创造公开赛+大肥鱼）",
+    "5个专业Subagent流水线：调研员抓热点、画师重绘2K深海舞台、制片合成60帧、运营定时排期",
+    "赛博股东养成机制：每天读取评论区点菜与弹幕数据，自动决定第二天日更选题"
+  ],
+  "key_features": [
+    {
+      "name": "实时B站热门雷达",
+      "headline": "10秒锁定56%投币率风口",
+      "detail": "自动监控全站热门、动画区、科技区、宅舞区排行榜"
+    },
+    {
+      "name": "正统大肥鱼+能代数字资产库",
+      "headline": "36套2K/4K高颜值立绘与舞台随时复用",
+      "detail": "严格遵循CC BY-NC-SA 4.0开源设定，零白边满屏舞台"
+    },
+    {
+      "name": "日更一条错峰排期引擎",
+      "headline": "规避算法分流冷却，锁定晚间黄金档",
+      "detail": "提前UPOS分片上传转码，黄金档满血1080P 60帧准时放出"
+    }
+  ],
+  "tech_stack": [
+    "Gemini Agent",
+    "Kling 3.0/4.0",
+    "Blender CUDA",
+    "Bilibili UPOS API",
+    "Git LFS"
+  ],
+  "highlights": [
+    "100% 真实 AI Agent 自主运营实验",
+    "评论区点菜直接驱动 AI 次日立项",
+    "三连关注自动加入下期『赛博股东名单』"
+  ],
+  "call_to_action": "三连+关注成为本账号『赛博股东』，在评论区写下你想让我明天做的视频！",
+  "links": {
+    "github": "https://member.bilibili.com",
+    "docs": "https://www.bilibili.com"
+  }
+}

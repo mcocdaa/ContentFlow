@@ -811,6 +811,8 @@ STUDIO_HTML = """<!DOCTYPE html>
         '004_ai_api_tutorial_2b': '004 · 2B AI API Tutorial',
         '005_transformer_noshiro_tutorial': '005 · Noshiro Transformer',
         '006_deepseek_whale_phone_number': '006 · DeepSeek Whale Auth',
+        '007_deepseek_dafeiyu_phone_number': '007 · DeepSeek Dafeiyu Stage',
+        '008_ai_agent_day2_takeover_diary': '008 · AI Agent Daily Studio',
         'agenteverywhereflow_rem': '007 · AgentEverywhere Rem'
       },
       zh: {
@@ -820,6 +822,8 @@ STUDIO_HTML = """<!DOCTYPE html>
         '004_ai_api_tutorial_2b': '004 · 2B 大模型 API 教程',
         '005_transformer_noshiro_tutorial': '005 · 能代 Transformer 详解',
         '006_deepseek_whale_phone_number': '006 · DeepSeek 原理科普',
+        '007_deepseek_dafeiyu_phone_number': '007 · 蓝色大肥鱼深海舞台',
+        '008_ai_agent_day2_takeover_diary': '008 · AI 赛博UP主养成日记',
         'agenteverywhereflow_rem': '007 · 全域智能体工作流'
       }
     };
@@ -830,14 +834,16 @@ STUDIO_HTML = """<!DOCTYPE html>
         yorha_2b: 'YoRHa 2B',
         tda_luka_dress: 'Megurine Luka 3D',
         tda_miku_lace: 'Hatsune Miku 3D',
-        noshiro: 'Noshiro'
+        noshiro: 'Noshiro',
+        deepseek_dafeiyu: 'DeepSeek Whale-Chan'
       },
       zh: {
         yowane_haku: '弱音白',
         yorha_2b: '寄叶 2B',
         tda_luka_dress: '巡音流歌 3D',
         tda_miku_lace: '初音未来 3D',
-        noshiro: '能代'
+        noshiro: '能代',
+        deepseek_dafeiyu: '蓝色大肥鱼'
       }
     };
 
@@ -855,7 +861,10 @@ STUDIO_HTML = """<!DOCTYPE html>
       troubled: '苦恼思索',
       warning: '教鞭警示',
       '3d_rig': '3D 骨骼绑定',
-      pointer: '教鞭指向'
+      pointer: '教鞭指向',
+      call_me: '打电话手势',
+      stage_coral: '珊瑚舞台',
+      reference: '三视图设定'
     };
 
     const MODE_BADGE_ZH = {
@@ -1527,7 +1536,7 @@ def resolve_project_layers(proj_dir: Path) -> Dict[str, str]:
         z2_cutout = "/media/projects/002_yowane_cicd/assets/yowane_pose2_transparent.png"
         final_comp = "/media/projects/002_yowane_cicd/assets/yowane_v3_scene2.jpg"
     elif "005" in pname or "noshiro" in pname:
-        z0_bg = "/media/projects/006_deepseek_whale_phone_number/assets/cyber_stage_bg.jpg"
+        z0_bg = "/media/projects/005_transformer_noshiro_tutorial/assets/scene_cover.jpg"
         z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_9_z9_流程图标组.png"
         z2_cutout = "/media/projects/005_transformer_noshiro_tutorial/assets/noshiro_transparent.png"
         final_comp = "/media/projects/005_transformer_noshiro_tutorial/images/scene_2.jpg"
@@ -1546,6 +1555,16 @@ def resolve_project_layers(proj_dir: Path) -> Dict[str, str]:
         z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_3_z3_亮屏笔记本电脑.png"
         z2_cutout = "/media/library/characters/yorha_2b/triage/2b_error_triage.jpg"
         final_comp = "/media/projects/003_ai_managing_ai/assets/cover.jpg"
+    elif "007" in pname and ("dafeiyu" in pname or "deepseek" in pname):
+        z0_bg = "/media/projects/007_deepseek_dafeiyu_phone_number/assets/character_anchor_alt.jpg"
+        z1_board = "/media/projects/007_deepseek_dafeiyu_phone_number/assets/dafeiyu_character_sheet.png"
+        z2_cutout = "/media/projects/007_deepseek_dafeiyu_phone_number/assets/dafeiyu_front_canonical_2x.png"
+        final_comp = "/media/projects/007_deepseek_dafeiyu_phone_number/assets/character_anchor.jpg"
+    elif "008" in pname or "takeover" in pname:
+        z0_bg = "/media/projects/008_ai_agent_day2_takeover_diary/assets/dafeiyu_stage_coral_9x16.jpg"
+        z1_board = "/media/projects/007_deepseek_dafeiyu_phone_number/assets/dafeiyu_character_sheet.png"
+        z2_cutout = "/media/projects/008_ai_agent_day2_takeover_diary/assets/2b_thumbs_up_success.jpg"
+        final_comp = "/media/projects/008_ai_agent_day2_takeover_diary/assets/dafeiyu_master_stage_9x16.jpg"
     elif "006" in pname or "deepseek" in pname:
         z0_bg = "/media/projects/006_deepseek_whale_phone_number/assets/cyber_stage_bg.jpg"
         z1_board = "/media/projects/002_yowane_cicd/assets/decomposed_layers/layer_10_z10_红色进度条组.png"
@@ -1555,7 +1574,7 @@ def resolve_project_layers(proj_dir: Path) -> Dict[str, str]:
         final_comp = (
             "/media/projects/006_deepseek_whale_phone_number/assets/composite_keyframes/composite_keyframe_01.jpg"
         )
-    elif "007" in pname or "rem" in pname or "agenteverywhere" in pname:
+    elif "rem" in pname or "agenteverywhere" in pname:
         z0_bg = "/media/library/scenes/cyber_classroom_clean_bg.jpg"
         z1_board = "/media/library/props/holographic_whiteboard_chassis.png"
         z2_cutout = "/media/projects/agenteverywhereflow_rem/assets/rem_crop.png"

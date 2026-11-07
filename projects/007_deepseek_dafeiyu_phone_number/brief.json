@@ -1,0 +1,31 @@
+{
+  "project_id": "007_deepseek_dafeiyu_phone_number",
+  "name": "deepseek_dafeiyu_phone_number",
+  "title": "当我把B站账号和可灵会员交给AI：它自己连夜肝出了这条蓝色大肥鱼热舞？！【B站AI创造公开赛】",
+  "tagline": "AI Agent Autonomous Bilibili Production: Canonical DeepSeek Whale-chan (蓝色大肥鱼) 18s 1080P 60FPS Phone Number Dance",
+  "category": "Animation & AI Creative",
+  "description": "Autonomous AI-produced 18-second 1080x1920 60FPS Phone Number chorus dance featuring the 100% canonical DeepSeek Whale-chan (蓝色大肥鱼) on a full-bleed 2K deep-ocean glass aquarium idol stage.",
+  "character": {
+    "name": "DeepSeek娘 (蓝色大肥鱼 / Whale-chan)",
+    "credits": "Original persona concept by @上善无形, model & character sheet design by @ZipZipPipe (CC BY-NC-SA 4.0)",
+    "traits": [
+      "Long wavy ocean-blue gradient hair with ahoge",
+      "Cute drooping blue whale head-fins on both sides of head",
+      "White lace maid headband with blue side ribbons",
+      "Off-shoulder deep-blue and white maid dress with sheer ruffled collar",
+      "White apron with cute spouting blue whale graphic on the front",
+      "Large dark-blue spotted whale tail with white belly behind waist",
+      "White thigh-high stockings with blue lace garters and dark-blue Mary Jane shoes"
+    ]
+  },
+  "audio": {
+    "track": "assets/phone_number_18s.mp3",
+    "duration_sec": 18.024
+  },
+  "deliverables": {
+    "final_video": "delivery/deepseek_dafeiyu_phone_number_final.mp4",
+    "kling4_dance": "delivery/dafeiyu_phone_number_kling4_dance_18s_60fps.mp4",
+    "cover": "delivery/deepseek_dafeiyu_phone_number_cover.jpg",
+    "bilibili_copy": "delivery/bilibili.md"
+  }
+}

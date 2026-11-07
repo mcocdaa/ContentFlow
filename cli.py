@@ -488,6 +488,194 @@ def cmd_serve(args):
     return run_server(host=args.host, port=args.port)
 
 
+def cmd_auth_status(args):
+    """Lists all supported platforms, whether logged in, nickname/UID, and session file path."""
+    from core.auth_vault import AuthVault
+
+    vault = AuthVault(vault_dir=getattr(args, "vault_dir", None))
+    verify_online = bool(getattr(args, "verify", False))
+    statuses = vault.get_all_statuses(verify_online=verify_online)
+
+    print("\n=== ContentFlow Social Matrix Auth Vault Status ===")
+    for platform, info in statuses.items():
+        state_str = "LOGGED IN" if info["logged_in"] else "NOT LOGGED IN"
+        ident = f"uname={info.get('uname') or '-'}, uid={info.get('mid') or '-'}"
+        if info.get("level") is not None:
+            ident += f", Lv.{info['level']}"
+        print(f"• [{platform:<12}] {state_str:<15} | {ident}")
+        print(f"  Session File: {info['session_file']}")
+    print()
+    return 0
+
+
+def cmd_auth_login(args):
+    """Initiates QR code generation and polling for platform login (WSL-friendly)."""
+    from core.auth_vault import (
+        DEFAULT_QR_OUTPUT_PATH,
+        SUPPORTED_PLATFORMS,
+        AuthVault,
+        generate_bilibili_qr,
+        poll_bilibili_qr,
+    )
+
+    platform = args.platform.lower().strip()
+    if platform not in SUPPORTED_PLATFORMS:
+        print(f"[-] Unsupported platform '{platform}'. Supported: {', '.join(SUPPORTED_PLATFORMS)}")
+        return 1
+
+    vault = AuthVault(vault_dir=getattr(args, "vault_dir", None))
+    vault.get_platform_dir(platform, create=True)
+
+    if platform == "bilibili":
+        qr_out = Path(args.qr_output) if getattr(args, "qr_output", None) else DEFAULT_QR_OUTPUT_PATH
+        qr_info = generate_bilibili_qr(qr_image_path=qr_out, print_terminal=True)
+        if getattr(args, "no_poll", False):
+            return 0
+        print(f"[*] Waiting up to {args.timeout}s for Bilibili mobile app scan & confirmation...")
+        poll_res = poll_bilibili_qr(
+            qrcode_key=qr_info["qrcode_key"],
+            timeout=args.timeout,
+            vault=vault,
+        )
+        if poll_res.get("status") == "confirmed":
+            prof = poll_res.get("profile") or {}
+            print(f"[+] Bilibili login confirmed! Welcome {prof.get('uname') or ''} (UID: {prof.get('mid') or ''})")
+            print(f"    - Cookies saved (0600):       {poll_res['cookies_path']}")
+            print(f"    - Storage state saved (0600): {poll_res['storage_state_path']}")
+            return 0
+        print(f"[-] Bilibili QR login ended with status '{poll_res.get('status')}': {poll_res.get('message', '')}")
+        return 1
+
+    print(f"[*] Vault directory initialized for '{platform}': {vault.get_platform_dir(platform)}")
+    return 0
+
+
+def cmd_publish(args):
+    """Stages or publishes a project's video & copywriting package and outputs an Advisor Receipt."""
+    from core.publisher import MatrixPublisher
+
+    raw_platforms = getattr(args, "platforms", ["bilibili"])
+    if isinstance(raw_platforms, str):
+        platforms = [p.strip() for p in raw_platforms.split(",") if p.strip()]
+    else:
+        platforms = []
+        for item in raw_platforms:
+            platforms.extend([p.strip() for p in str(item).split(",") if p.strip()])
+    if not platforms:
+        platforms = ["bilibili"]
+
+    vault_dir = getattr(args, "vault_dir", None)
+    from core.auth_vault import AuthVault
+
+    vault = AuthVault(vault_dir=vault_dir) if vault_dir else AuthVault()
+    publisher = MatrixPublisher(vault=vault, projects_dir=PROJECTS_DIR)
+
+    dry_run = bool(getattr(args, "dry_run", False))
+    exec_upload_arg = getattr(args, "execute_upload", False)
+    remote_sched_arg = bool(getattr(args, "remote_schedule", False))
+    execute_upload = False if dry_run else (True if exec_upload_arg else None)
+
+    try:
+        result = publisher.publish_project(
+            project=args.project,
+            platforms=platforms,
+            mode=args.mode,
+            schedule_at=getattr(args, "schedule_at", None),
+            execute_upload=execute_upload,
+            remote_schedule=remote_sched_arg,
+        )
+    except Exception as exc:
+        print(f"[-] Publish failed: {exc}")
+        return 1
+
+    print(f"\n=== ContentFlow Advisor Publish Receipt ({result['project_id']}) ===")
+    print(
+        f"  • Safety Mode: {result['safety_mode']}"
+        + (f" @ {result['schedule_at']}" if result.get("schedule_at") else "")
+    )
+    for plat, manifest in result["platforms"].items():
+        receipt = manifest.get("advisor_receipt", {})
+        print(f"\n  [{plat.upper()}] Status: {receipt.get('status')}")
+        print(f"    - Title:     {manifest['title']}")
+        print(f"    - TID/Cat:   {manifest['tid']} ({manifest['category']})")
+        print(f"    - Tags:      {', '.join(manifest['tags'])}")
+        print(f"    - Video:     {manifest['video_path']}")
+        print(f"    - Cover:     {manifest['cover_path']}")
+        if receipt.get("bvid"):
+            print(f"    - BVID/AID:  {receipt.get('bvid')} (aid={receipt.get('aid')})")
+        if receipt.get("dtime_iso"):
+            print(f"    - Scheduled: {receipt.get('dtime_iso')} (dtime={receipt.get('dtime')})")
+        if receipt.get("manage_url"):
+            print(f"    - Creator:   {receipt.get('manage_url')}")
+        print(f"    - Manifest:  {manifest['manifest_path']}")
+        print(f"    - Receipt:   {manifest['receipt_md_path']}")
+    print()
+    return 0
+
+
+def cmd_analytics(args):
+    """Fetches Bilibili account stats, submitted archive views, trending radar, and track strategy."""
+    from core.analytics import BilibiliAnalytics
+    from core.auth_vault import AuthVault
+
+    vault_dir = getattr(args, "vault_dir", None)
+    vault = AuthVault(vault_dir=vault_dir) if vault_dir else AuthVault()
+    analytics = BilibiliAnalytics(vault=vault)
+    report = analytics.generate_report(save_snapshot=not getattr(args, "no_save", False))
+
+    acc = report["account"]
+    counts = report["archives_summary"]
+    totals = report["totals"]
+
+    print("\n=== ContentFlow Bilibili Autonomous Analytics & Track Radar ===")
+    print(
+        f"  • Account:   {acc.get('uname')} (UID: {acc.get('uid')}, Lv.{acc.get('level')}) | "
+        f"Followers: {acc.get('follower')} | Following: {acc.get('following')}"
+    )
+    print(
+        f"  • Archives:  {counts['pubed']} published | {counts['is_pubing']} auditing/scheduled | "
+        f"{counts['not_pubed']} rejected"
+    )
+    print(
+        f"  • Totals:    Views={totals['view']} | Likes={totals['like']} | Coins={totals['coin']} | "
+        f"Favs={totals['favorite']} | Danmaku={totals['danmaku']} | Replies={totals['reply']}"
+    )
+
+    arcs = report.get("archives") or []
+    if arcs:
+        print("\n  [Submitted Videos]")
+        for a in arcs:
+            s = a["stat"]
+            sched_str = f" (Scheduled: {a['dtime_iso']})" if a.get("dtime_iso") else ""
+            print(
+                f"    • {a.get('bvid') or a.get('aid')} [{a.get('state_desc')}]{sched_str}: {a.get('title')}\n"
+                f"      Views={s['view']} | Likes={s['like']} | Coins={s['coin']} | Favs={s['favorite']} | "
+                f"Danmaku={s['danmaku']} | Replies={s['reply']}"
+            )
+    else:
+        print("\n  [Submitted Videos] None yet.")
+
+    if getattr(args, "radar", False):
+        print("\n  [Trending Radar Top 3 per Partition]")
+        for part_name, items in (report.get("trending_radar") or {}).items():
+            print(f"    - {part_name.upper()}:")
+            for item in items[:3]:
+                print(
+                    f"      * [{item.get('bvid')}] {item.get('title')} "
+                    f"(Views={item.get('view')}, Likes={item.get('like')}, Coins={item.get('coin')})"
+                )
+
+    print("\n  [Autonomous Viral Track Strategy]")
+    for t in report.get("recommended_tracks") or []:
+        print(f"    • {t['name']} (tid={t['target_tid']})")
+        print(f"      Hook: {t['viral_hook']}")
+
+    if report.get("snapshot_md"):
+        print(f"\n  • Saved Snapshot JSON: {report.get('snapshot_json')}")
+        print(f"  • Saved Growth Report: {report.get('snapshot_md')}\n")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="ContentFlow: Universal Multi-Modal Content & Video Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -581,6 +769,71 @@ def main():
     p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=8090, help="Bind port (default: 8090)")
     p_serve.set_defaults(func=cmd_serve)
+
+    # auth (status / login)
+    p_auth = subparsers.add_parser("auth", help="Manage social matrix authentication vault & QR login")
+    auth_sub = p_auth.add_subparsers(dest="auth_action", required=True)
+
+    p_auth_status = auth_sub.add_parser("status", help="List login status across all supported platforms")
+    p_auth_status.add_argument("--verify", action="store_true", help="Verify active session online via platform API")
+    p_auth_status.set_defaults(func=cmd_auth_status)
+
+    p_auth_login = auth_sub.add_parser("login", help="Initiate QR code generation and polling for platform login")
+    p_auth_login.add_argument(
+        "--platform",
+        default="bilibili",
+        choices=["bilibili", "douyin", "xiaohongshu", "wechat_mp"],
+        help="Target platform (default: bilibili)",
+    )
+    p_auth_login.add_argument(
+        "--timeout", type=int, default=180, help="QR scan polling timeout in seconds (default: 180)"
+    )
+    p_auth_login.add_argument("--qr-output", default=None, help="Custom path to save QR code PNG")
+    p_auth_login.add_argument("--no-poll", action="store_true", help="Generate QR code and exit without polling")
+    p_auth_login.set_defaults(func=cmd_auth_login)
+
+    # publish
+    p_pub = subparsers.add_parser("publish", help="Stage or publish a project's video & copywriting package")
+    p_pub.add_argument("--project", required=True, help="Project ID or name (e.g. 005 or 006)")
+    p_pub.add_argument(
+        "--platforms",
+        "--platform",
+        dest="platforms",
+        nargs="+",
+        default=["bilibili"],
+        help="Target platforms (default: bilibili; comma or space separated)",
+    )
+    p_pub.add_argument(
+        "--mode",
+        default="draft",
+        choices=["draft", "schedule", "direct"],
+        help="Advisor safety mode (default: draft)",
+    )
+    p_pub.add_argument("--schedule-at", default=None, help="Schedule time in HH:MM, +Nh, or ISO format")
+    p_pub.add_argument(
+        "--execute-upload",
+        action="store_true",
+        help="Execute real video & cover upload to platform API",
+    )
+    p_pub.add_argument(
+        "--remote-schedule",
+        action="store_true",
+        help="Upload to Bilibili Creator Center as a scheduled draft (>=4h in future)",
+    )
+    p_pub.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Stage locally without making remote upload API calls",
+    )
+    p_pub.set_defaults(func=cmd_publish)
+
+    # analytics
+    p_ana = subparsers.add_parser(
+        "analytics", help="Fetch Bilibili account views, archive performance, and viral track radar"
+    )
+    p_ana.add_argument("--radar", action="store_true", help="Include real-time Bilibili partition trending radar")
+    p_ana.add_argument("--no-save", action="store_true", help="Do not write snapshot files to library/analytics/")
+    p_ana.set_defaults(func=cmd_analytics)
 
     args = parser.parse_args()
     return args.func(args)

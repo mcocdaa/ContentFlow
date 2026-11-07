@@ -40,6 +40,10 @@ vendor/bin/
 vendor/blender/
 vendor/ebsynth/
 vendor/ComfyUI/
+vendor/kling_cli/
+projects/*/delivery/staged_*/
+library/analytics/bilibili_*.json
+library/analytics/bilibili_*.md
 
 # OS & tool caches
 Thumbs.db

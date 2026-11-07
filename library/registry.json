@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "updated_at": "2026-09-22T07:16:13.738652Z",
-  "total_assets": 33,
+  "updated_at": "2026-11-07T05:50:10.860684Z",
+  "total_assets": 36,
   "assets": [
     {
       "id": "yowane_teacher_pointing_blackboard",
@@ -760,9 +760,89 @@
       "emotion": "thumbs_up",
       "prompt": "2B smiling giving thumbs-up, API Call Success 200 OK green screen",
       "used_in_projects": [
-        "004_ai_api_tutorial_2b"
+        "004_ai_api_tutorial_2b",
+        "008_ai_agent_day2_takeover_diary"
       ],
       "created_at": "2026-09-22T07:16:13.738579Z"
+    },
+    {
+      "id": "dafeiyu_master_stage_9x16",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "deepseek",
+        "dafeiyu",
+        "whale_girl",
+        "maid",
+        "stage",
+        "call_me",
+        "9:16",
+        "2k",
+        "deepseek_dafeiyu"
+      ],
+      "aspect_ratio": "9:16",
+      "resolution": "1536x2720",
+      "file_path": "library/characters/deepseek_dafeiyu/call_me/dafeiyu_master_stage_9x16.jpg",
+      "character_id": "deepseek_dafeiyu",
+      "emotion": "call_me",
+      "prompt": "Canonical Bilibili DeepSeek Whale-Chan (蓝色大肥鱼) on 2K full-bleed deep-sea aquarium idol stage",
+      "used_in_projects": [
+        "007_deepseek_dafeiyu_phone_number",
+        "008_ai_agent_day2_takeover_diary"
+      ],
+      "created_at": "2026-11-07T05:49:39.716480Z"
+    },
+    {
+      "id": "dafeiyu_stage_coral_9x16",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "deepseek",
+        "dafeiyu",
+        "whale_girl",
+        "maid",
+        "stage",
+        "coral",
+        "9:16",
+        "2k",
+        "stage_coral",
+        "deepseek_dafeiyu"
+      ],
+      "aspect_ratio": "9:16",
+      "resolution": "1536x2720",
+      "file_path": "library/characters/deepseek_dafeiyu/stage_coral/dafeiyu_stage_coral_9x16.jpg",
+      "character_id": "deepseek_dafeiyu",
+      "emotion": "stage_coral",
+      "prompt": "Canonical Bilibili DeepSeek Whale-Chan (蓝色大肥鱼) on glowing coral deep-sea idol stage",
+      "used_in_projects": [
+        "007_deepseek_dafeiyu_phone_number",
+        "008_ai_agent_day2_takeover_diary"
+      ],
+      "created_at": "2026-11-07T05:49:39.724005Z"
+    },
+    {
+      "id": "dafeiyu_canonical_sheet",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "deepseek",
+        "dafeiyu",
+        "character_sheet",
+        "three_view",
+        "canonical",
+        "reference",
+        "deepseek_dafeiyu"
+      ],
+      "aspect_ratio": "16:9",
+      "resolution": "2000x1414",
+      "file_path": "library/characters/deepseek_dafeiyu/reference/dafeiyu_canonical_sheet.png",
+      "character_id": "deepseek_dafeiyu",
+      "emotion": "reference",
+      "prompt": "Official CC BY-NC-SA 4.0 DeepSeek Whale-Chan (@上善无形 & @ZipZipPipe) 3-view character sheet",
+      "used_in_projects": [
+        "007_deepseek_dafeiyu_phone_number"
+      ],
+      "created_at": "2026-11-07T05:49:39.731454Z"
     }
   ]
 }

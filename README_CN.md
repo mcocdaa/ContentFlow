@@ -61,6 +61,22 @@ python3 cli.py format-html --input script.txt --output board.html
 python3 cli.py run-all --project my_topic --aspect 16:9 --voice zh-CN-YunxiNeural
 ```
 
+### 3. 跨平台鉴权保险箱、一键发布与智能数据雷达
+
+所有平台登录态（`cookies.json`、`storage_state.json`）及账号实时数据快照均保存在仓库外的 `~/.contentflow/` 私有目录（强制 `0700`/`0600` 权限），确保开源仓库零隐私泄露：
+
+```bash
+# 1. B站终端/PNG 二维码扫码登录（加密保存至 ~/.contentflow/accounts/bilibili/）
+python3 cli.py auth login --platform bilibili
+python3 cli.py auth status --verify
+
+# 2. 本地预演（draft）或一键上传至 B站创作中心定时/直发队列（schedule / direct）
+python3 cli.py publish --project 007_deepseek_dafeiyu_phone_number --platforms bilibili --mode schedule --schedule-at "18:30"
+
+# 3. 巡检账号播放/投币/互动数据并扫描 B站全站及垂类实时热门赛道雷达
+python3 cli.py analytics --radar
+```
+
 ---
 
 ## 🤖 AI 与 API 调用
@@ -97,12 +113,16 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/format-html \
 
 ```text
 ContentFlow/
-├── cli.py                   # 统一命令行入口（init, reuse-asset, format-html, run-all, serve）
+├── cli.py                   # 统一命令行入口（init, reuse-asset, format-html, run-all, auth, publish, analytics, serve）
 ├── config/                  # 全渠道规格配置、音色预设与全局路径管理
 ├── core/
 │   ├── server.py            # 零依赖 Canonical HTTP API 与 Studio WebUI 服务端
 │   ├── asset_library.py     # 中央角色库与多姿态资产注册检索引擎
 │   ├── figure_orchestrator.py # 3D Blender / 关键帧插帧 / 视频大模型管线编排器
+│   ├── video_api_router.py  # 火山方舟 Seedance、可灵 Kling 3.0/4.0 CLI/JWT 与海螺视频路由器
+│   ├── auth_vault.py        # 0600 权限本地会话保险箱（~/.contentflow/）与扫码登录引擎
+│   ├── publisher.py         # B站 UPOS 分片上传、微信公众号草稿箱与顾问验收单生成引擎
+│   ├── analytics.py         # B站稿件数据遥测与全站/分区爆款赛道雷达
 │   ├── html_formatter.py    # 防 XSS 内联 CSS 微信公众号与 Z=1 全息白板转换器
 │   ├── copywriting.py       # 全渠道图文文案生成引擎（微信/小红书/知乎/V2EX）
 │   ├── asset_builder.py     # 幻灯片合成与 50x 极速 FFmpeg 静图转流引擎
