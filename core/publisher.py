@@ -608,6 +608,46 @@ class BilibiliUploader:
             "top_response": top_json,
         }
 
+    def reply_to_comment(
+        self,
+        aid: int,
+        message: str,
+        root_rpid: int,
+        parent_rpid: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Replies to a viewer comment on an archive (`/x/v2/reply/add`)."""
+        if not self.is_authenticated:
+            raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required to reply to comments")
+
+        eff_parent = int(parent_rpid if parent_rpid is not None else root_rpid)
+        payload = {
+            "oid": str(int(aid)),
+            "type": "1",
+            "root": str(int(root_rpid)),
+            "parent": str(eff_parent),
+            "message": message.strip()[:990],
+            "plat": "1",
+            "csrf": self.bili_jct,
+        }
+        resp = self.session.post(
+            BILIBILI_REPLY_ADD_URL,
+            data=payload,
+            cookies=self.cookies,
+            headers={**self._web_headers(), "Referer": f"https://www.bilibili.com/video/av{int(aid)}"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        res_json = resp.json()
+        new_rpid = int((res_json.get("data") or {}).get("rpid") or 0)
+        return {
+            "aid": int(aid),
+            "root_rpid": int(root_rpid),
+            "parent_rpid": eff_parent,
+            "rpid": new_rpid,
+            "replied": res_json.get("code") == 0,
+            "response": res_json,
+        }
+
     def get_archive_view(self, aid: int) -> Dict[str, Any]:
         """Fetches full archive metadata and video parts (`GET /x/vupre/web/archive/view?aid=...`)."""
         if not self.is_authenticated:
@@ -632,6 +672,7 @@ class BilibiliUploader:
         title: Optional[str] = None,
         cover_url: Optional[str] = None,
         cover_path: Optional[Path] = None,
+        video_path: Optional[Path] = None,
         mission_id: Optional[int] = None,
         topic_id: Optional[int] = None,
         topic_name: Optional[str] = None,
@@ -645,22 +686,29 @@ class BilibiliUploader:
         arc = data.get("archive") or {}
         raw_videos = data.get("videos") or []
 
+        eff_title = (title or arc.get("title") or "")[:80]
+        new_upos_info: Optional[Dict[str, Any]] = None
+        if video_path is not None and Path(video_path).exists():
+            new_upos_info = self.upload_video_upos(Path(video_path))
+
         videos_payload = [
             {
-                "filename": v.get("filename", ""),
-                "title": v.get("title", arc.get("title", ""))[:80],
+                "filename": (
+                    new_upos_info["bili_filename"]
+                    if (idx == 0 and new_upos_info is not None)
+                    else v.get("filename", "")
+                ),
+                "title": (eff_title if idx == 0 else v.get("title", arc.get("title", "")))[:80],
                 "desc": v.get("desc", ""),
                 "cid": v.get("cid", 0),
             }
-            for v in raw_videos
+            for idx, v in enumerate(raw_videos)
         ]
 
         eff_cover = cover_url
         if not eff_cover and cover_path is not None and Path(cover_path).exists():
             eff_cover = self.upload_cover(Path(cover_path))
         eff_cover = eff_cover or str(arc.get("cover") or "")
-
-        eff_title = (title or arc.get("title") or "")[:80]
         eff_tid = int(tid if tid is not None else (arc.get("tid") or DEFAULT_BILIBILI_TID))
         eff_tags = (
             ",".join([t.strip() for t in tags if t.strip()][:12]) if tags is not None else str(arc.get("tag") or "")

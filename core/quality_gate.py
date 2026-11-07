@@ -266,6 +266,14 @@ class VideoQualityGate:
         fps = self._parse_fps(v_stream.get("avg_frame_rate") or v_stream.get("r_frame_rate") or "0/1")
         v_bitrate = int(v_stream.get("bit_rate") or probe_data.get("format", {}).get("bit_rate") or 0)
         color_space = v_stream.get("color_space", "unknown")
+        sar = str(v_stream.get("sample_aspect_ratio") or "1:1")
+        dar = str(v_stream.get("display_aspect_ratio") or "")
+
+        if sar not in ("1:1", "N/A", "0:1", ""):
+            blockers.append(
+                f"Non-square pixel aspect ratio detected (SAR={sar}, DAR={dar}): video will appear stretched/compressed on Bilibili!"
+            )
+            dim.issues.append(f"像素宽高比非正方形 (SAR={sar})，会导致播放画面拉伸变形")
 
         dim.details = {
             "width": width,
@@ -275,6 +283,8 @@ class VideoQualityGate:
             "fps": round(fps, 2),
             "video_bitrate_bps": v_bitrate,
             "color_space": color_space,
+            "sample_aspect_ratio": sar,
+            "display_aspect_ratio": dar,
         }
 
         # Resolution & pix_fmt (8 pts)

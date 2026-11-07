@@ -22,6 +22,8 @@ from core.auth_vault import STANDARD_USER_AGENT, AuthVault
 BILIBILI_NAV_STAT_URL = "https://api.bilibili.com/x/web-interface/nav/stat"
 BILIBILI_RELATION_STAT_URL = "https://api.bilibili.com/x/relation/stat"
 BILIBILI_MEMBER_ARCHIVES_URL = "https://member.bilibili.com/x/web/archives"
+BILIBILI_ARCHIVE_DIAGNOSE_URL = "https://member.bilibili.com/x/web/data/archive_diagnose/compare"
+BILIBILI_REPLY_LIST_URL = "https://api.bilibili.com/x/v2/reply"
 BILIBILI_VIEW_URL = "https://api.bilibili.com/x/web-interface/view"
 BILIBILI_POPULAR_URL = "https://api.bilibili.com/x/web-interface/popular"
 BILIBILI_RANKING_V2_URL = "https://api.bilibili.com/x/web-interface/ranking/v2"
@@ -163,6 +165,8 @@ class BilibiliAnalytics:
 
             ptime = int(arc.get("ptime") or 0)
             dtime = int(arc.get("dtime") or 0)
+            diagnose = self.fetch_archive_diagnose(bvid) if (bvid and int(arc.get("state") or 0) >= 0) else {}
+            recent_comments = self.fetch_archive_comments(int(aid)) if (aid and r_cnt > 0) else []
 
             archives.append(
                 {
@@ -195,6 +199,8 @@ class BilibiliAnalytics:
                         "share": s_cnt,
                     },
                     "weighted_engagement_rate": engagement_rate,
+                    "diagnose": diagnose,
+                    "recent_comments": recent_comments,
                 }
             )
 
@@ -208,6 +214,89 @@ class BilibiliAnalytics:
             "totals": totals,
             "archives": archives,
         }
+
+    def fetch_archive_diagnose(self, bvid: str) -> Dict[str, Any]:
+        """Fetches Bilibili Creator Center official play analysis & CTR diagnostic (`archive_diagnose/compare`)."""
+        if not bvid:
+            return {}
+        try:
+            resp = self.session.get(
+                BILIBILI_ARCHIVE_DIAGNOSE_URL,
+                params={"bvid": str(bvid), "size": "10"},
+                cookies=self.cookies,
+                headers=self._headers("https://member.bilibili.com/platform/data-up/video/playAnalysis"),
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return {}
+            data_obj = resp.json().get("data") or {}
+            arc_list = data_obj.get("list") or []
+            item = next((x for x in arc_list if x.get("bvid") == bvid), arc_list[0] if arc_list else {})
+            d = item.get("stat") or data_obj.get("current_arc") or {}
+            if not d:
+                return {}
+            tm_star_raw = int(d.get("tm_star") or 0)
+            tm_stars = round(tm_star_raw / 10.0, 1)
+            if tm_star_raw == 0:
+                tm_advice = "计算中/待更新"
+            elif tm_star_raw <= 25:
+                tm_advice = f"封标有优化空间 ({tm_stars:g}星)"
+            elif tm_star_raw <= 35:
+                tm_advice = f"封标表现良好 ({tm_stars:g}星)"
+            else:
+                tm_advice = f"封标表现优秀 ({tm_stars:g}星)"
+            return {
+                "traffic_status": "受限" if (d.get("limit_state") or item.get("is_only_self")) else "正常",
+                "tm_star_raw": tm_star_raw,
+                "tm_stars": tm_stars,
+                "cover_title_advice": tm_advice,
+                "crash_p50_pct": round(int(d.get("crash_p50") or 0) / 100.0, 2),
+                "interact_p50_pct": round(int(d.get("interact_p50") or 0) / 100.0, 2),
+                "play_trans_fan_p50_pct": round(int(d.get("play_trans_fan_p50") or 0) / 100.0, 2),
+            }
+        except Exception:
+            return {}
+
+    def fetch_archive_comments(self, aid: int, ps: int = 10) -> List[Dict[str, Any]]:
+        """Fetches recent comments and sub-replies on an archive (`/x/v2/reply`)."""
+        if not aid:
+            return []
+        comments: List[Dict[str, Any]] = []
+        try:
+            resp = self.session.get(
+                BILIBILI_REPLY_LIST_URL,
+                params={"type": "1", "oid": str(int(aid)), "pn": "1", "ps": str(ps), "sort": "2"},
+                cookies=self.cookies,
+                headers=self._headers(f"https://www.bilibili.com/video/av{int(aid)}"),
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return []
+            replies = ((resp.json().get("data") or {}).get("replies")) or []
+            for r in replies:
+                comments.append(
+                    {
+                        "rpid": r.get("rpid"),
+                        "uname": (r.get("member") or {}).get("uname", ""),
+                        "message": (r.get("content") or {}).get("message", ""),
+                        "like": r.get("like", 0),
+                        "is_sub": False,
+                    }
+                )
+                for sr in r.get("replies") or []:
+                    comments.append(
+                        {
+                            "rpid": sr.get("rpid"),
+                            "root_rpid": r.get("rpid"),
+                            "uname": (sr.get("member") or {}).get("uname", ""),
+                            "message": (sr.get("content") or {}).get("message", ""),
+                            "like": sr.get("like", 0),
+                            "is_sub": True,
+                        }
+                    )
+        except Exception:
+            return []
+        return comments
 
     def fetch_trending_radar(self, limit: int = 5) -> Dict[str, List[Dict[str, Any]]]:
         """Scans Bilibili Popular and Partition Rankings (Anime/MMD, Tech/AI, Dance)."""
@@ -382,6 +471,14 @@ class BilibiliAnalytics:
                     f"- **`{a['bvid'] or a['aid']}`** [{a['state_desc']}] {a['title']}\n"
                     f"  - Views: `{s['view']}` | Likes: `{s['like']}` | Coins: `{s['coin']}` | Favs: `{s['favorite']}` | Danmaku: `{s['danmaku']}` | Replies: `{s['reply']}`"
                 )
+                diag = a.get("diagnose") or {}
+                if diag:
+                    lines.append(
+                        f"  - Official Diagnose: Traffic `{diag.get('traffic_status')}` | Cover/Title CTR: **`{diag.get('cover_title_advice')}`** | Peer Benchmarks (P50): 3s Bounce `{diag.get('crash_p50_pct')}%`, Interact `{diag.get('interact_p50_pct')}%`"
+                    )
+                for cm in (a.get("recent_comments") or [])[:5]:
+                    prefix = "    ↳ [Sub-reply]" if cm.get("is_sub") else "    • [Comment]"
+                    lines.append(f"{prefix} @{cm.get('uname')}: {cm.get('message')[:80]}")
 
         lines.extend(["", "## 2. Autonomous Viral Track Matrix"])
         for t in report.get("recommended_tracks") or []:

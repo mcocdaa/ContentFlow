@@ -67,7 +67,7 @@ def finalize_60fps(
                         str(clip),
                         "-an",
                         "-vf",
-                        "scale=1080:1920:flags=lanczos,fps=30,format=yuv420p",
+                        "scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,setdar=9/16,fps=30,format=yuv420p",
                         "-c:v",
                         "libx264",
                         "-preset",
@@ -112,7 +112,9 @@ def finalize_60fps(
         output_video.parent.mkdir(parents=True, exist_ok=True)
         vf_chain = (
             f"setpts={pts_factor:.6f}*PTS,"
-            "scale=1080:1920:flags=lanczos,"
+            "scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,"
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,"
+            "setsar=1,setdar=9/16,"
             "framerate=fps=60:interp_start=48:interp_end=208:scene=8.2,"
             "unsharp=3:3:0.35:3:3:0.0"
         )
