@@ -676,6 +676,81 @@ def cmd_analytics(args):
     return 0
 
 
+def cmd_quality_check(args):
+    """Runs the 100-point objective VideoQualityGate on a project."""
+    from core.quality_gate import VideoQualityGate
+
+    gate = VideoQualityGate(
+        root_dir=CONTENTFLOW_ROOT,
+        pass_threshold=float(getattr(args, "threshold", 80.0)),
+    )
+    report = gate.evaluate_project(
+        project=args.project,
+        video_path=getattr(args, "video", None),
+        cover_path=getattr(args, "cover", None),
+    )
+    if getattr(args, "json", False):
+        print(report.to_json())
+    else:
+        print(report.format_terminal_report())
+    if getattr(args, "output_json", None):
+        out_p = Path(args.output_json)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        out_p.write_text(report.to_json(), encoding="utf-8")
+    return 0 if report.passed else 1
+
+
+def cmd_design_cover(args):
+    """Renders a 1920x1080 (16:9) high-CTR Bilibili cover and 1440x1080 (4:3) safe crop."""
+    from core.cover_designer import CoverDesigner
+
+    proj_dir = resolve_project_dir(args.project)
+    if not proj_dir.exists():
+        print(f"[-] Project directory '{args.project}' not found (searched in {PROJECTS_DIR}).")
+        return 1
+
+    designer = CoverDesigner(font_path=getattr(args, "font", None))
+    raw_tags = getattr(args, "tags", None)
+    tags_list = None
+    if raw_tags:
+        if isinstance(raw_tags, str):
+            tags_list = [t.strip() for t in raw_tags.split(",") if t.strip()]
+        else:
+            tags_list = [str(t).strip() for t in raw_tags if str(t).strip()]
+
+    base_img = getattr(args, "base_image", None)
+    out_path = getattr(args, "output", None)
+    if base_img:
+        b_path = Path(base_img) if Path(base_img).exists() else (proj_dir / base_img)
+        target_out = Path(out_path) if out_path else (proj_dir / "delivery" / f"{proj_dir.name}_cover.jpg")
+        res = designer.design_cover(
+            base_image_path=b_path,
+            output_path=target_out,
+            hook_line1=getattr(args, "hook_line1", None) or "把B站账号交给AI",
+            hook_line2=getattr(args, "hook_line2", None) or "连夜肝出大肥鱼",
+            hook_line3=getattr(args, "hook_line3", None) or "60帧纯享热舞！",
+            badge_text=getattr(args, "badge", None) or "AI接管账号实录",
+            bottom_tags=tags_list,
+        )
+    else:
+        res = designer.design_project_cover(
+            project_dir=proj_dir,
+            hook_line1=getattr(args, "hook_line1", None),
+            hook_line2=getattr(args, "hook_line2", None),
+            hook_line3=getattr(args, "hook_line3", None),
+            badge_text=getattr(args, "badge", None),
+            bottom_tags=tags_list,
+            output_path=out_path,
+        )
+
+    print(f"[+] Bilibili 16:9 High-CTR Cover rendered for '{proj_dir.name}':")
+    print(f"    - Layout Mode:     {res.layout_mode} (from {res.source_size[0]}x{res.source_size[1]})")
+    print(f"    - 16:9 Cover JPG:  {res.output_path} ({res.width}x{res.height})")
+    print(f"    - 4:3 Safe Crop:   {res.output_4x3_path} (1440x1080)")
+    print(f"    - Hook Lines:      {' | '.join(res.hook_lines)}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="ContentFlow: Universal Multi-Modal Content & Video Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -699,7 +774,11 @@ def main():
     p_video.add_argument("--aspect", default="16:9", choices=["16:9", "9:16", "1:1"], help="Video aspect ratio")
     p_video.add_argument("--voice", default="zh-CN-YunxiNeural", help="TTS Voice Name")
     p_video.add_argument("--bgm", default="random", choices=["random", "none", "custom"], help="Background music mode")
-    p_video.add_argument("--font", default="STHeitiMedium.ttc", help="Subtitle font filename")
+    p_video.add_argument(
+        "--font",
+        default="/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        help="Subtitle font path (open-source commercial compliant)",
+    )
     p_video.add_argument(
         "--slow-zoom", action="store_true", help="Use MoviePy software zoom instead of fast ffmpeg conversion"
     )
@@ -712,7 +791,11 @@ def main():
     p_all.add_argument("--aspect", default="16:9", choices=["16:9", "9:16", "1:1"], help="Video aspect ratio")
     p_all.add_argument("--voice", default="zh-CN-YunxiNeural", help="TTS Voice Name")
     p_all.add_argument("--bgm", default="random", choices=["random", "none", "custom"], help="Background music mode")
-    p_all.add_argument("--font", default="STHeitiMedium.ttc", help="Subtitle font filename")
+    p_all.add_argument(
+        "--font",
+        default="/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        help="Subtitle font path (open-source commercial compliant)",
+    )
     p_all.add_argument(
         "--slow-zoom", action="store_true", help="Use MoviePy software zoom instead of fast ffmpeg conversion"
     )
@@ -834,6 +917,31 @@ def main():
     p_ana.add_argument("--radar", action="store_true", help="Include real-time Bilibili partition trending radar")
     p_ana.add_argument("--no-save", action="store_true", help="Do not write snapshot files to library/analytics/")
     p_ana.set_defaults(func=cmd_analytics)
+
+    # quality-check
+    p_qc = subparsers.add_parser("quality-check", help="Run 100-point objective VideoQualityGate on a project")
+    p_qc.add_argument("--project", required=True, help="Project ID or name (e.g. 007 or 005)")
+    p_qc.add_argument("--video", default=None, help="Optional explicit video file path")
+    p_qc.add_argument("--cover", default=None, help="Optional explicit cover file path")
+    p_qc.add_argument("--threshold", type=float, default=80.0, help="Passing score threshold (default: 80.0)")
+    p_qc.add_argument("--json", action="store_true", help="Output structured JSON report to stdout")
+    p_qc.add_argument("--output-json", default=None, help="Save structured JSON report to file")
+    p_qc.set_defaults(func=cmd_quality_check)
+
+    # design-cover
+    p_dc = subparsers.add_parser(
+        "design-cover", help="Render Bilibili 16:9 high-CTR viral cover (1920x1080) & 4:3 safe crop"
+    )
+    p_dc.add_argument("--project", required=True, help="Project ID or name (e.g. 007 or 005)")
+    p_dc.add_argument("--hook-line1", default=None, help="Main hook title line 1 (Gold #FFD700)")
+    p_dc.add_argument("--hook-line2", default=None, help="Main hook title line 2 (White #FFFFFF)")
+    p_dc.add_argument("--hook-line3", default=None, help="Main hook title line 3 (Cyan #00F0FF)")
+    p_dc.add_argument("--badge", default=None, help="Top capsule badge text (e.g. 'AI接管账号实录')")
+    p_dc.add_argument("--tags", default=None, help="Comma-separated bottom highlight tags (e.g. '2K重绘,60FPS满帧')")
+    p_dc.add_argument("--base-image", default=None, help="Optional explicit base image path")
+    p_dc.add_argument("--output", default=None, help="Optional explicit output cover path")
+    p_dc.add_argument("--font", default=None, help="Optional path to open-source CJK bold font")
+    p_dc.set_defaults(func=cmd_design_cover)
 
     args = parser.parse_args()
     return args.func(args)

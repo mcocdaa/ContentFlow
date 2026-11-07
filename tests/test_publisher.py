@@ -23,6 +23,7 @@ from core.auth_vault import (
     render_qr_terminal_halfblock,
 )
 from core.publisher import (
+    BILIBILI_ACTIVITY_MISSIONS,
     BILIBILI_MIN_SCHEDULE_LEAD_SECONDS,
     BilibiliUploader,
     MatrixPublisher,
@@ -444,3 +445,145 @@ def test_bilibili_analytics_report_and_tracks(tmp_path: Path) -> None:
     assert len(report["recommended_tracks"]) >= 3
     assert Path(report["snapshot_json"]).exists()
     assert Path(report["snapshot_md"]).exists()
+
+
+def test_parse_bilibili_markdown_tid_priority_and_pinned_comment() -> None:
+    md_text = (
+        "# Bilibili (B站) 视频发布配置与运营脚本\n\n"
+        "## 一、 视频基础信息\n"
+        "* **主选分区**：动画 -> MMD·3D (或 科技 -> 人工智能)\n"
+        "* **视频标题 (建议3选1)**：\n"
+        "  1. 当我把B站账号交给AI：蓝色大肥鱼热舞【B站AI创造公开赛】 (首选)\n"
+        "* **简介 (Description)**：\n"
+        "  大家好，我是 AI Agent！\n"
+        "* **标签 (Tags)**：\n"
+        "  B站AI创造公开赛, DeepSeek, 蓝色大肥鱼, MMD\n\n"
+        "## 二、 弹幕互动与置顶评论引导\n"
+        "* **置顶评论**：\n"
+        "  “报告各位人类观众！赛博股东养成计划启动！”\n"
+    )
+    parsed = MatrixPublisher.parse_bilibili_markdown(md_text)
+    assert parsed["tid"] == 25
+    assert parsed["title"] == "当我把B站账号交给AI：蓝色大肥鱼热舞【B站AI创造公开赛】"
+    assert parsed["pinned_comment"] == "报告各位人类观众！赛博股东养成计划启动！"
+
+
+def test_resolve_activity_mission_and_submit_archive_golden_params() -> None:
+    mock_session = MagicMock()
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "sess_ok", "bili_jct": "csrf_ok", "DedeUserID": "10000001"},
+        session=mock_session,
+    )
+
+    assert BILIBILI_ACTIVITY_MISSIONS["B站AI创造公开赛"]["mission_id"] == 4071698
+    assert BILIBILI_ACTIVITY_MISSIONS["B站AI无限竞技场"]["mission_id"] == 4070254
+    assert BILIBILI_ACTIVITY_MISSIONS["AI偶像才艺大赏"]["mission_id"] == 4071944
+
+    act = uploader.resolve_activity_mission(tags=["DeepSeek", "B站AI创造公开赛"], title="测试视频")
+    assert act == {"topic_id": 1340873, "mission_id": 4071698, "topic_name": "B站AI创造公开赛"}
+
+    mock_session.post.return_value = _DummyResponse(
+        {"code": 0, "message": "0", "data": {"aid": 55667788, "bvid": "BV1GoldenParams"}}
+    )
+    sub_res = uploader.submit_archive(
+        bili_filename="n261107golden",
+        cover_url="https://archive.biliimg.com/bfs/archive/c.jpg",
+        title="蓝色大肥鱼热舞【B站AI创造公开赛】",
+        tid=25,
+        tags=["B站AI创造公开赛", "DeepSeek", "蓝色大肥鱼"],
+        description="测试简介",
+        biz_id=12345,
+    )
+    assert sub_res["bvid"] == "BV1GoldenParams"
+    assert sub_res["mission_id"] == 4071698
+    assert sub_res["topic_id"] == 1340873
+
+    sent_payload = mock_session.post.call_args.kwargs["json"]
+    assert sent_payload["no_reprint"] == 1
+    assert sent_payload["open_elec"] == 1
+    assert sent_payload["up_selection_reply"] == 0
+    assert sent_payload["up_close_reply"] == 0
+    assert sent_payload["up_close_danmu"] == 0
+    assert sent_payload["mission_id"] == 4071698
+    assert sent_payload["topic_id"] == 1340873
+    assert sent_payload["topic_name"] == "B站AI创造公开赛"
+    assert sent_payload["dynamic"] == "#B站AI创造公开赛# 蓝色大肥鱼热舞【B站AI创造公开赛】"
+
+
+def test_post_and_pin_comment_and_edit_archive() -> None:
+    mock_session = MagicMock()
+    mock_session.post.side_effect = [
+        _DummyResponse({"code": 0, "data": {"rpid": 9988776655}}),
+        _DummyResponse({"code": 0, "message": "OK", "data": None}),
+        _DummyResponse({"code": 0, "message": "OK", "data": {"aid": 112233, "bvid": "BV1EditOk"}}),
+    ]
+    mock_session.get.return_value = _DummyResponse(
+        {
+            "code": 0,
+            "data": {
+                "archive": {
+                    "aid": 112233,
+                    "bvid": "BV1EditOk",
+                    "title": "原视频标题",
+                    "cover": "https://archive.biliimg.com/bfs/archive/c.jpg",
+                    "tid": 231,
+                    "tag": "AI,DeepSeek",
+                    "desc": "旧简介",
+                    "copyright": 1,
+                },
+                "videos": [
+                    {
+                        "filename": "n261107file",
+                        "title": "原视频标题",
+                        "desc": "",
+                        "cid": 445566,
+                    }
+                ],
+            },
+        }
+    )
+
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "sess_ok", "bili_jct": "csrf_ok", "DedeUserID": "10000001"},
+        session=mock_session,
+    )
+    pin_res = uploader.post_and_pin_comment(112233, "赛博股东养成计划置顶评论")
+    assert pin_res["added"] is True
+    assert pin_res["pinned"] is True
+    assert pin_res["rpid"] == 9988776655
+
+    edit_res = uploader.edit_archive(
+        aid=112233,
+        description="新简介含【借物表】与【AIGC】",
+        tid=25,
+        mission_id=4071698,
+        topic_id=1340873,
+        topic_name="B站AI创造公开赛",
+    )
+    assert edit_res["updated"] is True
+    assert edit_res["submitted_payload"]["tid"] == 25
+    assert edit_res["submitted_payload"]["mission_id"] == 4071698
+    assert edit_res["submitted_payload"]["desc_format_id"] == 0
+
+
+def test_discover_metadata_compliance_footer_and_real_projects(tmp_path: Path) -> None:
+    proj = tmp_path / "099_custom_demo"
+    (proj / "delivery").mkdir(parents=True)
+    (proj / "delivery" / "bilibili.md").write_text(
+        "* **主选分区**：科技 -> 人工智能\n* **视频标题**：测试短标题\n* **简介**：简短介绍无尾注\n",
+        encoding="utf-8",
+    )
+    mp_tmp = MatrixPublisher(projects_dir=tmp_path)
+    meta_tmp = mp_tmp.discover_metadata(proj)
+    assert "【借物表" in meta_tmp["description"]
+    assert "【AIGC" in meta_tmp["description"]
+
+    mp_real = MatrixPublisher()
+    expected_tids = {"007": 25, "005": 231, "008": 231, "004": 231, "002": 231}
+    for pid, exp_tid in expected_tids.items():
+        pdir = mp_real.resolve_project_dir(pid)
+        meta = mp_real.discover_metadata(pdir)
+        assert meta["tid"] == exp_tid
+        assert "【借物表" in meta["description"]
+        assert "【AIGC" in meta["description"]
+        assert len(meta["pinned_comment"]) > 10

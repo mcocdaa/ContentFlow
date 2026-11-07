@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "updated_at": "2026-11-07T05:50:10.860684Z",
-  "total_assets": 36,
+  "updated_at": "2026-11-07T07:02:38.763932Z",
+  "total_assets": 38,
   "assets": [
     {
       "id": "yowane_teacher_pointing_blackboard",
@@ -26,7 +26,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:32:53.390436Z"
+      "created_at": "2026-09-22T03:32:53.390436Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_teacher_hands_on_hips",
@@ -49,7 +54,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:32:53.393717Z"
+      "created_at": "2026-09-22T03:32:53.393717Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "conveyor_robot_arm_inspection",
@@ -71,7 +81,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:32:53.395746Z"
+      "created_at": "2026-09-22T03:32:53.395746Z",
+      "license": "CC BY-NC-SA 4.0",
+      "author": "ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.volcengine.com/product/doubao",
+      "attribution_required": true,
+      "credit_line": "场景与全息白板视觉资产：ContentFlow × Doubao-Seedream-5.0-Pro 原创生成 (CC BY-NC-SA 4.0)"
     },
     {
       "id": "server_racks_green_checks",
@@ -93,7 +108,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:32:53.398008Z"
+      "created_at": "2026-09-22T03:32:53.398008Z",
+      "license": "CC BY-NC-SA 4.0",
+      "author": "ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.volcengine.com/product/doubao",
+      "attribution_required": true,
+      "credit_line": "场景与全息白板视觉资产：ContentFlow × Doubao-Seedream-5.0-Pro 原创生成 (CC BY-NC-SA 4.0)"
     },
     {
       "id": "yowane_scene1_sigh",
@@ -117,7 +137,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:41:20.626040Z"
+      "created_at": "2026-09-22T03:41:20.626040Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_scene2_warning",
@@ -140,7 +165,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:41:48.574566Z"
+      "created_at": "2026-09-22T03:41:48.574566Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_scene3_ci",
@@ -163,7 +193,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:42:24.490354Z"
+      "created_at": "2026-09-22T03:42:24.490354Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_scene4_cd",
@@ -186,7 +221,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:43:04.288066Z"
+      "created_at": "2026-09-22T03:43:04.288066Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_scene5_outro",
@@ -209,7 +249,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T03:43:41.572086Z"
+      "created_at": "2026-09-22T03:43:41.572086Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_unified_scene1",
@@ -233,7 +278,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T04:09:35.150843Z"
+      "created_at": "2026-09-22T04:09:35.150843Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_unified_scene2",
@@ -258,7 +308,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T04:09:35.151811Z"
+      "created_at": "2026-09-22T04:09:35.151811Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_unified_scene3",
@@ -283,7 +338,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T04:10:09.528674Z"
+      "created_at": "2026-09-22T04:10:09.528674Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_unified_scene4",
@@ -308,7 +368,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T04:10:37.871216Z"
+      "created_at": "2026-09-22T04:10:37.871216Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_unified_scene5",
@@ -333,7 +398,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T04:11:09.176565Z"
+      "created_at": "2026-09-22T04:11:09.176565Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "cyber_classroom_clean_bg",
@@ -356,7 +426,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.013139Z"
+      "created_at": "2026-09-22T05:29:45.013139Z",
+      "license": "CC BY-NC-SA 4.0",
+      "author": "ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.volcengine.com/product/doubao",
+      "attribution_required": true,
+      "credit_line": "场景与全息白板视觉资产：ContentFlow × Doubao-Seedream-5.0-Pro 原创生成 (CC BY-NC-SA 4.0)"
     },
     {
       "id": "holographic_whiteboard_chassis",
@@ -379,7 +454,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.017089Z"
+      "created_at": "2026-09-22T05:29:45.017089Z",
+      "license": "CC BY-NC-SA 4.0",
+      "author": "ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.volcengine.com/product/doubao",
+      "attribution_required": true,
+      "credit_line": "场景与全息白板视觉资产：ContentFlow × Doubao-Seedream-5.0-Pro 原创生成 (CC BY-NC-SA 4.0)"
     },
     {
       "id": "yowane_alluring_pose1_troubled",
@@ -403,7 +483,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.023626Z"
+      "created_at": "2026-09-22T05:29:45.023626Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_alluring_pose2_pointer",
@@ -427,7 +512,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.029615Z"
+      "created_at": "2026-09-22T05:29:45.029615Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_alluring_pose3_allgreen",
@@ -451,7 +541,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.035205Z"
+      "created_at": "2026-09-22T05:29:45.035205Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_alluring_pose4_container",
@@ -474,7 +569,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.040647Z"
+      "created_at": "2026-09-22T05:29:45.040647Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_alluring_pose5_thumbsup",
@@ -497,7 +597,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.046278Z"
+      "created_at": "2026-09-22T05:29:45.046278Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_cicd_v3_scene1",
@@ -518,7 +623,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.050237Z"
+      "created_at": "2026-09-22T05:29:45.050237Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_cicd_v3_scene2",
@@ -539,7 +649,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.054268Z"
+      "created_at": "2026-09-22T05:29:45.054268Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_cicd_v3_scene3",
@@ -560,7 +675,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.058185Z"
+      "created_at": "2026-09-22T05:29:45.058185Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_cicd_v3_scene4",
@@ -581,7 +701,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.061913Z"
+      "created_at": "2026-09-22T05:29:45.061913Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yowane_cicd_v3_scene5",
@@ -602,7 +727,12 @@
       "used_in_projects": [
         "002_yowane_cicd"
       ],
-      "created_at": "2026-09-22T05:29:45.066947Z"
+      "created_at": "2026-09-22T05:29:45.066947Z",
+      "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+      "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://piapro.net/intl/zh/character.html",
+      "attribution_required": true,
+      "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)"
     },
     {
       "id": "yorha_2b_master_reference",
@@ -625,7 +755,12 @@
       "used_in_projects": [
         "004_ai_api_tutorial_2b"
       ],
-      "created_at": "2026-09-22T07:16:13.737948Z"
+      "created_at": "2026-09-22T07:16:13.737948Z",
+      "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+      "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.jp.square-enix.com/nierautomata/",
+      "attribution_required": true,
+      "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
     },
     {
       "id": "yorha_2b_troubled_api_error",
@@ -648,7 +783,12 @@
       "used_in_projects": [
         "004_ai_api_tutorial_2b"
       ],
-      "created_at": "2026-09-22T07:16:13.738273Z"
+      "created_at": "2026-09-22T07:16:13.738273Z",
+      "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+      "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.jp.square-enix.com/nierautomata/",
+      "attribution_required": true,
+      "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
     },
     {
       "id": "yorha_2b_teaching_base_url",
@@ -671,7 +811,12 @@
       "used_in_projects": [
         "004_ai_api_tutorial_2b"
       ],
-      "created_at": "2026-09-22T07:16:13.738361Z"
+      "created_at": "2026-09-22T07:16:13.738361Z",
+      "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+      "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.jp.square-enix.com/nierautomata/",
+      "attribution_required": true,
+      "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
     },
     {
       "id": "yorha_2b_warning_api_key",
@@ -693,7 +838,12 @@
       "used_in_projects": [
         "004_ai_api_tutorial_2b"
       ],
-      "created_at": "2026-09-22T07:16:13.738453Z"
+      "created_at": "2026-09-22T07:16:13.738453Z",
+      "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+      "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.jp.square-enix.com/nierautomata/",
+      "attribution_required": true,
+      "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
     },
     {
       "id": "yorha_2b_explaining_model_name",
@@ -715,7 +865,12 @@
       "used_in_projects": [
         "004_ai_api_tutorial_2b"
       ],
-      "created_at": "2026-09-22T07:16:13.738507Z"
+      "created_at": "2026-09-22T07:16:13.738507Z",
+      "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+      "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.jp.square-enix.com/nierautomata/",
+      "attribution_required": true,
+      "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
     },
     {
       "id": "yorha_2b_error_triage",
@@ -739,7 +894,12 @@
       "used_in_projects": [
         "004_ai_api_tutorial_2b"
       ],
-      "created_at": "2026-09-22T07:16:13.738541Z"
+      "created_at": "2026-09-22T07:16:13.738541Z",
+      "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+      "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.jp.square-enix.com/nierautomata/",
+      "attribution_required": true,
+      "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
     },
     {
       "id": "yorha_2b_success_thumbs_up",
@@ -763,7 +923,12 @@
         "004_ai_api_tutorial_2b",
         "008_ai_agent_day2_takeover_diary"
       ],
-      "created_at": "2026-09-22T07:16:13.738579Z"
+      "created_at": "2026-09-22T07:16:13.738579Z",
+      "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+      "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.jp.square-enix.com/nierautomata/",
+      "attribution_required": true,
+      "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
     },
     {
       "id": "dafeiyu_master_stage_9x16",
@@ -790,7 +955,12 @@
         "007_deepseek_dafeiyu_phone_number",
         "008_ai_agent_day2_takeover_diary"
       ],
-      "created_at": "2026-11-07T05:49:39.716480Z"
+      "created_at": "2026-11-07T05:49:39.716480Z",
+      "license": "CC BY-NC-SA 4.0",
+      "author": "@上善无形 (溟月) & @ZipZipPipe / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.bilibili.com/video/BV1c9F9eEE5d/",
+      "attribution_required": true,
+      "credit_line": "角色设定：DeepSeek娘（蓝色大肥鱼）— 初版拟人设定：@上善无形（溟月）| 模型与三视图设计：@ZipZipPipe (CC BY-NC-SA 4.0)"
     },
     {
       "id": "dafeiyu_stage_coral_9x16",
@@ -818,7 +988,12 @@
         "007_deepseek_dafeiyu_phone_number",
         "008_ai_agent_day2_takeover_diary"
       ],
-      "created_at": "2026-11-07T05:49:39.724005Z"
+      "created_at": "2026-11-07T05:49:39.724005Z",
+      "license": "CC BY-NC-SA 4.0",
+      "author": "@上善无形 (溟月) & @ZipZipPipe / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.bilibili.com/video/BV1c9F9eEE5d/",
+      "attribution_required": true,
+      "credit_line": "角色设定：DeepSeek娘（蓝色大肥鱼）— 初版拟人设定：@上善无形（溟月）| 模型与三视图设计：@ZipZipPipe (CC BY-NC-SA 4.0)"
     },
     {
       "id": "dafeiyu_canonical_sheet",
@@ -842,7 +1017,70 @@
       "used_in_projects": [
         "007_deepseek_dafeiyu_phone_number"
       ],
-      "created_at": "2026-11-07T05:49:39.731454Z"
+      "created_at": "2026-11-07T05:49:39.731454Z",
+      "license": "CC BY-NC-SA 4.0",
+      "author": "@上善无形 (溟月) & @ZipZipPipe / ContentFlow × Doubao-Seedream-5.0-Pro",
+      "source_url": "https://www.bilibili.com/video/BV1c9F9eEE5d/",
+      "attribution_required": true,
+      "credit_line": "角色设定：DeepSeek娘（蓝色大肥鱼）— 初版拟人设定：@上善无形（溟月）| 模型与三视图设计：@ZipZipPipe (CC BY-NC-SA 4.0)"
+    },
+    {
+      "id": "noshiro_reference",
+      "type": "image",
+      "category": "character",
+      "tags": [
+        "noshiro",
+        "azur_lane",
+        "reference",
+        "teacher",
+        "atdan",
+        "3d_figure"
+      ],
+      "aspect_ratio": "9:16",
+      "resolution": "1260x2800",
+      "file_path": "library/characters/noshiro/reference/noshiro_reference.jpg",
+      "character_id": "noshiro",
+      "emotion": "reference",
+      "prompt": "Azur Lane Noshiro (能代) character reference figure, original design by ATDAN (Manjuu/Yongshi)",
+      "used_in_projects": [
+        "005_transformer_noshiro_tutorial"
+      ],
+      "created_at": "2026-11-07T06:58:00.000000Z",
+      "license": "Azur Lane Fan Creation Guidelines (Non-Commercial Derivative)",
+      "author": "Manjuu / Yongshi (《碧蓝航线》能代, 原画: ATDAN)",
+      "source_url": "https://wiki.biligame.com/blhx/%E8%83%BD%E4%BB%A3",
+      "attribution_required": true,
+      "credit_line": "角色原型：《碧蓝航线》能代 (Noshiro) — 版权归属 Manjuu / Yongshi | 原画设计：ATDAN（非商业技术科普同人二创）"
+    },
+    {
+      "id": "ureshiiiiii_phone_number_motion",
+      "type": "motion",
+      "category": "motion",
+      "tags": [
+        "mmd",
+        "vmd",
+        "phone_number",
+        "ureshiiiiii",
+        "tda_luka_dress",
+        "tahiti",
+        "dance"
+      ],
+      "aspect_ratio": "9:16",
+      "resolution": "1080x1920",
+      "file_path": "library/motions/ureshiiiiii_phone_number_motion.vmd",
+      "character_id": null,
+      "emotion": "dance",
+      "prompt": "MMD Phone Number chorus dance motion by ureshiiiiii + TDA Luka Dress base + BGM TAHITI - Phone Number",
+      "used_in_projects": [
+        "007_deepseek_dafeiyu_phone_number",
+        "008_ai_agent_day2_takeover_diary"
+      ],
+      "created_at": "2026-11-07T06:58:00.000000Z",
+      "license": "MMD Community Non-Commercial Attribution",
+      "author": "动作作者 ureshiiiiii + 基底模型 TDA Luka Dress + BGM TAHITI - Phone Number",
+      "source_url": "https://www.bilibili.com/",
+      "attribution_required": true,
+      "credit_line": "动作与音乐借物：MMD动作作者 ureshiiiiii (Phone Number) | 3D骨骼基底模型：TDA Luka Dress (TDA / agahat) | BGM音乐：TAHITI - Phone Number"
     }
   ]
 }

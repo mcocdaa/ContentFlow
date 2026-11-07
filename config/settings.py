@@ -52,9 +52,9 @@ DEFAULT_VOICES = {
 }
 
 DEFAULT_FONTS = [
-    "STHeitiMedium.ttc",
-    "MicrosoftYaHeiNormal.ttc",
-    "SimHei.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
 ]
 
 DEFAULT_ASPECT_RATIOS = {

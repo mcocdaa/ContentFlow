@@ -112,8 +112,8 @@ python3 cli.py reuse-asset --project my_new_project --asset yorha_2b_warning_api
 4. **官方精选发音人**：
    - `zh_female_xiaohe_uranus_bigtts`（小何 2.0：知性清冷，最契合 2B 机械姬质感）
    - `zh_female_vv_uranus_bigtts`（Vivi 2.0：活力灵动二次元少女）
-5. **跨语种零样本声音复刻 (ICL)**：
-   - 当开通 `seed-icl-2.0` 权限后，传入 5 秒纯净原版声优原声（如石川由依 2B 日语原声切片），即可实现原汁原味的声优跨语种讲流利中文。
+5. **⚠️ 声音合规红线**：
+   - ⚠️ 声音合规红线：依据《民法典》第1023条及《人工智能生成合成内容标识办法》，严禁未经授权克隆真人或动漫声优原声，必须100%使用火山引擎官方授权商用合成音色并在借物表中声明。
 
 ### 阶段 7：1:1 绝对卡点装配与 Ken Burns 运镜流水线 (Deterministic Video Assembly)
 

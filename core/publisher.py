@@ -60,10 +60,75 @@ BILIBILI_TID_MAP: Dict[str, int] = {
 }
 DEFAULT_BILIBILI_TID = 231
 
+# High-frequency Official Bilibili Activity & Mission Mapping
+BILIBILI_ACTIVITY_MISSIONS: Dict[str, Dict[str, Any]] = {
+    "B站AI创造公开赛": {
+        "topic_id": 1340873,
+        "mission_id": 4071698,
+        "topic_name": "B站AI创造公开赛",
+    },
+    "B站AI无限竞技场": {
+        "topic_id": 1346854,
+        "mission_id": 4070254,
+        "topic_name": "B站AI无限竞技场",
+    },
+    "AI偶像才艺大赏": {
+        "topic_id": 1345301,
+        "mission_id": 4071944,
+        "topic_name": "AI偶像才艺大赏",
+    },
+}
+
+DEFAULT_CREDITS_FALLBACK = "📋 【借物表 (Credits) 与开源致谢】角色设定、动作数据、配音与算力管线详见项目开源文档，严格遵循相应开源与二创授权协议。"
+DEFAULT_AIGC_COMPLIANCE_FALLBACK = "⚠️ 【AIGC 生成合成内容合规声明】本视频包含 AI 生成合成画面与语音（符合 GB 45438-2025 标识规范），仅供技术科普与非商业交流。"
+
 BILIBILI_COVER_UP_URL = "https://member.bilibili.com/x/vu/web/cover/up"
 BILIBILI_PREUPLOAD_URL = "https://member.bilibili.com/preupload"
 BILIBILI_ADD_V3_URL = "https://member.bilibili.com/x/vu/web/add/v3"
+BILIBILI_EDIT_ARCHIVE_URL = "https://member.bilibili.com/x/vu/web/edit"
+BILIBILI_ARCHIVE_VIEW_URL = "https://member.bilibili.com/x/vupre/web/archive/view"
+BILIBILI_TOPIC_SEARCH_URL = "https://member.bilibili.com/x/vupre/web/topic/search"
+BILIBILI_REPLY_ADD_URL = "https://api.bilibili.com/x/v2/reply/add"
+BILIBILI_REPLY_TOP_URL = "https://api.bilibili.com/x/v2/reply/top"
 BILIBILI_CREATOR_MANAGER_URL = "https://member.bilibili.com/platform/upload-manager/article"
+
+
+def resolve_bilibili_tid(category_str: str) -> int:
+    """Resolves Bilibili partition `tid` from a category string.
+
+    Strips parenthetical fallback notes like `(或 ...)` / `（或 ...）` first,
+    then picks the earliest matching keyword in the string by `.find()` index.
+    """
+    if not category_str:
+        return DEFAULT_BILIBILI_TID
+
+    primary_str = re.sub(r"[\(（]\s*或[^\)）]*[\)）]", "", category_str).strip()
+    for target in (primary_str, category_str):
+        matches: List[Tuple[int, int, int]] = []
+        for key_name, mapped_tid in BILIBILI_TID_MAP.items():
+            pos = target.find(key_name)
+            if pos != -1:
+                matches.append((pos, -len(key_name), mapped_tid))
+        if matches:
+            matches.sort()
+            return matches[0][2]
+
+    return DEFAULT_BILIBILI_TID
+
+
+def ensure_compliance_and_credits_footer(description: str) -> str:
+    """Appends concise Credits / AIGC compliance footer if missing from description."""
+    desc = (description or "").rstrip()
+    additions: List[str] = []
+    if "【借物表" not in desc:
+        additions.append(DEFAULT_CREDITS_FALLBACK)
+    if "【AIGC" not in desc:
+        additions.append(DEFAULT_AIGC_COMPLIANCE_FALLBACK)
+    if additions:
+        sep = "\n\n" if desc else ""
+        desc = f"{desc}{sep}" + "\n".join(additions)
+    return desc
+
 
 # Minimum Bilibili scheduled publish lead time: 4 hours + 10 min safety buffer
 BILIBILI_MIN_SCHEDULE_LEAD_SECONDS = 4 * 3600 + 600
@@ -129,7 +194,16 @@ class BilibiliUploader:
         upcdn: str = "bda2",
     ) -> None:
         self.vault = vault or AuthVault()
-        self.cookies = dict(cookies) if cookies is not None else self.vault.load_bilibili_cookies()
+        if cookies is not None:
+            nested = cookies.get("cookies")
+            raw_c: Dict[str, Any] = nested if isinstance(nested, dict) else dict(cookies)
+            self.cookies = {
+                str(k): str(v)
+                for k, v in raw_c.items()
+                if isinstance(v, (str, int, float)) and k not in ("updated_at", "profile", "refresh_token")
+            }
+        else:
+            self.cookies = self.vault.load_bilibili_cookies()
         self.session = session or requests.Session()
         self.upcdn = upcdn
 
@@ -313,6 +387,68 @@ class BilibiliUploader:
             "file_size": file_size,
         }
 
+    def resolve_activity_mission(
+        self,
+        tags: Optional[List[str]] = None,
+        title: str = "",
+        lookup_online: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Resolves official Bilibili activity `mission_id`, `topic_id`, and `topic_name`.
+
+        Checks built-in `BILIBILI_ACTIVITY_MISSIONS` first across `tags` and `title`.
+        Optionally queries `/x/vupre/web/topic/search` when `lookup_online=True`.
+        """
+        candidate_tags = [re.sub(r"^[#【\s]+|[#】\s]+$", "", t) for t in (tags or []) if t and t.strip()]
+
+        # 1. Match tags in order against built-in activity mission dictionary
+        for ctag in candidate_tags:
+            if ctag in BILIBILI_ACTIVITY_MISSIONS:
+                return dict(BILIBILI_ACTIVITY_MISSIONS[ctag])
+            for act_name, act_info in BILIBILI_ACTIVITY_MISSIONS.items():
+                if act_name in ctag:
+                    return dict(act_info)
+
+        # 2. Match title against built-in activity mission dictionary by earliest position
+        if title:
+            title_matches: List[Tuple[int, Dict[str, Any]]] = []
+            for act_name, act_info in BILIBILI_ACTIVITY_MISSIONS.items():
+                pos = title.find(act_name)
+                if pos != -1:
+                    title_matches.append((pos, dict(act_info)))
+            if title_matches:
+                title_matches.sort(key=lambda x: x[0])
+                return title_matches[0][1]
+
+        # 3. Optional online lookup via /x/vupre/web/topic/search
+        if lookup_online and self.is_authenticated:
+            search_keywords = candidate_tags[:3] or ([title[:20]] if title else [])
+            for kw in search_keywords:
+                try:
+                    resp = self.session.get(
+                        BILIBILI_TOPIC_SEARCH_URL,
+                        params={"keywords": kw, "page_size": "20", "offset": "0"},
+                        cookies=self.cookies,
+                        headers=self._web_headers(),
+                        timeout=10,
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                    topics = ((payload.get("data") or {}).get("topics")) or []
+                    for item in topics:
+                        m_id = int(item.get("mission_id") or 0)
+                        t_id = int(item.get("topic_id") or 0)
+                        t_name = str(item.get("topic_name") or kw)
+                        if m_id > 0 and t_id > 0:
+                            return {
+                                "topic_id": t_id,
+                                "mission_id": m_id,
+                                "topic_name": t_name,
+                            }
+                except Exception:
+                    continue
+
+        return None
+
     def submit_archive(
         self,
         bili_filename: str,
@@ -324,12 +460,23 @@ class BilibiliUploader:
         biz_id: int = 0,
         dtime: Optional[int] = None,
         copyright_type: int = 1,
+        dynamic: Optional[str] = None,
+        mission_id: Optional[int] = None,
+        topic_id: Optional[int] = None,
+        topic_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Submits an uploaded UPOS video to Bilibili Creator Center (`POST /x/vu/web/add/v3`)."""
         if not self.is_authenticated:
             raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required for archive submission")
 
         clean_tags = [t.strip() for t in (tags or ["科技科普", "人工智能"]) if t.strip()][:12]
+        resolved_dynamic = dynamic if dynamic is not None else (f"#{clean_tags[0]}# {title}" if clean_tags else title)
+
+        activity_info = self.resolve_activity_mission(tags=clean_tags, title=title)
+        eff_mission_id = mission_id if mission_id is not None else (activity_info or {}).get("mission_id")
+        eff_topic_id = topic_id if topic_id is not None else (activity_info or {}).get("topic_id")
+        eff_topic_name = topic_name if topic_name is not None else (activity_info or {}).get("topic_name")
+
         payload: Dict[str, Any] = {
             "copyright": copyright_type,
             "videos": [
@@ -346,12 +493,23 @@ class BilibiliUploader:
             "tag": ",".join(clean_tags),
             "desc_format_id": 0,
             "desc": description[:2000],
-            "dynamic": "",
+            "dynamic": resolved_dynamic,
             "interactive": 0,
+            "no_reprint": 1,
+            "open_elec": 1,
+            "up_selection_reply": 0,
+            "up_close_reply": 0,
+            "up_close_danmu": 0,
             "act_reserve_create": 0,
             "no_disturbance": 0,
             "csrf": self.bili_jct,
         }
+        if eff_mission_id:
+            payload["mission_id"] = int(eff_mission_id)
+        if eff_topic_id:
+            payload["topic_id"] = int(eff_topic_id)
+        if eff_topic_name:
+            payload["topic_name"] = str(eff_topic_name)
         if dtime is not None:
             payload["dtime"] = int(dtime)
 
@@ -369,7 +527,7 @@ class BilibiliUploader:
             raise RuntimeError(f"Bilibili add/v3 submission error: {res_json}")
 
         data = res_json.get("data") or {}
-        return {
+        result: Dict[str, Any] = {
             "status": "scheduled_on_bilibili" if dtime else "published_on_bilibili",
             "aid": data.get("aid"),
             "bvid": data.get("bvid"),
@@ -380,6 +538,178 @@ class BilibiliUploader:
             "cover_url": cover_url,
             "bili_filename": bili_filename,
             "manage_url": BILIBILI_CREATOR_MANAGER_URL,
+            "mission_id": eff_mission_id,
+            "topic_id": eff_topic_id,
+            "topic_name": eff_topic_name,
+        }
+        return result
+
+    def post_and_pin_comment(self, aid: int, message: str) -> Dict[str, Any]:
+        """Posts a comment on a Bilibili video (`POST /x/v2/reply/add`) and pins it (`POST /x/v2/reply/top`)."""
+        if not self.is_authenticated:
+            raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required for posting comments")
+
+        api_headers = {
+            "User-Agent": STANDARD_USER_AGENT,
+            "Referer": f"https://www.bilibili.com/video/av{int(aid)}",
+            "Origin": "https://www.bilibili.com",
+            "Accept": "application/json, text/plain, */*",
+        }
+
+        add_resp = self.session.post(
+            BILIBILI_REPLY_ADD_URL,
+            data={
+                "oid": str(int(aid)),
+                "type": "1",
+                "message": message,
+                "plat": "1",
+                "csrf": self.bili_jct,
+            },
+            cookies=self.cookies,
+            headers=api_headers,
+            timeout=20,
+        )
+        add_resp.raise_for_status()
+        add_json = add_resp.json()
+        add_ok = add_json.get("code") == 0
+        rpid = (add_json.get("data") or {}).get("rpid") if add_ok else None
+
+        top_json: Optional[Dict[str, Any]] = None
+        top_ok = False
+        if add_ok and rpid is not None:
+            for attempt in range(3):
+                top_resp = self.session.post(
+                    BILIBILI_REPLY_TOP_URL,
+                    data={
+                        "oid": str(int(aid)),
+                        "type": "1",
+                        "rpid": str(rpid),
+                        "action": "1",
+                        "csrf": self.bili_jct,
+                    },
+                    cookies=self.cookies,
+                    headers=api_headers,
+                    timeout=20,
+                )
+                top_resp.raise_for_status()
+                top_json = top_resp.json()
+                top_ok = top_json.get("code") == 0
+                if top_ok or top_json.get("code") != -404:
+                    break
+                if attempt < 2:
+                    time.sleep(1.5)
+
+        return {
+            "aid": int(aid),
+            "rpid": rpid,
+            "added": add_ok,
+            "pinned": top_ok,
+            "add_response": add_json,
+            "top_response": top_json,
+        }
+
+    def get_archive_view(self, aid: int) -> Dict[str, Any]:
+        """Fetches full archive metadata and video parts (`GET /x/vupre/web/archive/view?aid=...`)."""
+        if not self.is_authenticated:
+            raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required for archive view")
+
+        resp = self.session.get(
+            BILIBILI_ARCHIVE_VIEW_URL,
+            params={"aid": str(int(aid))},
+            cookies=self.cookies,
+            headers=self._web_headers(),
+            timeout=20,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def edit_archive(
+        self,
+        aid: int,
+        description: Optional[str] = None,
+        tid: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+        title: Optional[str] = None,
+        cover_url: Optional[str] = None,
+        cover_path: Optional[Path] = None,
+        mission_id: Optional[int] = None,
+        topic_id: Optional[int] = None,
+        topic_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Updates an existing Bilibili archive via Creator Center (`/x/vu/web/edit`)."""
+        view_json = self.get_archive_view(aid)
+        if view_json.get("code") != 0 or not view_json.get("data"):
+            return {"aid": int(aid), "updated": False, "view_response": view_json}
+
+        data = view_json["data"]
+        arc = data.get("archive") or {}
+        raw_videos = data.get("videos") or []
+
+        videos_payload = [
+            {
+                "filename": v.get("filename", ""),
+                "title": v.get("title", arc.get("title", ""))[:80],
+                "desc": v.get("desc", ""),
+                "cid": v.get("cid", 0),
+            }
+            for v in raw_videos
+        ]
+
+        eff_cover = cover_url
+        if not eff_cover and cover_path is not None and Path(cover_path).exists():
+            eff_cover = self.upload_cover(Path(cover_path))
+        eff_cover = eff_cover or str(arc.get("cover") or "")
+
+        eff_title = (title or arc.get("title") or "")[:80]
+        eff_tid = int(tid if tid is not None else (arc.get("tid") or DEFAULT_BILIBILI_TID))
+        eff_tags = (
+            ",".join([t.strip() for t in tags if t.strip()][:12]) if tags is not None else str(arc.get("tag") or "")
+        )
+        eff_desc = (description if description is not None else str(arc.get("desc") or ""))[:2000]
+
+        payload: Dict[str, Any] = {
+            "aid": int(aid),
+            "copyright": int(arc.get("copyright") or 1),
+            "videos": videos_payload,
+            "cover": eff_cover,
+            "title": eff_title,
+            "tid": eff_tid,
+            "tag": eff_tags,
+            "desc_format_id": 0,
+            "desc": eff_desc,
+            "dynamic": str(arc.get("dynamic") or ""),
+            "interactive": int(arc.get("interactive") or 0),
+            "no_reprint": int(arc["no_reprint"]) if arc.get("no_reprint") is not None else 1,
+            "open_elec": 1,
+            "csrf": self.bili_jct,
+        }
+        if arc.get("dtime"):
+            payload["dtime"] = int(arc["dtime"])
+
+        eff_mission = mission_id if mission_id is not None else arc.get("mission_id")
+        eff_topic = topic_id if topic_id is not None else arc.get("topic_id")
+        if eff_mission:
+            payload["mission_id"] = int(eff_mission)
+        if eff_topic:
+            payload["topic_id"] = int(eff_topic)
+        if topic_name:
+            payload["topic_name"] = str(topic_name)
+
+        edit_resp = self.session.post(
+            BILIBILI_EDIT_ARCHIVE_URL,
+            params={"t": str(int(time.time() * 1000)), "csrf": self.bili_jct},
+            json=payload,
+            cookies=self.cookies,
+            headers=self._web_headers(),
+            timeout=30,
+        )
+        edit_resp.raise_for_status()
+        edit_json = edit_resp.json()
+        return {
+            "aid": int(aid),
+            "updated": edit_json.get("code") == 0,
+            "edit_response": edit_json,
+            "submitted_payload": payload,
         }
 
     def upload_to_bilibili_api(
@@ -687,12 +1017,13 @@ class MatrixPublisher:
 
     @staticmethod
     def parse_bilibili_markdown(md_text: str) -> Dict[str, Any]:
-        """Parses title, category, tid, description, and tags from delivery/bilibili.md."""
+        """Parses title, category, tid, description, tags, and pinned_comment from delivery/bilibili.md."""
         title = ""
         category_str = "知识 -> 计算机技术"
         tid = DEFAULT_BILIBILI_TID
         description_lines: List[str] = []
         tags: List[str] = []
+        pinned_comment_lines: List[str] = []
 
         lines = md_text.splitlines()
         mode: Optional[str] = None
@@ -704,10 +1035,7 @@ class MatrixPublisher:
                 parts = re.split(r"[：:]", stripped, maxsplit=1)
                 if len(parts) == 2:
                     category_str = parts[1].strip()
-                    for key_name, mapped_tid in BILIBILI_TID_MAP.items():
-                        if key_name in category_str:
-                            tid = mapped_tid
-                            break
+                    tid = resolve_bilibili_tid(category_str)
                 mode = None
                 continue
 
@@ -737,7 +1065,16 @@ class MatrixPublisher:
                 mode = "tags"
                 continue
 
-            if stripped.startswith("## ") or (stripped.startswith("* **") and mode in ("description", "tags", "title")):
+            if "**置顶评论" in stripped:
+                parts = re.split(r"[：:]", stripped, maxsplit=1)
+                if len(parts) == 2 and parts[1].strip():
+                    pinned_comment_lines.append(parts[1].strip())
+                mode = "pinned_comment"
+                continue
+
+            if stripped.startswith("## ") or (
+                stripped.startswith("* **") and mode in ("description", "tags", "title", "pinned_comment")
+            ):
                 mode = None
                 continue
 
@@ -754,18 +1091,24 @@ class MatrixPublisher:
                 if stripped:
                     raw_tags = re.split(r"[,，#]+", stripped)
                     tags.extend([t.strip() for t in raw_tags if t.strip()])
+            elif mode == "pinned_comment":
+                clean_pin_line = raw_line[2:] if raw_line.startswith("  ") else raw_line
+                if clean_pin_line.strip():
+                    pinned_comment_lines.append(clean_pin_line.rstrip())
 
         description = "\n".join(description_lines).strip()
+        pinned_comment = "\n".join(pinned_comment_lines).strip().strip("“”\"'")
         return {
             "title": title[:80],
             "category": category_str,
             "tid": tid,
             "description": description,
             "tags": tags[:12],
+            "pinned_comment": pinned_comment,
         }
 
     def discover_metadata(self, project_dir: Path, platform: str = "bilibili") -> Dict[str, Any]:
-        """Discovers title, tid, category, tags, and description from project copywriting and brief.json."""
+        """Discovers title, tid, category, tags, description, and pinned_comment from project copywriting and brief.json."""
         delivery_dir = project_dir / "delivery"
         copy_dir = project_dir / "output" / "copy"
         brief_file = project_dir / "brief.json"
@@ -781,6 +1124,7 @@ class MatrixPublisher:
         if bili_md_file.exists():
             parsed = self.parse_bilibili_markdown(bili_md_file.read_text(encoding="utf-8"))
             if parsed["title"]:
+                parsed["description"] = ensure_compliance_and_credits_footer(parsed.get("description", ""))
                 return parsed
 
         release_md = delivery_dir / "release.md"
@@ -791,7 +1135,6 @@ class MatrixPublisher:
         description = ""
         tags: List[str] = []
         category = facts.category if facts else "计算机技术"
-        tid = DEFAULT_BILIBILI_TID
 
         if release_md.exists():
             rel_text = release_md.read_text(encoding="utf-8")
@@ -820,10 +1163,8 @@ class MatrixPublisher:
         if not tags:
             tags = ["人工智能", "大模型", "科技科普", "深度学习", "ContentFlow"]
 
-        for key_name, mapped_tid in BILIBILI_TID_MAP.items():
-            if key_name in category:
-                tid = mapped_tid
-                break
+        tid = resolve_bilibili_tid(category)
+        description = ensure_compliance_and_credits_footer(description)
 
         return {
             "title": title[:80],
@@ -831,6 +1172,7 @@ class MatrixPublisher:
             "tid": tid,
             "description": description,
             "tags": tags[:12],
+            "pinned_comment": "",
         }
 
     def _stage_bilibili_submission(
@@ -964,6 +1306,7 @@ class MatrixPublisher:
                 "category": meta["category"],
                 "tags": meta["tags"],
                 "description": meta["description"],
+                "pinned_comment": meta.get("pinned_comment", ""),
                 "cover_path": str(cover_path),
                 "video_path": str(video_path) if video_path else None,
                 "safety_mode": mode,

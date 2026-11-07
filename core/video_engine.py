@@ -71,7 +71,7 @@ class VideoEngine:
         aspect: str = "16:9",
         voice_name: str = "zh-CN-YunxiNeural",
         bgm_type: str = "random",
-        font_name: str = "STHeitiMedium.ttc",
+        font_name: str = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         fast_image_convert: bool = True,
     ) -> VideoRenderResult:
         """Executes end-to-end video rendering."""

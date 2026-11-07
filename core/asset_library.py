@@ -26,13 +26,20 @@ class AssetItem:
     prompt: str = ""
     used_in_projects: List[str] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z")
+    license: str = "CC BY-NC-SA 4.0"
+    author: str = "ContentFlow Studio"
+    source_url: str = ""
+    attribution_required: bool = True
+    credit_line: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> AssetItem:
-        return cls(**data)
+        valid_fields = set(cls.__dataclass_fields__.keys())
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
 
 
 class AssetLibrary:
@@ -90,6 +97,11 @@ class AssetLibrary:
         resolution: str = "2560x1440",
         prompt: str = "",
         project_id: Optional[str] = None,
+        license: str = "CC BY-NC-SA 4.0",
+        author: str = "ContentFlow Studio",
+        source_url: str = "",
+        attribution_required: bool = True,
+        credit_line: str = "",
     ) -> AssetItem:
         """Copies asset into the centralized library and indexes it."""
         ext = src_path.suffix.lower()
@@ -99,13 +111,16 @@ class AssetLibrary:
             dest_dir = self.scenes_dir
         elif category == "prop":
             dest_dir = self.props_dir
+        elif category == "motion":
+            dest_dir = self.lib_dir / "motions"
         else:
             dest_dir = self.lib_dir / "misc"
 
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_filename = f"{asset_id}{ext}"
         dest_path = dest_dir / dest_filename
-        shutil.copy2(src_path, dest_path)
+        if src_path.resolve() != dest_path.resolve():
+            shutil.copy2(src_path, dest_path)
 
         rel_path = dest_path.relative_to(self.root_dir).as_posix()
         existing = self.assets.get(asset_id)
@@ -131,6 +146,11 @@ class AssetLibrary:
             file_path=rel_path,
             prompt=prompt,
             used_in_projects=used_projects,
+            license=license,
+            author=author,
+            source_url=source_url,
+            attribution_required=attribution_required,
+            credit_line=credit_line,
         )
         self.assets[asset_id] = item
         self.save_registry()
@@ -308,3 +328,89 @@ class AssetLibrary:
         }
         index_file.write_text(json.dumps(index_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return entry
+
+    def generate_project_credits(
+        self,
+        project_id: str,
+        extra_credits: Optional[List[str]] = None,
+    ) -> str:
+        """Generates a complete Bilibili Credits (借物表) and GB 45438-2025 AIGC compliance block."""
+        proj_key = project_id.strip()
+        matched_assets: List[AssetItem] = []
+        for asset in self.assets.values():
+            for used in asset.used_in_projects:
+                if (
+                    used == proj_key
+                    or used.startswith(f"{proj_key}_")
+                    or proj_key.startswith(f"{used}_")
+                    or (len(proj_key) >= 3 and proj_key.lower() in used.lower())
+                ):
+                    matched_assets.append(asset)
+                    break
+
+        credit_lines: List[str] = []
+        seen_credits = set()
+
+        for asset in matched_assets:
+            if not asset.attribution_required and not asset.credit_line:
+                continue
+            line = asset.credit_line.strip() if asset.credit_line else ""
+            if not line:
+                url_part = f" ({asset.source_url})" if asset.source_url else ""
+                line = f"{asset.category.upper()} [{asset.id}] — 作者/来源: {asset.author} | 协议: {asset.license}{url_part}"
+            if line not in seen_credits:
+                seen_credits.add(line)
+                credit_lines.append(f"- {line}")
+
+        # Default fallback based on project_id keywords if no registry match yet
+        if not credit_lines:
+            low_id = proj_key.lower()
+            if "dafeiyu" in low_id or "whale" in low_id or "007" in low_id or "006" in low_id:
+                credit_lines.append(
+                    "- 角色设定：DeepSeek娘（蓝色大肥鱼 / 鲸鱼娘）— 初版拟人设定：@上善无形（溟月）| 模型与三视图设计：@ZipZipPipe（遵循 CC BY-NC-SA 4.0 协议）"
+                )
+                credit_lines.append(
+                    "- MMD动作数据：Phone Number by ureshiiiiii | 3D骨骼基底参考：TDA Luka Dress (TDA / agahat) | 音乐原曲：TAHITI - Phone Number"
+                )
+            elif "noshiro" in low_id or "005" in low_id:
+                credit_lines.append(
+                    "- 角色原型：《碧蓝航线》能代 (Noshiro) — 版权归属 Manjuu & Yongshi / 原画设计：ATDAN（非商业同人科普二创）"
+                )
+            elif "2b" in low_id or "004" in low_id:
+                credit_lines.append(
+                    "- 角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
+                )
+            elif "yowane" in low_id or "002" in low_id:
+                credit_lines.append(
+                    "- 角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (Piapro Character License / CC BY-NC 3.0)"
+                )
+
+        if extra_credits:
+            for ec in extra_credits:
+                clean_ec = ec.strip().lstrip("-• ").strip()
+                if clean_ec and clean_ec not in seen_credits:
+                    seen_credits.add(clean_ec)
+                    credit_lines.append(f"- {clean_ec}")
+
+        # Always include compliant typography, TTS voice, and AIGC declaration
+        credit_lines.append(
+            "- 视觉与视频生成引擎：ContentFlow Studio × 火山方舟 Doubao-Seedream-5.0-Pro / 可灵 Kling AI / Wan2.1"
+        )
+        credit_lines.append(
+            "- 语音合成 (TTS)：100% 使用火山引擎 Seed-TTS 2.0 / Microsoft Edge Neural 官方授权商用合成音色（严禁未经授权克隆真人或声优原声）"
+        )
+        credit_lines.append(
+            "- 字幕与封面字库：Google Noto Sans CJK (SIL Open Font License 1.1) / 文泉驿正黑 WenQuanYi Zen Hei (GPLv2 + Font Exception) 免费商用开源字库"
+        )
+
+        block = [
+            "### 📜 借物表 (Credits) 与 AIGC 合规声明",
+            "",
+            *credit_lines,
+            "",
+            "#### ⚖️ AIGC 标识与法律合规声明",
+            "- **合成内容标识**：依据国家标准 **GB 45438-2025《人工智能生成合成内容标识办法》**，本作品包含由人工智能生成合成的画面、语音与分镜编排，已在视频角标、简介及元数据中完成显式与隐式标识。",
+            "- **声音权益保护**：依据 **《中华人民共和国民法典》第1023条**，本管线严禁未经授权克隆任何真人或动漫声优原声，全片 100% 采用官方授权合成音色。",
+            "- **同人二创声明**：本项目为非商业性技术科普与 AI 创作实验演示，所涉二次元角色形象版权归各自原著作权人所有，衍生资产遵循 CC BY-NC-SA 4.0 或对应同人创作规范。",
+        ]
+        return "\n".join(block)
