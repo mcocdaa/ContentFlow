@@ -722,7 +722,11 @@ class BilibiliUploader:
                 ),
                 "title": (eff_title if idx == 0 else v.get("title", arc.get("title", "")))[:80],
                 "desc": v.get("desc", ""),
-                "cid": v.get("cid", 0),
+                "cid": (
+                    int(new_upos_info.get("biz_id") or v.get("cid", 0))
+                    if (idx == 0 and new_upos_info is not None)
+                    else v.get("cid", 0)
+                ),
             }
             for idx, v in enumerate(raw_videos)
         ]
@@ -1113,7 +1117,7 @@ class MatrixPublisher:
         for raw_line in lines:
             stripped = raw_line.strip()
 
-            if "**主选分区**" in stripped or "**分区**" in stripped:
+            if "**主选分区**" in stripped or "**分区**" in stripped or "**目标分区**" in stripped:
                 parts = re.split(r"[：:]", stripped, maxsplit=1)
                 if len(parts) == 2:
                     category_str = parts[1].strip()
@@ -1121,7 +1125,7 @@ class MatrixPublisher:
                 mode = None
                 continue
 
-            if "**视频标题" in stripped or "**标题" in stripped:
+            if "**视频标题" in stripped or "**标题" in stripped or "**主标题" in stripped:
                 parts = re.split(r"[：:]", stripped, maxsplit=1)
                 if len(parts) == 2 and parts[1].strip():
                     candidate = parts[1].strip().strip("`")
@@ -1132,9 +1136,9 @@ class MatrixPublisher:
                 mode = "title"
                 continue
 
-            if "**简介" in stripped:
+            if "**简介" in stripped or stripped.startswith("## 3. 简介"):
                 parts = re.split(r"[：:]", stripped, maxsplit=1)
-                if len(parts) == 2 and parts[1].strip():
+                if len(parts) == 2 and parts[1].strip() and not stripped.startswith("##"):
                     description_lines.append(parts[1].strip())
                 mode = "description"
                 continue

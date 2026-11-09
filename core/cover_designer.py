@@ -443,7 +443,9 @@ class CoverDesigner:
         if bottom_tags:
             self._draw_bottom_tags(base, text_x, 960, bottom_tags)
 
-        return base
+        # Crisp micro-contrast sharpening so 16:9 and 4:3 safe-zone typography & HUD edges pop
+        rgb_sharp = base.convert("RGB").filter(ImageFilter.UnsharpMask(radius=1.6, percent=165, threshold=1))
+        return rgb_sharp.convert("RGBA")
 
     def design_cover(
         self,
@@ -538,10 +540,18 @@ class CoverDesigner:
         base_candidates = [
             assets_dir / "character_anchor.jpg",
             assets_dir / "scene_cover.jpg",
+            assets_dir / "scene6_success_thumbsup.jpg",
+            assets_dir / "scene2_base_url.jpg",
             assets_dir / "noshiro_reference.jpg",
         ]
         if assets_dir.exists():
-            base_candidates.extend(sorted(assets_dir.glob("*.jpg")) + sorted(assets_dir.glob("*.png")))
+            base_candidates.extend(
+                [
+                    p
+                    for p in sorted(assets_dir.glob("*.jpg")) + sorted(assets_dir.glob("*.png"))
+                    if p.name != "cover.jpg"
+                ]
+            )
 
         base_img: Optional[Path] = None
         for cand in base_candidates:
@@ -567,6 +577,7 @@ class CoverDesigner:
                 target_cover = delivery_dir / f"{pdir.name}_cover.jpg"
 
         # Project-specific viral defaults
+        repair_wb = False
         if "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"
@@ -579,6 +590,13 @@ class CoverDesigner:
             h3 = hook_line3 if hook_line3 is not None else "Transformer全解"
             badge = badge_text or "硬核AI架构科普"
             tags = bottom_tags or ["手撕Attention", "3D手办精讲"]
+            repair_wb = True
+        elif "004" in pid or "2b" in pid:
+            h1 = hook_line1 or "3D手办2B硬核科普"
+            h2 = hook_line2 or "秒解API报错401/404"
+            h3 = hook_line3 if hook_line3 is not None else "三大通信核心全通！"
+            badge = badge_text or "AI接管账号·第3期"
+            tags = bottom_tags or ["60FPS满帧", "200 OK全通"]
         else:
             h1 = hook_line1 or "硬核AI技术实录"
             h2 = hook_line2 or pdir.name[:12]
@@ -594,4 +612,5 @@ class CoverDesigner:
             hook_line3=h3,
             badge_text=badge,
             bottom_tags=tags,
+            repair_whiteboard_artifact=repair_wb,
         )

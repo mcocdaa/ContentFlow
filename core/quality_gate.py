@@ -762,6 +762,8 @@ class VideoQualityGate:
                 "ATDAN",
                 "Manjuu",
                 "SQUARE ENIX",
+                "Square Enix",
+                "吉田明彦",
                 "CAFFEIN",
                 "Crypton",
             )
