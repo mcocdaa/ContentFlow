@@ -42,6 +42,34 @@ class AssetItem:
         return cls(**filtered)
 
 
+DEFAULT_ATTRIBUTION_RULES: Dict[str, Dict[str, str]] = {
+    "noshiro": {
+        "license": "Azur Lane Fan Creation Guidelines (Non-Commercial Derivative)",
+        "author": "B站UP主 @小咩先生 (3D渲染参考) / Manjuu & Yongshi (《碧蓝航线》能代) / 原画: ATDAN",
+        "source_url": "https://wiki.biligame.com/blhx/%E8%83%BD%E4%BB%A3",
+        "credit_line": "3D形象与光影参考：B站UP主 @小咩先生 | 角色原型：《碧蓝航线》能代 (Noshiro，版权归属上海蛮啾网络/厦门勇仕网络，原画设计：ATDAN)",
+    },
+    "deepseek_dafeiyu": {
+        "license": "CC BY-NC-SA 4.0",
+        "author": "@上善无形 (溟月) & @ZipZipPipe / ContentFlow × Doubao-Seedream-5.0-Pro",
+        "source_url": "https://www.bilibili.com/video/BV1c9F9eEE5d/",
+        "credit_line": "角色设定：DeepSeek娘（蓝色大肥鱼）— 初版拟人设定：@上善无形（溟月）| 模型与三视图设计：@ZipZipPipe (CC BY-NC-SA 4.0)",
+    },
+    "yorha_2b": {
+        "license": "SQUARE ENIX Fan Content Guidelines (Non-Commercial)",
+        "author": "SQUARE ENIX (NieR:Automata) / 吉田明彦 (Akihiko Yoshida) / ContentFlow × Doubao-Seedream-5.0-Pro",
+        "source_url": "https://www.jp.square-enix.com/nierautomata/",
+        "credit_line": "角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)",
+    },
+    "yowane_haku": {
+        "license": "PCL (Piapro Character License) / CC BY-NC 3.0",
+        "author": "CAFFEIN / Crypton Future Media, INC. / ContentFlow × Doubao-Seedream-5.0-Pro",
+        "source_url": "https://piapro.net/intl/zh/character.html",
+        "credit_line": "角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (遵循 PCL & CC BY-NC 3.0 非商业同人规范)",
+    },
+}
+
+
 class AssetLibrary:
     """Central asset hub managing cataloging, semantic matching, and cross-project reuse."""
 
@@ -363,8 +391,8 @@ class AssetLibrary:
                 credit_lines.append(f"- {line}")
 
         # Default fallback based on project_id keywords if no registry match yet
+        low_id = proj_key.lower()
         if not credit_lines:
-            low_id = proj_key.lower()
             if "dafeiyu" in low_id or "whale" in low_id or "007" in low_id or "006" in low_id:
                 credit_lines.append(
                     "- 角色设定：DeepSeek娘（蓝色大肥鱼 / 鲸鱼娘）— 初版拟人设定：@上善无形（溟月）| 模型与三视图设计：@ZipZipPipe（遵循 CC BY-NC-SA 4.0 协议）"
@@ -373,9 +401,7 @@ class AssetLibrary:
                     "- MMD动作数据：Phone Number by ureshiiiiii | 3D骨骼基底参考：TDA Luka Dress (TDA / agahat) | 音乐原曲：TAHITI - Phone Number"
                 )
             elif "noshiro" in low_id or "005" in low_id:
-                credit_lines.append(
-                    "- 角色原型：《碧蓝航线》能代 (Noshiro) — 版权归属 Manjuu & Yongshi / 原画设计：ATDAN（非商业同人科普二创）"
-                )
+                credit_lines.append(f"- {DEFAULT_ATTRIBUTION_RULES['noshiro']['credit_line']}")
             elif "2b" in low_id or "004" in low_id:
                 credit_lines.append(
                     "- 角色原型：YoRHa No.2 Type B (2B) — 出自《NieR:Automata》SQUARE ENIX / 角色设计：吉田明彦 (Akihiko Yoshida)"
@@ -384,6 +410,8 @@ class AssetLibrary:
                 credit_lines.append(
                     "- 角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC. (Piapro Character License / CC BY-NC 3.0)"
                 )
+        elif ("noshiro" in low_id or "005" in low_id) and not any("小咩先生" in c for c in credit_lines):
+            credit_lines.insert(0, f"- {DEFAULT_ATTRIBUTION_RULES['noshiro']['credit_line']}")
 
         if extra_credits:
             for ec in extra_credits:

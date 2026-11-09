@@ -19,6 +19,7 @@ Seedream-Images/
 Seedance-Videos/
 .cache/
 *.mp4
+*.mov
 *.mp3
 *.wav
 *.aac

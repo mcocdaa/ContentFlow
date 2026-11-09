@@ -509,3 +509,33 @@ def test_non_ark_prefix_api_key_calls_v3_directly_and_falls_back_to_simulator(
         mock_subproc.assert_not_called()
         assert mock_post.call_count == len(SEEDANCE_V3_CANDIDATE_MODELS)
         mock_sim.assert_called_once()
+
+
+def test_agent_plan_ark_key_verify_credentials_remote_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("ARK_PAYG_API_KEY", raising=False)
+    monkeypatch.setenv("ARK_API_KEY", "ark-agent-plan-key-12345678")
+    monkeypatch.setenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/plan/v3")
+    monkeypatch.delenv("KLING_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("KLING_SECRET_KEY", raising=False)
+    monkeypatch.delenv("KLING_API_KEY", raising=False)
+    monkeypatch.setenv("KLING_CREDENTIALS_PATH", str(tmp_path / "no_kling_creds"))
+
+    router = VideoApiRouter()
+    assert router._get_ark_v3_tasks_url() == "https://ark.cn-beijing.volces.com/api/plan/v3/contents/generations/tasks"
+
+    probed_urls: List[str] = []
+
+    def fake_get(url: str, headers: Dict[str, str], timeout: float = 10):
+        probed_urls.append(url)
+        assert headers["Authorization"] == "Bearer ark-agent-plan-key-12345678"
+        resp = MagicMock()
+        resp.status_code = 200
+        return resp
+
+    with patch("core.video_api_router.requests.get", side_effect=fake_get):
+        creds = router.verify_credentials(check_remote=True)
+
+    assert creds["volcengine_seedance"]["mode"] == "agent_plan_with_v3_fallback"
+    assert creds["volcengine_seedance"]["http_status"] == 200
+    assert creds["volcengine_seedance"]["remote_reachable"] is True
+    assert probed_urls == ["https://ark.cn-beijing.volces.com/api/plan/v3/contents/generations/tasks?page_size=1"]

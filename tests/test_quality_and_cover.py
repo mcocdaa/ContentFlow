@@ -13,7 +13,7 @@ from PIL import Image
 
 import cli
 from config.settings import CONTENTFLOW_ROOT, DEFAULT_FONTS
-from core.asset_library import AssetItem, AssetLibrary
+from core.asset_library import DEFAULT_ATTRIBUTION_RULES, AssetItem, AssetLibrary
 from core.cover_designer import CoverDesigner
 from core.quality_gate import VideoQualityGate
 
@@ -81,6 +81,10 @@ def test_asset_library_registry_and_generate_project_credits() -> None:
     noshiro = lib.assets["noshiro_reference"]
     assert "ATDAN" in noshiro.author or "ATDAN" in noshiro.credit_line
     assert "Manjuu" in noshiro.author or "Manjuu" in noshiro.credit_line
+    assert "小咩先生" in noshiro.author
+    assert "小咩先生" in noshiro.credit_line
+    assert "小咩先生" in DEFAULT_ATTRIBUTION_RULES["noshiro"]["author"]
+    assert "小咩先生" in DEFAULT_ATTRIBUTION_RULES["noshiro"]["credit_line"]
 
     motion = lib.assets["ureshiiiiii_phone_number_motion"]
     assert "ureshiiiiii" in motion.author
@@ -106,6 +110,7 @@ def test_asset_library_registry_and_generate_project_credits() -> None:
     credits_005 = lib.generate_project_credits("005_transformer_noshiro_tutorial")
     assert "能代" in credits_005
     assert "ATDAN" in credits_005
+    assert "小咩先生" in credits_005
     assert "GB 45438-2025" in credits_005
 
     # Verify backward compatibility of AssetItem.from_dict with minimal legacy dict
@@ -196,10 +201,76 @@ def test_video_quality_gate_pass_and_blocker(tmp_path: Path) -> None:
     assert set(rep_007.dimensions.keys()) == {"technical", "audio", "visual_dynamics", "cover_ctr", "compliance"}
 
     vid_005 = _ensure_test_video(tmp_path / "005_synth_final.mp4", width=1920, height=1080, fps=30)
-    rep_005 = gate.evaluate_project("005_transformer_noshiro_tutorial", video_path=vid_005)
+    real_005_dir = CONTENTFLOW_ROOT / "projects" / "005_transformer_noshiro_tutorial"
+    real_005_cover = real_005_dir / "delivery" / "能代教你大模型核心基石_Transformer原理解析_cover.jpg"
+    real_005_md = (real_005_dir / "delivery" / "bilibili.md").read_text(encoding="utf-8")
+
+    # Setup compliant 005 fixture with @小咩先生 reference attribution
+    proj_005_ok = tmp_path / "005_transformer_noshiro_tutorial"
+    (proj_005_ok / "assets").mkdir(parents=True, exist_ok=True)
+    (proj_005_ok / "delivery").mkdir(parents=True, exist_ok=True)
+    (proj_005_ok / "assets" / "noshiro_reference.jpg").write_bytes(b"REF")
+    md_with_ref = real_005_md if "小咩先生" in real_005_md else (real_005_md + "\n- 3D渲染参考：B站UP主 @小咩先生\n")
+    (proj_005_ok / "delivery" / "bilibili.md").write_text(md_with_ref, encoding="utf-8")
+
+    rep_005 = gate.evaluate_project(proj_005_ok, video_path=vid_005, cover_path=real_005_cover)
     assert rep_005.passed is True
     assert len(rep_005.blockers) == 0
     assert rep_005.total_score >= 80.0
+    assert rep_005.dimensions["visual_dynamics"]["details"]["upper_frame_motion_delta"] > 0.15
+    assert any("帧率为 30fps" in iss for iss in rep_005.dimensions["technical"]["issues"])
+
+    # Test blocker when @小咩先生 reference attribution is missing in bilibili.md
+    proj_005_missing_ref = tmp_path / "005_noshiro_missing_ref"
+    (proj_005_missing_ref / "assets").mkdir(parents=True, exist_ok=True)
+    (proj_005_missing_ref / "delivery").mkdir(parents=True, exist_ok=True)
+    (proj_005_missing_ref / "assets" / "noshiro_reference.jpg").write_bytes(b"REF")
+    md_without_ref = real_005_md.replace("小咩先生", "")
+    (proj_005_missing_ref / "delivery" / "bilibili.md").write_text(md_without_ref, encoding="utf-8")
+
+    rep_missing_ref = gate.evaluate_project(proj_005_missing_ref, video_path=vid_005, cover_path=real_005_cover)
+    assert rep_missing_ref.passed is False
+    assert any("Missing reference attribution for @小咩先生" in b for b in rep_missing_ref.blockers)
+    assert any(
+        "缺少对参考素材作者 @小咩先生 的致谢说明" in iss for iss in rep_missing_ref.dimensions["compliance"]["issues"]
+    )
+
+    # Test upper_frame_motion_delta penalty when upper 78% of frame is static (only bottom subtitle bar changes)
+    if shutil.which("ffmpeg") is not None:
+        static_upper_mp4 = tmp_path / "static_upper_only_sub_changes.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=0x1e293b:s=640x360:r=30:d=3",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:sample_rate=48000:duration=3",
+                "-vf",
+                "drawbox=x=20:y=300:w=600:h=45:color=yellow@0.9:t=fill:enable='between(t,1.0,2.5)'",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                str(static_upper_mp4),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        rep_static = gate.evaluate_project(proj_005_ok, video_path=static_upper_mp4, cover_path=real_005_cover)
+        assert rep_static.dimensions["visual_dynamics"]["details"]["upper_frame_motion_delta"] < 0.15
+        assert rep_static.dimensions["visual_dynamics"]["score"] <= 12.0
+        assert any(
+            "画面主体(除底部字幕外)缺乏连续动态变化" in iss
+            for iss in rep_static.dimensions["visual_dynamics"]["issues"]
+        )
 
     # Test blocker when a 9:16 vertical cover is supplied
     bad_cover = tmp_path / "vertical_bad_cover.jpg"

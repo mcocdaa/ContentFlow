@@ -469,7 +469,7 @@ class BilibiliUploader:
         if not self.is_authenticated:
             raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required for archive submission")
 
-        clean_tags = [t.strip() for t in (tags or ["科技科普", "人工智能"]) if t.strip()][:12]
+        clean_tags = [t.strip() for t in (tags or ["科技科普", "人工智能"]) if t.strip()][:10]
         resolved_dynamic = dynamic if dynamic is not None else (f"#{clean_tags[0]}# {title}" if clean_tags else title)
 
         activity_info = self.resolve_activity_mission(tags=clean_tags, title=title)
@@ -523,6 +523,28 @@ class BilibiliUploader:
         )
         resp.raise_for_status()
         res_json = resp.json()
+        if res_json.get("code") == 21001:
+            strip_keys = {
+                "mission_id",
+                "topic_id",
+                "topic_name",
+                "up_selection_reply",
+                "up_close_reply",
+                "up_close_danmu",
+                "act_reserve_create",
+                "no_disturbance",
+            }
+            fallback_payload = {k: v for k, v in payload.items() if k not in strip_keys}
+            resp = self.session.post(
+                BILIBILI_ADD_V3_URL,
+                params={"t": str(int(time.time() * 1000)), "csrf": self.bili_jct},
+                json=fallback_payload,
+                cookies=self.cookies,
+                headers=self._web_headers(),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            res_json = resp.json()
         if res_json.get("code") != 0:
             raise RuntimeError(f"Bilibili add/v3 submission error: {res_json}")
 
@@ -711,7 +733,7 @@ class BilibiliUploader:
         eff_cover = eff_cover or str(arc.get("cover") or "")
         eff_tid = int(tid if tid is not None else (arc.get("tid") or DEFAULT_BILIBILI_TID))
         eff_tags = (
-            ",".join([t.strip() for t in tags if t.strip()][:12]) if tags is not None else str(arc.get("tag") or "")
+            ",".join([t.strip() for t in tags if t.strip()][:10]) if tags is not None else str(arc.get("tag") or "")
         )
         eff_desc = (description if description is not None else str(arc.get("desc") or ""))[:2000]
 
@@ -753,6 +775,18 @@ class BilibiliUploader:
         )
         edit_resp.raise_for_status()
         edit_json = edit_resp.json()
+        if edit_json.get("code") == 21001 and any(k in payload for k in ("mission_id", "topic_id", "topic_name")):
+            fallback_payload = {k: v for k, v in payload.items() if k not in ("mission_id", "topic_id", "topic_name")}
+            edit_resp = self.session.post(
+                BILIBILI_EDIT_ARCHIVE_URL,
+                params={"t": str(int(time.time() * 1000)), "csrf": self.bili_jct},
+                json=fallback_payload,
+                cookies=self.cookies,
+                headers=self._web_headers(),
+                timeout=30,
+            )
+            edit_resp.raise_for_status()
+            edit_json = edit_resp.json()
         return {
             "aid": int(aid),
             "updated": edit_json.get("code") == 0,

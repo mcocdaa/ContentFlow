@@ -317,13 +317,16 @@ class VideoApiRouter:
         )
 
     def _get_ark_v3_tasks_url(self) -> str:
-        """Normalizes the standard VolcEngine Ark `/api/v3/contents/generations/tasks` endpoint URL."""
+        """Normalizes the VolcEngine Ark `/contents/generations/tasks` endpoint URL."""
+        active_key = self.ark_payg_api_key if _is_configured_secret(self.ark_payg_api_key) else self.ark_api_key
+        use_payg_v3 = _is_configured_secret(self.ark_payg_api_key) or not (active_key or "").startswith("ark-")
         base = self.ark_base_url.rstrip("/")
         if base.endswith("/api/plan/v3"):
-            base = base[: -len("/api/plan/v3")] + "/api/v3"
+            if use_payg_v3:
+                base = base[: -len("/api/plan/v3")] + "/api/v3"
         elif not base.endswith("/api/v3"):
-            if "/api/v3" not in base:
-                base = f"{base}/api/v3"
+            if "/api/v3" not in base and "/api/plan/v3" not in base:
+                base = f"{base}/api/v3" if use_payg_v3 else f"{base}/api/plan/v3"
         return f"{base}/contents/generations/tasks"
 
     def verify_credentials(self, check_remote: bool = False) -> Dict[str, Any]:
@@ -378,8 +381,13 @@ class VideoApiRouter:
         if check_remote:
             if ark_info["valid_format"] and active_ark_key:
                 try:
+                    probe_url = (
+                        "https://ark.cn-beijing.volces.com/api/plan/v3/contents/generations/tasks?page_size=1"
+                        if ark_mode == "agent_plan_with_v3_fallback"
+                        else f"{self._get_ark_v3_tasks_url()}?page_size=1"
+                    )
                     resp = requests.get(
-                        f"{self._get_ark_v3_tasks_url()}?page_size=1",
+                        probe_url,
                         headers={"Authorization": f"Bearer {active_ark_key}"},
                         timeout=10,
                     )

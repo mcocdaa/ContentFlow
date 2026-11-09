@@ -306,7 +306,8 @@ class VideoQualityGate:
         if fps >= 59.0:
             dim.score += 6.0
         elif fps >= 29.5:
-            dim.score += 5.0
+            dim.score += 4.0
+            dim.issues.append("帧率为 30fps，建议使用 RIFE v4.6 / AI 补帧优化至 60fps 满帧丝滑度")
         elif fps >= 23.5:
             dim.score += 3.0
             dim.issues.append(f"帧率偏低 ({fps:.1f}fps)，建议科普>=30fps、舞蹈/动作>=60fps")
@@ -464,7 +465,12 @@ class VideoQualityGate:
             duration * 0.55,
             duration * 0.80,
         ]
+        intra_times = [
+            min(0.6, duration * 0.08),
+            min(1.4, duration * 0.14),
+        ]
         frames: List[Image.Image] = []
+        intra_frames: List[Image.Image] = []
         with tempfile.TemporaryDirectory() as tmpdir:
             for idx, ts in enumerate(sample_times):
                 out_jpg = Path(tmpdir) / f"f_{idx}.jpg"
@@ -497,8 +503,40 @@ class VideoQualityGate:
                     except Exception:
                         pass
 
+            for idx, ts in enumerate(intra_times):
+                out_intra = Path(tmpdir) / f"intra_{idx}.jpg"
+                try:
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-ss",
+                            f"{ts:.2f}",
+                            "-i",
+                            str(video_path),
+                            "-vframes",
+                            "1",
+                            "-vf",
+                            "scale=480:-1",
+                            "-q:v",
+                            "4",
+                            str(out_intra),
+                        ],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=8,
+                    )
+                except Exception:
+                    break
+                if out_intra.exists():
+                    try:
+                        intra_frames.append(Image.open(out_intra).convert("RGB").copy())
+                    except Exception:
+                        pass
+
         if len(frames) < 2:
             dim.score = 18.0 if shutil.which("ffmpeg") is None else 10.0
+            dim.details = {"upper_frame_motion_delta": 0.0}
             dim.issues.append("采样帧不足，仅完成基础视觉校验")
             return dim
 
@@ -541,9 +579,25 @@ class VideoQualityGate:
             dim.score += 3.0
             dim.issues.append("画面上下边缘检测到疑似黑边，建议使用满屏流光背景")
 
+        # 4. Intra-scene upper-78% frame motion check (prevents static slideshows with burned bottom subtitles from passing)
+        pair_a, pair_b = (intra_frames[0], intra_frames[1]) if len(intra_frames) >= 2 else (frames[0], frames[1])
+        uw, uh = pair_a.size
+        upper_crop_h = max(1, int(uh * 0.78))
+        diff_upper = ImageChops.difference(
+            pair_a.crop((0, 0, uw, upper_crop_h)),
+            pair_b.crop((0, 0, uw, upper_crop_h)),
+        )
+        upper_motion = sum(ImageStat.Stat(diff_upper).mean) / 3.0
+        if upper_motion < 0.15:
+            dim.score = min(dim.score, 12.0)
+            dim.issues.append(
+                f"画面主体(除底部字幕外)缺乏连续动态变化 (upper_motion={upper_motion:.2f})，疑似静态图片直出，必须经过 AI 视频生成或运镜补帧优化"
+            )
+
         dim.details = {
             "first_3s_motion_delta": round(hook_motion, 2),
             "avg_motion_delta": round(avg_motion, 2),
+            "upper_frame_motion_delta": round(upper_motion, 2),
             "first_frame_contrast_std": round(luma_std, 2),
         }
         dim.score = round(min(dim.score, 20.0), 1)
@@ -650,8 +704,12 @@ class VideoQualityGate:
             except Exception:
                 pass
 
-        if len(title) >= 14 and any(ch in title for ch in ("？", "！", "?", "!", "：", ":")):
+        has_front_brackets = any(b in title[:18] for b in ("【", "[")) and any(b in title for b in ("】", "]"))
+        if len(title) >= 14 and any(ch in title for ch in ("？", "！", "?", "!", "：", ":")) and has_front_brackets:
             dim.score += 5.0
+        elif len(title) >= 14 and any(ch in title for ch in ("？", "！", "?", "!", "：", ":")):
+            dim.score += 4.0
+            dim.issues.append("标题前 18 字缺少【核心IP/悬念钩子】前置括号，建议将核心标签前置以提升点击率")
         elif len(title) >= 10:
             dim.score += 3.5
             dim.issues.append("标题缺少情绪标点（？！）或反差痛点钩子")
@@ -681,17 +739,41 @@ class VideoQualityGate:
             dim.score += 1.0
             dim.issues.append("缺少明确的 B站分区 TID 与标签配置")
 
-        # 3. Credits (借物表) & Model/Motion/BGM Attribution (6 pts)
+        # 3. Credits (借物表) & Model/Motion/BGM/Reference Attribution (6 pts)
+        uses_noshiro_ref = (proj_dir / "assets" / "noshiro_reference.jpg").exists() or (
+            "noshiro" in proj_dir.name.lower()
+        )
+        has_reference_creator_attr = True
+        if uses_noshiro_ref and "小咩先生" not in combined_text:
+            has_reference_creator_attr = False
+            blockers.append(
+                "Missing reference attribution for @小咩先生 (noshiro_reference.jpg used without crediting reference creator in bilibili.md)"
+            )
+            dim.issues.append("未说明所使用的参考图来源（缺少对参考素材作者 @小咩先生 的致谢说明）")
+
         has_credits_header = any(k in combined_text for k in ("借物表", "Credits", "原作者", "版权"))
         has_author_attr = any(
             k in combined_text
-            for k in ("上善无形", "ZipZipPipe", "ureshiiiiii", "ATDAN", "Manjuu", "SQUARE ENIX", "CAFFEIN", "Crypton")
+            for k in (
+                "上善无形",
+                "ZipZipPipe",
+                "ureshiiiiii",
+                "小咩先生",
+                "ATDAN",
+                "Manjuu",
+                "SQUARE ENIX",
+                "CAFFEIN",
+                "Crypton",
+            )
         )
-        if has_credits_header and has_author_attr:
+        if has_credits_header and has_author_attr and has_reference_creator_attr:
             dim.score += 6.0
         elif has_credits_header or has_author_attr:
             dim.score += 3.5
-            dim.issues.append("借物表信息不够完整，建议使用 AssetLibrary.generate_project_credits 自动生成完整借物表")
+            if has_reference_creator_attr:
+                dim.issues.append(
+                    "借物表信息不够完整，建议使用 AssetLibrary.generate_project_credits 自动生成完整借物表"
+                )
         else:
             dim.score += 1.0
             dim.issues.append("简介缺失【借物表 (Credits)】，存在二创社区合规风险")
@@ -721,7 +803,9 @@ class VideoQualityGate:
 
         dim.details = {
             "detected_title": title,
-            "has_credits_table": has_credits_header and has_author_attr,
+            "title_front_loaded": has_front_brackets,
+            "has_credits_table": has_credits_header and has_author_attr and has_reference_creator_attr,
+            "reference_attribution_passed": has_reference_creator_attr,
             "has_aigc_declaration": has_aigc_label,
             "compliant_open_fonts": not font_violation,
             "voice_compliance_passed": not voice_violation,
