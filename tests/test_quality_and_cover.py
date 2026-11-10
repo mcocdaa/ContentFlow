@@ -218,7 +218,8 @@ def test_video_quality_gate_pass_and_blocker(tmp_path: Path) -> None:
     assert len(rep_005.blockers) == 0
     assert rep_005.total_score >= 80.0
     assert rep_005.dimensions["visual_dynamics"]["details"]["upper_frame_motion_delta"] > 0.15
-    assert any("帧率为 30fps" in iss for iss in rep_005.dimensions["technical"]["issues"])
+    if shutil.which("ffprobe") is not None:
+        assert any("帧率为 30fps" in iss for iss in rep_005.dimensions["technical"]["issues"])
 
     # Test blocker when @小咩先生 reference attribution is missing in bilibili.md
     proj_005_missing_ref = tmp_path / "005_noshiro_missing_ref"

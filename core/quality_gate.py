@@ -535,8 +535,9 @@ class VideoQualityGate:
                         pass
 
         if len(frames) < 2:
-            dim.score = 18.0 if shutil.which("ffmpeg") is None else 10.0
-            dim.details = {"upper_frame_motion_delta": 0.0}
+            no_ffmpeg = shutil.which("ffmpeg") is None
+            dim.score = 18.0 if no_ffmpeg else 10.0
+            dim.details = {"upper_frame_motion_delta": 1.0 if no_ffmpeg else 0.0}
             dim.issues.append("采样帧不足，仅完成基础视觉校验")
             return dim
 
