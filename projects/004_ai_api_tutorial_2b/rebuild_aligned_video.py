@@ -288,109 +288,63 @@ def prepare_scene_layers(sc: Dict, device: torch.device) -> Dict:
 def draw_dynamic_hud_overlay(
     frame_bgr: np.ndarray,
     sc_idx: int,
+    sc_title: str,
     t_local: float,
     t_global: float,
     total_dur: float,
     speech_env: float,
+    is_closeup_hook: bool = False,
 ) -> np.ndarray:
-    """Renders crisp 60FPS interactive holographic HUD elements, laser beams, scanlines, and particles."""
+    """Renders perspective-respecting corner HUD telemetry & audio spectrum without clashing with 3D screen text."""
     out = frame_bgr
+    overlay = out.copy()
 
-    # 1. Scene-specific interactive hologram animation
-    if sc_idx == 1:
-        # Pulsing red/amber warning scanline & diagnostic alert beacons on the error boxes
-        pulse = 0.55 + 0.45 * math.sin(t_local * 7.5)
-        scan_y = int(160 + ((t_local * 145) % 450))
-        overlay = out.copy()
-        cv2.line(overlay, (990, scan_y), (1860, scan_y), (60, 90, 255), 3, cv2.LINE_AA)
-        cv2.rectangle(overlay, (1330, 175), (1635, 255), (40, 40, int(255 * pulse)), 3, cv2.LINE_AA)
-        cv2.rectangle(overlay, (1275, 265), (1595, 355), (40, 40, int(255 * (1.0 - 0.5 * pulse))), 3, cv2.LINE_AA)
-        cv2.addWeighted(overlay, 0.55, out, 0.45, 0, out)
+    # 1. Clean glassmorphic Top-Left Chapter & Audio Spectrum Pill (x: 24..540, y: 20..68) — never overlaps 3D board!
+    cv2.rectangle(overlay, (24, 20), (340, 68), (12, 20, 38), -1)
+    cv2.rectangle(overlay, (24, 20), (340, 68), (255, 220, 40), 2, cv2.LINE_AA)
+    cv2.addWeighted(overlay, 0.72, out, 0.28, 0, out)
 
-    elif sc_idx == 2:
-        # Glowing cyan laser beam from 2B's pointer stick to the active endpoint & routing nodes
-        tip_x = int(910 + 6 * math.sin(t_local * 3.2))
-        tip_y = int(342 + 7 * math.cos(t_local * 2.8))
-        if t_local < 4.8:
-            # Pointing at https://api.deepseek.com/v1 and http://localhost:11434/v1
-            target_x = int(1240 + 180 * math.sin(t_local * 1.8))
-            target_y = int(265 + 45 * math.sin(t_local * 3.0))
+    # Audio equalizer bars inside the top-left pill (x: 38..166, y: 28..60)
+    for b_i in range(9):
+        bh = int(6 + 24 * min(1.0, speech_env * (0.65 + 0.35 * abs(math.sin(t_global * 8.5 + b_i * 0.85)))))
+        bx = 38 + b_i * 14
+        col = (255, 235, 60) if b_i < 6 else (80, 245, 255)
+        cv2.rectangle(out, (bx, 60 - bh), (bx + 9, 60), col, -1)
+
+    # Scene index indicator dots in pill (x: 185..320)
+    for s_i in range(1, 7):
+        cx = 185 + (s_i - 1) * 22
+        if s_i == sc_idx:
+            cv2.circle(out, (cx, 44), 6, (80, 245, 255), -1, cv2.LINE_AA)
+            cv2.circle(out, (cx, 44), 9, (255, 220, 40), 1, cv2.LINE_AA)
+        elif s_i < sc_idx:
+            cv2.circle(out, (cx, 44), 4, (180, 200, 220), -1, cv2.LINE_AA)
         else:
-            # Sweeping along Client -> Data Routing -> Model Server
-            prog = ((t_local - 4.8) / 5.7) % 1.0
-            target_x = int(1120 + prog * 560)
-            target_y = int(495 + 35 * math.sin(prog * 6.28))
+            cv2.circle(out, (cx, 44), 4, (70, 90, 115), 1, cv2.LINE_AA)
 
-        overlay = out.copy()
-        cv2.line(overlay, (tip_x, tip_y), (target_x, target_y), (255, 245, 80), 4, cv2.LINE_AA)
-        cv2.line(out, (tip_x, tip_y), (target_x, target_y), (255, 255, 220), 2, cv2.LINE_AA)
-        cv2.circle(overlay, (target_x, target_y), 14, (255, 230, 0), -1, cv2.LINE_AA)
-        cv2.circle(out, (target_x, target_y), 6, (255, 255, 255), -1, cv2.LINE_AA)
-        cv2.addWeighted(overlay, 0.48, out, 0.52, 0, out)
+    # 2. If in Character Medium Close-Up Hook (first 1.6s of scene), draw subtle cyber corner brackets
+    if is_closeup_hook:
+        b_col = (255, 230, 60)
+        # Top-right & bottom-left viewfinder brackets
+        cv2.line(out, (1840, 28), (1892, 28), b_col, 2, cv2.LINE_AA)
+        cv2.line(out, (1892, 28), (1892, 80), b_col, 2, cv2.LINE_AA)
+        cv2.line(out, (28, 990), (28, 1042), b_col, 2, cv2.LINE_AA)
+        cv2.line(out, (28, 1042), (80, 1042), b_col, 2, cv2.LINE_AA)
 
-    elif sc_idx == 3:
-        # Golden security radar pulse around Padlock, .env warning, and Bearer Token box
-        overlay = out.copy()
-        scan_x = int(1185 + ((t_local * 180) % 560))
-        cv2.line(overlay, (scan_x, 260), (scan_x, 675), (80, 215, 255), 3, cv2.LINE_AA)
-        # Pulsing ring on .env DO NOT LEAK TO GITHUB
-        r_pulse = int(48 + 14 * math.sin(t_local * 6.0))
-        cv2.circle(overlay, (1495, 555), r_pulse, (60, 70, 255), 3, cv2.LINE_AA)
-        cv2.addWeighted(overlay, 0.50, out, 0.50, 0, out)
-
-    elif sc_idx == 4:
-        # Active neon highlight cycling across the 3 model cards (deepseek-reasoner -> gpt-4o -> claude-3-7-sonnet)
-        overlay = out.copy()
-        card_idx = int((t_local / 3.4) % 3)
-        card_boxes = [
-            (986, 355, 1192, 648, (255, 200, 50)),
-            (1222, 315, 1472, 632, (210, 255, 40)),
-            (1504, 272, 1812, 608, (140, 255, 80)),
-        ]
-        bx0, by0, bx1, by1, bcol = card_boxes[card_idx]
-        cv2.rectangle(overlay, (bx0, by0), (bx1, by1), bcol, 5, cv2.LINE_AA)
-        # Animated laser pointer dot from 2B's outstretched hand (915, 385)
-        cv2.line(overlay, (915, 385), ((bx0 + bx1) // 2, by0 + 55), bcol, 3, cv2.LINE_AA)
-        cv2.circle(overlay, ((bx0 + bx1) // 2, by0 + 55), 10, bcol, -1, cv2.LINE_AA)
-        cv2.addWeighted(overlay, 0.55, out, 0.45, 0, out)
-
-    elif sc_idx == 5:
-        # Diagnostic scanner sweeping across 401 CRITICAL -> 404 WARNING -> 429 ALERT + glowing tablet telemetry
-        overlay = out.copy()
-        row_idx = int((t_local / 3.3) % 3)
-        row_boxes = [
-            (1055, 290, 1775, 412, (60, 60, 255)),
-            (1055, 430, 1775, 545, (40, 175, 255)),
-            (1055, 565, 1775, 678, (50, 240, 255)),
-        ]
-        rx0, ry0, rx1, ry1, rcol = row_boxes[row_idx]
-        cv2.rectangle(overlay, (rx0, ry0), (rx1, ry1), rcol, 4, cv2.LINE_AA)
-        # Glowing cyan telemetry pulse on 2B's glass tablet (310..445, 300..470)
-        tab_y = int(315 + ((t_local * 95) % 140))
-        cv2.line(overlay, (325, tab_y), (435, tab_y + 18), (255, 240, 80), 3, cv2.LINE_AA)
-        cv2.addWeighted(overlay, 0.52, out, 0.48, 0, out)
-
-    elif sc_idx == 6:
-        # Celebratory emerald & gold rising particles + pulsing border on Cyber Shareholder badge
-        overlay = out.copy()
-        glow_w = 2 + int(2 * (0.5 + 0.5 * math.sin(t_local * 6.0)))
-        cv2.rectangle(overlay, (1055, 76), (1795, 160), (0, 225, 255), glow_w, cv2.LINE_AA)
-        for p_i in range(14):
-            px = int(1060 + ((p_i * 67 + int(t_local * 45)) % 730))
-            py = int(780 - ((p_i * 53 + int(t_local * 90)) % 680))
-            rad = 3 + (p_i % 4)
+    # 3. Scene 6 celebratory ambient particles (strictly outside text boxes)
+    if sc_idx == 6:
+        ov6 = out.copy()
+        for p_i in range(10):
+            px = int(80 + ((p_i * 83 + int(t_local * 32)) % 820))
+            py = int(880 - ((p_i * 61 + int(t_local * 65)) % 760))
+            rad = 2 + (p_i % 3)
             col = (80, 255, 160) if p_i % 2 == 0 else (60, 225, 255)
-            cv2.circle(overlay, (px, py), rad, col, -1, cv2.LINE_AA)
-        cv2.addWeighted(overlay, 0.50, out, 0.50, 0, out)
+            cv2.circle(ov6, (px, py), rad, col, -1, cv2.LINE_AA)
+        cv2.addWeighted(ov6, 0.40, out, 0.60, 0, out)
 
-    # 2. Top-left live telemetry HUD & bottom progress bar (ensures crisp upper-frame & global motion)
+    # 4. Bottom progress bar (y: 1074..1080)
     prog_w = int(1920 * min(1.0, max(0.0, t_global / max(1.0, total_dur))))
     cv2.rectangle(out, (0, 1074), (prog_w, 1080), (255, 230, 0), -1)
-    # Audio equalizer bars in top-left cyber HUD corner (x: 28..148, y: 24..62)
-    for b_i in range(8):
-        bh = int(8 + 26 * min(1.0, speech_env * (0.6 + 0.4 * abs(math.sin(t_global * 9.0 + b_i * 0.9)))))
-        bx = 28 + b_i * 14
-        cv2.rectangle(out, (bx, 58 - bh), (bx + 9, 58), (255, 235, 60), -1)
 
     return out
 
@@ -484,27 +438,28 @@ def main():
         sc_dur = max(0.1, active_sc["end"] - active_sc["start"])
         layers = scene_layers[sc_idx]
 
-        # Kling 4.0 motion + speech envelope modulation
+        # Kling 4.0 motion + speech envelope modulation (gentle natural upper-body articulation, zero desk warp)
         env_val = float(audio_env[f_idx])
-        h_dx = float(kling_curves["head_dx"][f_idx]) + 2.2 * math.sin(t_local * 2.6)
-        h_dy = float(kling_curves["head_dy"][f_idx]) + 3.0 * env_val * math.sin(t_local * 6.5)
-        a_dx = float(kling_curves["arm_dx"][f_idx]) + 6.5 * math.sin(t_local * 3.1)
-        a_dy = float(kling_curves["arm_dy"][f_idx]) + 7.5 * math.cos(t_local * 2.7)
-        breath_dy = 3.2 * math.sin(t_local * 2.2)
+        h_dx = 0.42 * float(kling_curves["head_dx"][f_idx]) + 1.1 * math.sin(t_local * 2.4)
+        h_dy = 0.42 * float(kling_curves["head_dy"][f_idx]) + 1.6 * env_val * math.sin(t_local * 5.8)
+        a_dx = 0.45 * float(kling_curves["arm_dx"][f_idx]) + 2.8 * math.sin(t_local * 2.7)
+        a_dy = 0.45 * float(kling_curves["arm_dy"][f_idx]) + 3.2 * math.cos(t_local * 2.5)
+        breath_dy = 1.6 * math.sin(t_local * 2.1)
 
-        # Pod 042 anti-gravity hovering motion (bobbing + horizontal drift)
-        pod_dx = 6.5 * math.sin(t_local * 2.1 + sc_idx)
-        pod_dy = 11.5 * math.cos(t_local * 2.9 + sc_idx * 0.7)
+        # Pod 042 anti-gravity hovering motion (bobbing + gentle horizontal drift)
+        pod_dx = 5.5 * math.sin(t_local * 2.0 + sc_idx)
+        pod_dy = 9.5 * math.cos(t_local * 2.7 + sc_idx * 0.7)
 
-        # Build articulated non-rigid warp field for 2B on GPU
+        # Build articulated non-rigid warp field for 2B on GPU, strictly guarded above desk line (y < 540)
         hx, hy = active_sc["head_center"]
         ax, ay = active_sc["arm_center"]
+        upper_guard = torch.clamp((540.0 - py_grid) / 75.0, 0.0, 1.0)
 
-        head_w = torch.exp(-((px_grid - hx) ** 2 + (py_grid - hy) ** 2) / (2.0 * (165.0**2)))
-        arm_w = torch.exp(-((px_grid - ax) ** 2 + (py_grid - ay) ** 2) / (2.0 * (185.0**2)))
-        torso_w = torch.exp(-((px_grid - hx) ** 2 + (py_grid - (hy + 260.0)) ** 2) / (2.0 * (220.0**2)))
+        head_w = torch.exp(-((px_grid - hx) ** 2 + (py_grid - hy) ** 2) / (2.0 * (145.0**2))) * upper_guard
+        arm_w = torch.exp(-((px_grid - ax) ** 2 + (py_grid - ay) ** 2) / (2.0 * (155.0**2))) * upper_guard
+        torso_w = torch.exp(-((px_grid - hx) ** 2 + (py_grid - (hy + 210.0)) ** 2) / (2.0 * (160.0**2))) * upper_guard
 
-        dx_char = head_w * h_dx + arm_w * a_dx + torso_w * (0.35 * h_dx)
+        dx_char = head_w * h_dx + arm_w * a_dx + torso_w * (0.25 * h_dx)
         dy_char = head_w * h_dy + arm_w * a_dy + torso_w * breath_dy
 
         # Convert pixel offsets to normalized (-1..1) sampling grid
@@ -530,31 +485,34 @@ def main():
             layers["pod_a_t"], grid_pod, mode="bilinear", padding_mode="zeros", align_corners=True
         )
 
-        # Subtle background camera pan/zoom so background and foreground have realistic parallax
-        prog = t_local / sc_dur
-        # Fast initial hook push in first 1.5s of Scene 1 so first_3s_motion_delta >= 2.5 and upper_motion >= 1.5
-        if sc_idx == 1 and t_local < 1.8:
-            hook_phase = math.sin(t_local * 4.2)
-            cam_zoom = 1.015 + 0.018 * (t_local / 1.8)
-            cam_dx = 12.0 * hook_phase
-            cam_dy = 6.0 * math.cos(t_local * 3.8)
-        else:
-            cam_zoom = 1.005 + 0.032 * prog
-            cam_dx = 10.0 * math.sin(prog * math.pi * 1.5 + sc_idx)
-            cam_dy = 5.0 * math.cos(prog * math.pi * 1.2 + sc_idx)
-
-        grid_bg_x = (xx / cam_zoom) - cam_dx * (2.0 / W)
-        grid_bg_y = (yy / cam_zoom) - cam_dy * (2.0 / H)
-        grid_bg = torch.stack([grid_bg_x, grid_bg_y], dim=-1).unsqueeze(0)
-        warped_bg = F.grid_sample(layers["bg_t"], grid_bg, mode="bilinear", padding_mode="border", align_corners=True)
-
-        # Composite: Background -> Pod 042 -> 2B
-        comp = warped_bg * (1.0 - warped_pod_a) + warped_pod_rgb * warped_pod_a
+        # Composite onto 100% locked background first (zero sinusoidal camera wobble!)
+        comp = layers["bg_t"] * (1.0 - warped_pod_a) + warped_pod_rgb * warped_pod_a
         comp = comp * (1.0 - warped_char_a) + warped_char_rgb * warped_char_a
+
+        # Editorial Multi-Shot Cut:
+        # First 1.75s of each scene -> Locked Character Medium Close-Up Hook (1.25x on 2B & Pod 042)
+        # t_local >= 1.75s -> Clean Editorial Cut to 100% Tripod-Locked Full Information Screen View
+        is_closeup_hook = t_local < 1.75
+        if is_closeup_hook:
+            cam_zoom = 1.25
+            # Center framing on 2B & Pod 042 on the left side (-0.24 normalized X, -0.10 normalized Y)
+            grid_view_x = (xx / cam_zoom) - 0.24
+            grid_view_y = (yy / cam_zoom) - 0.10
+            grid_view = torch.stack([grid_view_x, grid_view_y], dim=-1).unsqueeze(0)
+            comp = F.grid_sample(comp, grid_view, mode="bilinear", padding_mode="border", align_corners=True)
 
         # Transfer RGB -> BGR uint8 on CPU for HUD drawing
         comp_bgr = comp.squeeze(0).permute(1, 2, 0).clamp(0, 255).byte().cpu().numpy()[..., ::-1].copy()
-        comp_bgr = draw_dynamic_hud_overlay(comp_bgr, sc_idx, t_local, t_global, total_dur, env_val)
+        comp_bgr = draw_dynamic_hud_overlay(
+            comp_bgr,
+            sc_idx,
+            active_sc["title"],
+            t_local,
+            t_global,
+            total_dur,
+            env_val,
+            is_closeup_hook=is_closeup_hook,
+        )
 
         proc.stdin.write(comp_bgr.tobytes())
         if (f_idx + 1) % 600 == 0 or f_idx == total_frames - 1:

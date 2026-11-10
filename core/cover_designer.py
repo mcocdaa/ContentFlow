@@ -347,87 +347,98 @@ class CoverDesigner:
         badge_text: str,
         bottom_tags: List[str],
         repair_whiteboard_artifact: bool = True,
+        hero_crop_params: Optional[Tuple[float, float, float]] = None,
     ) -> Image.Image:
-        """Enhances a 16:9 landscape image into a 1920x1080 viral cover with artifact repair."""
-        base = src.convert("RGBA").resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+        """Converts a 16:9 landscape scene into a 5-Star Split Hero viral cover (Left Dark Hook + Right Waist-Up Hero)."""
+        # 1. Build 1920x1080 darkened blurred cyber atmosphere background
+        bg = src.convert("RGB").resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+        bg = bg.filter(ImageFilter.GaussianBlur(radius=28))
+        bg = ImageEnhance.Brightness(bg).enhance(0.38)
+        bg = ImageEnhance.Color(bg).enhance(1.30)
+        base = bg.convert("RGBA")
 
-        # 1. Repair/mask bottom-right whiteboard artifact region (e.g. '(f:ILnix)' in 005)
-        if repair_whiteboard_artifact:
-            patch_box = (1350, 460, 1765, 600)
-            # Sample clean board glass color from above the artifact
-            sample_region = base.crop((1350, 420, 1750, 455)).resize((415, 140), Image.Resampling.BILINEAR)
-            sample_region = sample_region.filter(ImageFilter.GaussianBlur(radius=10))
-            base.paste(sample_region, (patch_box[0], patch_box[1]))
-
-        # 2. Add smooth continuous bottom & top dark gradient overlay for giant typography contrast
+        # 2. Left deep dark cyber gradient vignette (x: 0..1020) for 100% clean typography contrast
         grad = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
         g_draw = ImageDraw.Draw(grad)
-        for y in range(TARGET_HEIGHT):
-            if y < 260:
-                t = 1.0 - (y / 260.0)
-                alpha = int(75 * (t**1.5))
-            elif y < 420:
-                alpha = 0
+        for x in range(TARGET_WIDTH):
+            if x < 960:
+                alpha = int(225 - (x / 960.0) * 50)
+            elif x < 1240:
+                t = (x - 960) / 280.0
+                alpha = int(175 * (1.0 - t) + 25 * t)
             else:
-                t = (y - 420) / float(TARGET_HEIGHT - 420)
-                alpha = int(235 * (t**1.25))
-            g_draw.line([(0, y), (TARGET_WIDTH, y)], fill=(6, 12, 26, min(alpha, 240)))
+                alpha = 25
+            g_draw.line([(x, 0), (x, TARGET_HEIGHT)], fill=(6, 14, 32, alpha))
+
+        for gx in range(240, 1020, 120):
+            g_draw.line([(gx, 0), (gx, TARGET_HEIGHT)], fill=(0, 210, 255, 20), width=1)
+        for gy in range(120, TARGET_HEIGHT, 120):
+            g_draw.line([(0, gy), (1020, gy)], fill=(0, 210, 255, 20), width=1)
         base.alpha_composite(grad)
 
-        if repair_whiteboard_artifact:
-            # Draw clean glowing holographic HUD formula card over the repaired whiteboard corner
-            hud_draw = ImageDraw.Draw(base)
-            hud_draw.rounded_rectangle(
-                [1355, 465, 1755, 595],
-                radius=12,
-                fill=(12, 38, 58, 230),
-                outline=(0, 240, 255, 235),
-                width=2,
-            )
-            hud_font_title = self._load_font(25)
-            hud_font_sub = self._load_font(22)
-            hud_draw.text(
-                (1375, 482),
-                "Attention(Q, K, V)",
-                font=hud_font_title,
-                fill=(0, 240, 255, 255),
-            )
-            hud_draw.text(
-                (1375, 520),
-                "= softmax(QK^T / √d_k) · V",
-                font=hud_font_sub,
-                fill=(255, 255, 255, 250),
-            )
-            hud_draw.text(
-                (1375, 556),
-                "Multi-Head Parallel Tensor Core",
-                font=hud_font_sub,
-                fill=(255, 215, 0, 245),
-            )
+        # 3. Extract zero-distortion waist-up character hero portrait & place in right zone (x: 960..1920)
+        sw, sh = src.size
+        cy0_r, cy1_r, center_x_r = hero_crop_params if hero_crop_params is not None else (0.02, 0.76, 0.355)
+        char_target_w = 960
+        cy0 = max(0, int(sh * cy0_r))
+        cy1 = min(sh, int(sh * cy1_r))
+        crop_h = max(64, cy1 - cy0)
+        crop_w = int(round(crop_h * (char_target_w / float(TARGET_HEIGHT))))
+        cx0 = max(0, int(round(center_x_r * sw - 0.422 * crop_w)))
+        cx1 = min(sw, cx0 + crop_w)
+        if cx1 - cx0 < crop_w:
+            cx0 = max(0, cx1 - crop_w)
 
-        # 3. Render giant high-contrast typography inside 4:3 safe zone (x: 240..1680)
-        text_x = 270
-        max_text_w = SAFE_ZONE_X_MAX - text_x - 30  # 1380px
+        char_crop_raw = src.convert("RGB").crop((cx0, cy0, max(cx0 + 32, cx1), max(cy0 + 32, cy1)))
+        char_resized = char_crop_raw.resize((char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+        char_resized = char_resized.filter(ImageFilter.UnsharpMask(radius=1.5, percent=140, threshold=2))
+        char_rgba = char_resized.convert("RGBA")
+
+        # Soft horizontal alpha feather on left & right edge of character panel
+        mask = Image.new("L", (char_target_w, TARGET_HEIGHT), 255)
+        m_draw = ImageDraw.Draw(mask)
+        feather_left = 115
+        feather_right = 36
+        for fx in range(feather_left):
+            a = int(255 * (fx / float(feather_left)) ** 1.4)
+            m_draw.line([(fx, 0), (fx, TARGET_HEIGHT)], fill=a)
+        for fx in range(feather_right):
+            a = int(255 * (fx / float(feather_right)) ** 1.4)
+            m_draw.line([(char_target_w - 1 - fx, 0), (char_target_w - 1 - fx, TARGET_HEIGHT)], fill=a)
+
+        glow = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow)
+        glow_draw.ellipse([1020, 70, 1720, 990], fill=(0, 210, 255, 58))
+        glow = glow.filter(ImageFilter.GaussianBlur(radius=58))
+        base.alpha_composite(glow)
+
+        char_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+        char_layer.paste(char_rgba, (960, 0), mask=mask)
+        base.alpha_composite(char_layer)
+
+        # 4. Render giant high-contrast typography strictly in left safe zone (x: 255..995)
+        text_x = 255
+        max_text_w = 995 - text_x  # 740px max width — zero overlap with right character portrait!
 
         if badge_text:
             self._draw_capsule_badge(
                 base,
                 text_x,
-                85,
+                120,
                 badge_text,
-                bg_color=(0, 130, 210, 235),
+                bg_color=(0, 130, 210, 240),
                 border_color=(0, 240, 255, 255),
             )
 
         colors = [self.COLOR_GOLD, self.COLOR_WHITE, self.COLOR_CYAN]
-        start_sizes = [102, 94, 88]
+        start_sizes = [104, 96, 92]
         active_lines = [ln for ln in hook_lines[:3] if ln]
-        cur_y = 540 if len(active_lines) >= 3 else 600
+        cur_y = 245
         draw = ImageDraw.Draw(base)
         for idx, line in enumerate(active_lines):
             color = colors[idx % len(colors)]
             target_sz = start_sizes[idx % len(start_sizes)]
-            font = self._fit_font_to_width(draw, line, max_width=max_text_w, start_size=target_sz, min_size=54)
+            font = self._fit_font_to_width(draw, line, max_width=max_text_w, start_size=target_sz, min_size=52)
             bbox = self._draw_stroked_text(
                 base,
                 (text_x, cur_y),
@@ -438,13 +449,13 @@ class CoverDesigner:
                 shadow_offset=(6, 8),
             )
             line_h = bbox[3] - bbox[1]
-            cur_y += max(line_h + 24, 125)
+            cur_y += max(line_h + 34, 145)
 
         if bottom_tags:
-            self._draw_bottom_tags(base, text_x, 960, bottom_tags)
+            self._draw_bottom_tags(base, text_x, 865, bottom_tags)
 
-        # Crisp micro-contrast sharpening so 16:9 and 4:3 safe-zone typography & HUD edges pop
-        rgb_sharp = base.convert("RGB").filter(ImageFilter.UnsharpMask(radius=1.6, percent=165, threshold=1))
+        # Crisp micro-contrast sharpening so 16:9 and 4:3 safe-zone typography & portrait pop
+        rgb_sharp = base.convert("RGB").filter(ImageFilter.UnsharpMask(radius=1.5, percent=150, threshold=1))
         return rgb_sharp.convert("RGBA")
 
     def design_cover(
@@ -459,6 +470,7 @@ class CoverDesigner:
         repair_whiteboard_artifact: bool = True,
         save_4x3_crop: bool = True,
         output_4x3_path: Optional[Union[str, Path]] = None,
+        hero_crop_params: Optional[Tuple[float, float, float]] = None,
     ) -> CoverDesignResult:
         """Renders a 1920x1080 (16:9) cover and optional 1440x1080 (4:3) safe crop."""
         src_path = Path(base_image_path)
@@ -489,6 +501,7 @@ class CoverDesigner:
                 badge_text=badge_text,
                 bottom_tags=tags,
                 repair_whiteboard_artifact=repair_whiteboard_artifact,
+                hero_crop_params=hero_crop_params,
             )
 
         rgb_cover = composed.convert("RGB")
@@ -539,6 +552,7 @@ class CoverDesigner:
 
         base_candidates = [
             assets_dir / "character_anchor.jpg",
+            pdir / "images" / "scene_1.jpg",
             assets_dir / "scene_cover.jpg",
             assets_dir / "scene6_success_thumbsup.jpg",
             assets_dir / "scene2_base_url.jpg",
@@ -578,6 +592,7 @@ class CoverDesigner:
 
         # Project-specific viral defaults
         repair_wb = False
+        hero_crop: Optional[Tuple[float, float, float]] = None
         if "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"
@@ -585,18 +600,20 @@ class CoverDesigner:
             badge = badge_text or "AI接管账号实录"
             tags = bottom_tags or ["2K深海重绘", "60FPS满帧"]
         elif "005" in pid or "noshiro" in pid or "transformer" in pid:
-            h1 = hook_line1 or "能代手把手教你"
-            h2 = hook_line2 or "大模型核心基石"
-            h3 = hook_line3 if hook_line3 is not None else "Transformer全解"
-            badge = badge_text or "硬核AI架构科普"
-            tags = bottom_tags or ["手撕Attention", "3D手办精讲"]
+            h1 = hook_line1 or "把B站账号交给AI"
+            h2 = hook_line2 or "能代3分钟带你"
+            h3 = hook_line3 if hook_line3 is not None else "手撕Transformer！"
+            badge = badge_text or "AI接管账号·第2期"
+            tags = bottom_tags or ["手撕Attention", "60FPS满帧"]
             repair_wb = True
+            hero_crop = (0.06, 0.66, 0.348)
         elif "004" in pid or "2b" in pid:
-            h1 = hook_line1 or "3D手办2B硬核科普"
-            h2 = hook_line2 or "秒解API报错401/404"
-            h3 = hook_line3 if hook_line3 is not None else "三大通信核心全通！"
+            h1 = hook_line1 or "API狂报401/404？"
+            h2 = hook_line2 or "2B小姐姐手把手"
+            h3 = hook_line3 if hook_line3 is not None else "60秒彻底打通！"
             badge = badge_text or "AI接管账号·第3期"
             tags = bottom_tags or ["60FPS满帧", "200 OK全通"]
+            hero_crop = (0.02, 0.76, 0.355)
         else:
             h1 = hook_line1 or "硬核AI技术实录"
             h2 = hook_line2 or pdir.name[:12]
@@ -613,4 +630,5 @@ class CoverDesigner:
             badge_text=badge,
             bottom_tags=tags,
             repair_whiteboard_artifact=repair_wb,
+            hero_crop_params=hero_crop,
         )

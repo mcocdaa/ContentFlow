@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from PIL import Image, ImageChops, ImageFilter, ImageStat
 
 from config.settings import CONTENTFLOW_ROOT, DEFAULT_FONTS
+from core.aesthetic_evaluator import LocalAestheticEvaluator
 
 FORBIDDEN_COMMERCIAL_FONTS = {
     "stheitimedium.ttc",
@@ -601,6 +602,46 @@ class VideoQualityGate:
             "upper_frame_motion_delta": round(upper_motion, 2),
             "first_frame_contrast_std": round(luma_std, 2),
         }
+
+        # 5. 60FPS Optical-Flow Camera Stability, Anti-Wobble, Anti-Ghosting & Local Aesthetic Audit (Option 1)
+        if duration > 5.0 and video_path and video_path.exists():
+            streams = probe_data.get("streams", [])
+            v_stream: Dict[str, Any] = next((s for s in streams if s.get("codec_type") == "video"), {})
+            vw = int(v_stream.get("width", 1920) or 1920)
+            vh = int(v_stream.get("height", 1080) or 1080)
+            is_tutorial = vw >= vh
+            evaluator = LocalAestheticEvaluator(allow_weight_download=False)
+            cam_rep = evaluator.analyze_camera_and_motion(video_path, is_tutorial=is_tutorial)
+            contact_sheet_out = video_path.parent.parent / "output" / "diagnostic_contact_sheet.jpg"
+            aes_rep = evaluator.evaluate_aesthetics_and_contact_sheet(
+                video_path=video_path,
+                cover_path=None,
+                output_contact_sheet=contact_sheet_out,
+            )
+            dim.details.update(
+                {
+                    "camera_jitter_std_px": cam_rep.camera_jitter_std_px,
+                    "direction_reversals_5s": cam_rep.direction_reversals_5s,
+                    "board_drift_mean_px": cam_rep.board_drift_mean_px,
+                    "linear_blend_ghost_ratio": cam_rep.linear_blend_ghost_ratio,
+                    "camera_wobble_detected": cam_rep.camera_wobble_detected,
+                    "ghosting_detected": cam_rep.ghosting_detected,
+                    "distant_face_collapse_detected": aes_rep.distant_face_collapse_detected,
+                    "video_aesthetic_10": aes_rep.video_aesthetic_10,
+                    "video_technical_10": aes_rep.video_technical_10,
+                    "contact_sheet_path": aes_rep.contact_sheet_path,
+                }
+            )
+            if cam_rep.camera_wobble_detected:
+                dim.score = max(0.0, dim.score - 6.0)
+                dim.issues.extend(cam_rep.issues)
+            elif cam_rep.ghosting_detected:
+                dim.score = max(0.0, dim.score - 4.0)
+                dim.issues.extend(cam_rep.issues)
+            if aes_rep.distant_face_collapse_detected:
+                dim.score = max(0.0, dim.score - 3.0)
+                dim.issues.extend(aes_rep.issues)
+
         dim.score = round(min(dim.score, 20.0), 1)
         return dim
 
@@ -673,6 +714,23 @@ class VideoQualityGate:
             "safe_zone_luma_std": round(luma_std, 2),
             "has_4x3_safe_crop": has_4x3_companion,
         }
+        if is_16x9:
+            aes_cov = LocalAestheticEvaluator(allow_weight_download=False).evaluate_aesthetics_and_contact_sheet(
+                video_path=None,
+                cover_path=cover_path,
+                output_contact_sheet=None,
+            )
+            dim.details.update(
+                {
+                    "cover_aesthetic_10": aes_cov.cover_aesthetic_10,
+                    "cover_technical_10": aes_cov.cover_technical_10,
+                    "cover_split_hierarchy_ok": aes_cov.cover_split_hierarchy_ok,
+                }
+            )
+            if not aes_cov.cover_split_hierarchy_ok:
+                dim.score = max(0.0, dim.score - 3.0)
+                dim.issues.extend(aes_cov.issues)
+
         dim.score = round(min(dim.score, 20.0), 1)
         return dim
 

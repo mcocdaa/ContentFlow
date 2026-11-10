@@ -325,3 +325,35 @@ def test_cli_design_cover_and_quality_check(monkeypatch: pytest.MonkeyPatch, tmp
     assert cli.main() == 0
     assert out_json.exists()
     assert '"passed": true' in out_json.read_text(encoding="utf-8")
+
+
+def test_local_aesthetic_evaluator_camera_and_contact_sheet(tmp_path: Path) -> None:
+    """Tests LocalAestheticEvaluator camera stability analysis and 12-frame contact sheet generation."""
+    from core.aesthetic_evaluator import LocalAestheticEvaluator
+
+    evaluator = LocalAestheticEvaluator(allow_weight_download=False)
+    vid = _ensure_test_video(tmp_path / "eval_test.mp4", width=1920, height=1080, fps=60)
+    cov = Path("projects/004_ai_api_tutorial_2b/delivery/2B小姐姐教你大模型API核心三要素_cover.jpg")
+    sheet = tmp_path / "diagnostic_contact_sheet.jpg"
+
+    cam_rep_dance = evaluator.analyze_camera_and_motion(vid, is_tutorial=False)
+    assert cam_rep_dance.camera_wobble_detected is False
+    assert cam_rep_dance.ghosting_detected is False
+    assert cam_rep_dance.stability_score_10 >= 8.0
+
+    if vid.stat().st_size > 8192:
+        cam_rep_tut = evaluator.analyze_camera_and_motion(vid, is_tutorial=True)
+        assert cam_rep_tut.camera_wobble_detected is True
+
+    aes_rep = evaluator.evaluate_aesthetics_and_contact_sheet(
+        video_path=vid,
+        cover_path=cov,
+        output_contact_sheet=sheet,
+        allow_download=False,
+    )
+    assert aes_rep.cover_split_hierarchy_ok is True
+    assert aes_rep.cover_aesthetic_10 >= 6.0
+    if vid.stat().st_size > 8192:
+        assert sheet.exists()
+        with Image.open(sheet) as im:
+            assert im.size == (1920, 874)

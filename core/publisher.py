@@ -90,6 +90,7 @@ BILIBILI_ARCHIVE_VIEW_URL = "https://member.bilibili.com/x/vupre/web/archive/vie
 BILIBILI_TOPIC_SEARCH_URL = "https://member.bilibili.com/x/vupre/web/topic/search"
 BILIBILI_REPLY_ADD_URL = "https://api.bilibili.com/x/v2/reply/add"
 BILIBILI_REPLY_TOP_URL = "https://api.bilibili.com/x/v2/reply/top"
+BILIBILI_REPLY_DEL_URL = "https://api.bilibili.com/x/v2/reply/del"
 BILIBILI_CREATOR_MANAGER_URL = "https://member.bilibili.com/platform/upload-manager/article"
 
 
@@ -667,6 +668,32 @@ class BilibiliUploader:
             "parent_rpid": eff_parent,
             "rpid": new_rpid,
             "replied": res_json.get("code") == 0,
+            "response": res_json,
+        }
+
+    def delete_comment(self, aid: int, rpid: int) -> Dict[str, Any]:
+        """Deletes a comment on an archive (`/x/v2/reply/del`)."""
+        if not self.is_authenticated:
+            raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required to delete comments")
+
+        resp = self.session.post(
+            BILIBILI_REPLY_DEL_URL,
+            data={
+                "oid": str(int(aid)),
+                "type": "1",
+                "rpid": str(int(rpid)),
+                "csrf": self.bili_jct,
+            },
+            cookies=self.cookies,
+            headers={**self._web_headers(), "Referer": f"https://www.bilibili.com/video/av{int(aid)}"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        res_json = resp.json()
+        return {
+            "aid": int(aid),
+            "rpid": int(rpid),
+            "deleted": res_json.get("code") == 0,
             "response": res_json,
         }
 

@@ -373,27 +373,16 @@ def main():
         pad_ms = int(round(tail_pad * 1000))
         audio_filter = f"apad=pad_dur={pad_ms / 1000.0:.3f},loudnorm=I=-14:LRA=7:TP=-1.5"
 
-        # Dynamic 60FPS camera motion: Scene 1 gets a strong first-3s opening pan/reveal hook
-        if idx == 1:
-            cam_motion = (
-                "crop=1840:1035:40+38*sin(2*PI*t/2.2):22+18*cos(2*PI*t/2.2),"
-                "scale=1920:1080:flags=lanczos,setsar=1:1,format=yuv420p"
-            )
-        else:
-            phase = idx * 0.85
-            cam_motion = (
-                f"crop=1864:1048:28+24*sin(2*PI*t/4.0+{phase:.2f}):16+12*cos(2*PI*t/4.0+{phase:.2f}),"
-                "scale=1920:1080:flags=lanczos,setsar=1:1,format=yuv420p"
-            )
-
+        # Editorial Multi-Shot Cut + 100% Tripod-Locked Whiteboard:
+        # First 1.80s of each scene -> 1.33x Character Medium Close-Up Hook (Noshiro + board header)
+        # t >= 1.80s -> 100% Tripod-Locked Full 1920x1080 Whiteboard View (zero sinusoidal wobble, zero arm cutout artifact)
         filter_complex = (
             f"[0:v]fps=60,setpts=PTS-STARTPTS[bg];"
             f"[1:v]fps=60,setpts=PTS-STARTPTS[board];"
-            f"[2:v]fps=60,setpts=PTS-STARTPTS[arm];"
-            f"[bg][board]overlay=0:0:shortest=1[tmp1];"
-            f"[tmp1][arm]overlay=835:240:shortest=1[tmp2];"
-            f"[tmp2]{cam_motion}[v];"
-            f"[3:a]{audio_filter}[a]"
+            f"[bg][board]overlay=0:0:shortest=1,split=2[v_full][v_cu];"
+            f"[v_cu]crop=1440:810:150:34,scale=1920:1080:flags=lanczos[v_cu_scaled];"
+            f"[v_full][v_cu_scaled]overlay=0:0:enable='lt(t,1.80)',setsar=1:1,format=yuv420p[v];"
+            f"[2:a]{audio_filter}[a]"
         )
 
         cmd = [
@@ -409,12 +398,6 @@ def main():
             "1",
             "-i",
             str(ov_path),
-            "-stream_loop",
-            "-1",
-            "-ss",
-            f"{start_offset:.3f}",
-            "-i",
-            str(arm_fg_mov),
             "-i",
             str(audio_path),
             "-filter_complex",
@@ -515,8 +498,8 @@ def main():
     srt_escaped = srt_file.resolve().as_posix().replace(":", "\\:")
     sub_filter = (
         f"subtitles='{srt_escaped}':force_style="
-        "'FontName=Noto Sans CJK SC,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        "BackColour=&H80000000,BorderStyle=3,Outline=2,Shadow=1,Alignment=2,MarginV=35',"
+        "'FontName=Noto Sans CJK SC,FontSize=21,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+        "BackColour=&H80000000,BorderStyle=1,Outline=2.5,Shadow=1,Alignment=2,MarginV=36',"
         "setsar=1:1"
     )
     cmd_burn = [
