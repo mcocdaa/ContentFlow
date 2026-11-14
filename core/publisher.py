@@ -23,6 +23,7 @@ import base64
 import datetime as dt
 import io
 import json
+import logging
 import math
 import os
 import re
@@ -39,6 +40,8 @@ from config.settings import PROJECTS_DIR
 from core.auth_vault import STANDARD_USER_AGENT, SUPPORTED_PLATFORMS, AuthVault
 from core.html_formatter import HTMLFormatter
 from core.models import FactSheet
+
+logger = logging.getLogger(__name__)
 
 SAFETY_MODES: Tuple[str, ...] = ("draft", "schedule", "direct")
 
@@ -254,7 +257,7 @@ class BilibiliUploader:
         return str(payload["data"]["url"])
 
     def upload_video_upos(self, video_path: Path) -> Dict[str, Any]:
-        """Preuploads and streams video chunks via Bilibili UPOS (`ugcupos/bup`)."""
+        """Preuploads and streams video chunks via Bilibili UPOS (`ugcupos/bup`) with CDN TLS fallback."""
         if not self.is_authenticated:
             raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required for video preupload")
 
@@ -262,6 +265,29 @@ class BilibiliUploader:
         if not video_path.exists():
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
+        cdn_candidates: List[str] = []
+        for candidate in (self.upcdn, "txa", "tx", "qn", "bda2"):
+            if candidate and candidate not in cdn_candidates:
+                cdn_candidates.append(candidate)
+
+        for idx, cdn in enumerate(cdn_candidates):
+            try:
+                return self._upload_video_upos_with_cdn(video_path, cdn)
+            except (requests.exceptions.SSLError, requests.exceptions.ConnectionError) as exc:
+                if idx + 1 < len(cdn_candidates):
+                    logger.warning(
+                        "Bilibili UPOS upload failed on upcdn=%s (%s); retrying on %s",
+                        cdn,
+                        exc,
+                        cdn_candidates[idx + 1],
+                    )
+                    continue
+                raise
+
+        raise RuntimeError("No Bilibili UPOS CDN candidates available")
+
+    def _upload_video_upos_with_cdn(self, video_path: Path, upcdn: str) -> Dict[str, Any]:
+        """Executes single-CDN UPOS preupload, chunked PUT, and finalize."""
         file_size = video_path.stat().st_size
 
         # 1. Preupload request
@@ -273,7 +299,7 @@ class BilibiliUploader:
             "ssl": "0",
             "version": "2.14.0",
             "build": "2140000",
-            "upcdn": self.upcdn,
+            "upcdn": upcdn,
             "probe_version": "20221109",
         }
         pre_resp = self.session.get(

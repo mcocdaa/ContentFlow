@@ -48,6 +48,10 @@
     "全自动音画卡点与字幕对齐"
   ],
   "call_to_action": "点赞关注弱音，下期带你手把手搭起属于你的第一条 GitHub Actions 自动化流水线！",
+  "deliverables": {
+    "final_video": "delivery/3D手办弱音的CI_CD避坑指南_final.mp4",
+    "cover": "delivery/3D手办弱音的CI_CD避坑指南_cover.jpg"
+  },
   "links": {
     "docs": "https://github.com/universal-flow/ContentFlow"
   }

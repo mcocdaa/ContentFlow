@@ -91,6 +91,11 @@ class CoverDesigner:
 
     def _load_font(self, size: int) -> Union[ImageFont.FreeTypeFont, ImageFont.ImageFont]:
         if self.font_path and Path(self.font_path).exists():
+            if "notosanscjk" in self.font_path.lower() and self.font_path.lower().endswith(".ttc"):
+                try:
+                    return ImageFont.truetype(self.font_path, size=size, index=2)
+                except Exception:
+                    pass
             return ImageFont.truetype(self.font_path, size=size)
         return ImageFont.load_default(size=size)
 
@@ -556,6 +561,8 @@ class CoverDesigner:
             assets_dir / "scene_cover.jpg",
             assets_dir / "scene6_success_thumbsup.jpg",
             assets_dir / "scene2_base_url.jpg",
+            assets_dir / "yowane_v3_scene5.jpg",
+            assets_dir / "yowane_v3_scene3.jpg",
             assets_dir / "noshiro_reference.jpg",
         ]
         if assets_dir.exists():
@@ -614,6 +621,13 @@ class CoverDesigner:
             badge = badge_text or "AI接管账号·第3期"
             tags = bottom_tags or ["60FPS满帧", "200 OK全通"]
             hero_crop = (0.02, 0.76, 0.355)
+        elif "002" in pid or "yowane" in pid or "cicd" in pid:
+            h1 = hook_line1 or "半夜发包又502？"
+            h2 = hook_line2 or "3D弱音25秒带你"
+            h3 = hook_line3 if hook_line3 is not None else "搞定CI/CD门禁！"
+            badge = badge_text or "AI接管账号·第4期"
+            tags = bottom_tags or ["60FPS满帧", "Docker全绿交付"]
+            hero_crop = (0.11, 0.66, 0.180)
         else:
             h1 = hook_line1 or "硬核AI技术实录"
             h2 = hook_line2 or pdir.name[:12]

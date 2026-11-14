@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 from PIL import Image
 
 import cli
@@ -587,3 +588,50 @@ def test_discover_metadata_compliance_footer_and_real_projects(tmp_path: Path) -
         assert "【借物表" in meta["description"]
         assert "【AIGC" in meta["description"]
         assert len(meta["pinned_comment"]) > 10
+
+
+def test_upload_video_upos_ssl_error_falls_back_to_next_cdn(tmp_path: Path) -> None:
+    video_file = tmp_path / "fallback_demo.mp4"
+    video_file.write_bytes(b"0123456789abcdef" * 512)
+
+    mock_session = MagicMock()
+    mock_session.get.side_effect = [
+        _DummyResponse(
+            {
+                "OK": 1,
+                "upos_uri": "upos://ugcupos/bda2_fail.mp4",
+                "endpoint": "//upos-cs-upcdnbda2.bilivideo.com",
+                "auth": "ak=bda2_auth",
+                "chunk_size": 10485760,
+                "biz_id": 111222,
+            }
+        ),
+        _DummyResponse(
+            {
+                "OK": 1,
+                "upos_uri": "upos://ugcupos/txa_ok.mp4",
+                "endpoint": "//upos-cs-upcdntxa.bilivideo.com",
+                "auth": "ak=txa_auth",
+                "chunk_size": 10485760,
+                "biz_id": 333444,
+            }
+        ),
+    ]
+    mock_session.post.side_effect = [
+        requests.exceptions.SSLError("EOF occurred in violation of protocol"),
+        _DummyResponse({"OK": 1, "upload_id": "up_txa_999"}),
+        _DummyResponse({"OK": 1}),
+    ]
+    mock_session.put.return_value = _DummyResponse({"OK": 1})
+
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "sess_ok", "bili_jct": "csrf_ok", "DedeUserID": "10000001"},
+        session=mock_session,
+        upcdn="bda2",
+    )
+    upos_info = uploader.upload_video_upos(video_file)
+
+    assert upos_info["bili_filename"] == "txa_ok"
+    assert upos_info["biz_id"] == 333444
+    assert mock_session.get.call_count == 2
+    assert mock_session.put.call_count == 1

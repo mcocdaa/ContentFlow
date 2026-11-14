@@ -18,7 +18,9 @@ from core.cover_designer import CoverDesigner
 from core.quality_gate import VideoQualityGate
 
 
-def _ensure_test_video(target_mp4: Path, width: int = 1080, height: int = 1920, fps: int = 60) -> Path:
+def _ensure_test_video(
+    target_mp4: Path, width: int = 1080, height: int = 1920, fps: int = 60, duration: int = 4
+) -> Path:
     """Returns target_mp4 if it exists, otherwise synthesizes a valid test MP4 via ffmpeg (or header stub on headless CI)."""
     if target_mp4.exists() and target_mp4.stat().st_size > 1000:
         return target_mp4
@@ -32,11 +34,11 @@ def _ensure_test_video(target_mp4: Path, width: int = 1080, height: int = 1920, 
         "-f",
         "lavfi",
         "-i",
-        f"testsrc2=size={width}x{height}:rate={fps}:duration=4",
+        f"testsrc2=size={width}x{height}:rate={fps}:duration={duration}",
         "-f",
         "lavfi",
         "-i",
-        "sine=frequency=440:sample_rate=48000:duration=4",
+        f"sine=frequency=440:sample_rate=48000:duration={duration}",
         "-af",
         "pan=stereo|c0=c0|c1=c0,volume=0.5",
         "-c:v",
@@ -357,3 +359,41 @@ def test_local_aesthetic_evaluator_camera_and_contact_sheet(tmp_path: Path) -> N
         assert sheet.exists()
         with Image.open(sheet) as im:
             assert im.size == (1920, 874)
+
+
+def test_cover_designer_002_preset_and_qc_contact_sheet_path(tmp_path: Path) -> None:
+    """Verifies 002 cover preset (16:9 + 4:3) and non-nested output/diagnostic_contact_sheet.jpg placement."""
+    proj_002 = CONTENTFLOW_ROOT / "projects" / "002_yowane_cicd"
+    out_cover = tmp_path / "002_cover.jpg"
+    res = CoverDesigner().design_project_cover(proj_002, output_path=out_cover)
+
+    out_16x9 = res.output_path
+    assert res.output_4x3_path is not None
+    out_4x3 = res.output_4x3_path
+    assert out_16x9.exists()
+    assert out_4x3.exists()
+    with Image.open(out_16x9) as im:
+        assert im.size == (1920, 1080)
+    with Image.open(out_4x3) as im43:
+        assert im43.size == (1440, 1080)
+
+    real_cover = proj_002 / "delivery" / "3D手办弱音的CI_CD避坑指南_cover.jpg"
+    assert real_cover.exists()
+    with Image.open(real_cover) as rim:
+        assert rim.size == (1920, 1080)
+
+    proj = tmp_path / "099_test_proj"
+    vid = _ensure_test_video(proj / "output" / "video" / "demo.mp4", width=1920, height=1080, fps=60, duration=6)
+    cov = proj / "delivery" / "demo_cover.jpg"
+    cov.parent.mkdir(parents=True, exist_ok=True)
+    with Image.open(out_16x9) as im:
+        im.save(cov, format="JPEG", quality=92)
+    (proj / "delivery" / "bilibili.md").write_text(
+        "# Test Release\n* **视频标题**：【测试】contact sheet 路径测试\n* **简介**：含借物表与 AIGC 声明\n",
+        encoding="utf-8",
+    )
+
+    VideoQualityGate().evaluate_project(proj)
+    assert not (proj / "output" / "output").exists()
+    if vid.stat().st_size > 8192:
+        assert (proj / "output" / "diagnostic_contact_sheet.jpg").exists()

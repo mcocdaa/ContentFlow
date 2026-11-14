@@ -448,6 +448,7 @@ class VideoQualityGate:
         self,
         video_path: Optional[Path],
         probe_data: Dict[str, Any],
+        proj_dir: Optional[Path] = None,
     ) -> DimensionScore:
         dim = DimensionScore(name="3. 视觉动态与前3秒钩子 (Visual)", key="visual_dynamics", score=0.0)
         if not video_path or not video_path.exists():
@@ -612,7 +613,12 @@ class VideoQualityGate:
             is_tutorial = vw >= vh
             evaluator = LocalAestheticEvaluator(allow_weight_download=False)
             cam_rep = evaluator.analyze_camera_and_motion(video_path, is_tutorial=is_tutorial)
-            contact_sheet_out = video_path.parent.parent / "output" / "diagnostic_contact_sheet.jpg"
+            if proj_dir is not None:
+                contact_sheet_out = proj_dir / "output" / "diagnostic_contact_sheet.jpg"
+            elif video_path.parent.name == "video" and video_path.parent.parent.name == "output":
+                contact_sheet_out = video_path.parent.parent / "diagnostic_contact_sheet.jpg"
+            else:
+                contact_sheet_out = video_path.parent.parent / "output" / "diagnostic_contact_sheet.jpg"
             aes_rep = evaluator.evaluate_aesthetics_and_contact_sheet(
                 video_path=video_path,
                 cover_path=None,
@@ -893,7 +899,7 @@ class VideoQualityGate:
 
         d_tech = self._eval_technical(v_path, probe_data, blockers)
         d_audio = self._eval_audio(v_path, probe_data, blockers)
-        d_visual = self._eval_visual_dynamics(v_path, probe_data)
+        d_visual = self._eval_visual_dynamics(v_path, probe_data, proj_dir=proj_dir)
         d_cover = self._eval_cover_ctr(c_path, blockers)
         d_comp = self._eval_compliance(proj_dir, blockers)
 
