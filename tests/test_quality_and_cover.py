@@ -565,3 +565,52 @@ def test_box_smooth_and_tts_timeline_cache(tmp_path: Path, monkeypatch: pytest.M
     tl2 = tts.synthesize_scenes(scenes, output_mp3=out_mp3, output_srt=out_srt, voice="zf_043")
     assert len(calls) == 1
     assert tl2 == tl1
+
+
+def test_cover_designer_transparent_hero_scores_perfect_20(tmp_path: Path) -> None:
+    """Verifies CoverDesigner RGBA cutout compositing stays inside 4:3 safe zone and scores 20/20."""
+    from PIL import ImageDraw
+
+    from core.aesthetic_evaluator import release_pyiqa_models
+
+    bg_src = tmp_path / "bg_16x9.jpg"
+    bg_im = Image.new("RGB", (1920, 1080), (24, 48, 86))
+    bg_draw = ImageDraw.Draw(bg_im)
+    for x0 in range(0, 1920, 180):
+        bg_draw.rectangle([x0, 60, x0 + 95, 980], fill=(120, 195, 240))
+    bg_draw.rectangle([150, 260, 1770, 520], fill=(220, 240, 255))
+    bg_im.save(bg_src)
+
+    hero_rgba = Image.new("RGBA", (600, 900), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(hero_rgba)
+    draw.ellipse([180, 60, 420, 300], fill=(245, 220, 210, 255))
+    draw.rounded_rectangle([140, 280, 460, 880], radius=40, fill=(235, 240, 250, 255))
+    hero_png = tmp_path / "hero_cutout.png"
+    hero_rgba.save(hero_png, format="PNG")
+
+    out_cover = tmp_path / "rgba_hero_cover.jpg"
+    res = CoverDesigner().design_cover(
+        base_image_path=bg_src,
+        output_path=out_cover,
+        hook_line1="把B站账号交给AI",
+        hook_line2="能代3分钟带你",
+        hook_line3="手撕Transformer！",
+        badge_text="AI接管账号·第2期",
+        bottom_tags=["手撕Attention", "60FPS满帧"],
+        transparent_hero_path=hero_png,
+        hero_alpha_crop_top_ratio=0.72,
+    )
+    assert res.output_path.exists()
+    assert res.output_4x3_path is not None and res.output_4x3_path.exists()
+    with Image.open(res.output_path) as im16:
+        assert im16.size == (1920, 1080)
+    with Image.open(res.output_4x3_path) as im43:
+        assert im43.size == (1440, 1080)
+
+    try:
+        dim = VideoQualityGate(root_dir=CONTENTFLOW_ROOT)._eval_cover_ctr(out_cover, [])
+    finally:
+        release_pyiqa_models()
+    assert dim.score == 20.0
+    assert dim.details.get("cover_split_hierarchy_ok") is True
+    assert dim.issues == []

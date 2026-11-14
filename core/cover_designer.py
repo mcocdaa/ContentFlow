@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 from config.settings import DEFAULT_FONTS
 
@@ -353,13 +353,18 @@ class CoverDesigner:
         bottom_tags: List[str],
         repair_whiteboard_artifact: bool = True,
         hero_crop_params: Optional[Tuple[float, float, float]] = None,
+        transparent_hero_path: Optional[Union[str, Path]] = None,
+        hero_alpha_crop_top_ratio: float = 0.68,
     ) -> Image.Image:
         """Converts a 16:9 landscape scene into a 5-Star Split Hero viral cover (Left Dark Hook + Right Waist-Up Hero)."""
         # 1. Build 1920x1080 darkened blurred cyber atmosphere background
+        hero_file = Path(transparent_hero_path) if transparent_hero_path else None
+        use_transparent_hero = bool(hero_file is not None and hero_file.exists())
+
         bg = src.convert("RGB").resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
-        bg = bg.filter(ImageFilter.GaussianBlur(radius=28))
-        bg = ImageEnhance.Brightness(bg).enhance(0.38)
-        bg = ImageEnhance.Color(bg).enhance(1.30)
+        bg = bg.filter(ImageFilter.GaussianBlur(radius=32 if use_transparent_hero else 28))
+        bg = ImageEnhance.Brightness(bg).enhance(0.40 if use_transparent_hero else 0.38)
+        bg = ImageEnhance.Color(bg).enhance(1.32 if use_transparent_hero else 1.30)
         base = bg.convert("RGBA")
 
         # 2. Left deep dark cyber gradient vignette (x: 0..1020) for 100% clean typography contrast
@@ -381,43 +386,91 @@ class CoverDesigner:
             g_draw.line([(0, gy), (1020, gy)], fill=(0, 210, 255, 20), width=1)
         base.alpha_composite(grad)
 
-        # 3. Extract zero-distortion waist-up character hero portrait & place in right zone (x: 960..1920)
-        sw, sh = src.size
-        cy0_r, cy1_r, center_x_r = hero_crop_params if hero_crop_params is not None else (0.02, 0.76, 0.355)
-        char_target_w = 960
-        cy0 = max(0, int(sh * cy0_r))
-        cy1 = min(sh, int(sh * cy1_r))
-        crop_h = max(64, cy1 - cy0)
-        crop_w = int(round(crop_h * (char_target_w / float(TARGET_HEIGHT))))
-        cx0 = max(0, int(round(center_x_r * sw - 0.422 * crop_w)))
-        cx1 = min(sw, cx0 + crop_w)
-        if cx1 - cx0 < crop_w:
-            cx0 = max(0, cx1 - crop_w)
+        # 3. Place waist/hip-up hero character in right golden visual zone
+        if use_transparent_hero and hero_file is not None:
+            glow = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+            glow_draw = ImageDraw.Draw(glow)
+            glow_draw.ellipse([1025, 58, 1755, 1012], fill=(0, 206, 255, 86))
+            glow = glow.filter(ImageFilter.GaussianBlur(radius=58))
+            base.alpha_composite(glow)
 
-        char_crop_raw = src.convert("RGB").crop((cx0, cy0, max(cx0 + 32, cx1), max(cy0 + 32, cy1)))
-        char_resized = char_crop_raw.resize((char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS)
-        char_resized = ImageEnhance.Brightness(char_resized).enhance(1.06)
-        char_resized = ImageEnhance.Contrast(char_resized).enhance(1.06)
-        char_resized = char_resized.filter(ImageFilter.UnsharpMask(radius=1.6, percent=155, threshold=2))
-        char_rgba = char_resized.convert("RGBA")
+            with Image.open(hero_file) as raw_hero:
+                hero_rgba = raw_hero.convert("RGBA")
+                bbox = hero_rgba.getbbox()
+                if bbox is not None:
+                    ax0, ay0, ax1, ay1 = bbox
+                    cut_bottom = ay0 + max(64, int(round((ay1 - ay0) * hero_alpha_crop_top_ratio)))
+                    hero_rgba = hero_rgba.crop((ax0, ay0, ax1, min(ay1, cut_bottom)))
 
-        # Soft horizontal alpha feather on left edge of character panel (keep right border full-bleed)
-        mask = Image.new("L", (char_target_w, TARGET_HEIGHT), 255)
-        m_draw = ImageDraw.Draw(mask)
-        feather_left = 115
-        for fx in range(feather_left):
-            a = int(255 * (fx / float(feather_left)) ** 1.4)
-            m_draw.line([(fx, 0), (fx, TARGET_HEIGHT)], fill=a)
+                hw, hh = hero_rgba.size
+                scale = min(1048.0 / float(max(1, hh)), 840.0 / float(max(1, hw)))
+                scaled_w = max(32, int(round(hw * scale)))
+                scaled_h = max(32, int(round(hh * scale)))
+                hero_scaled = hero_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
 
-        glow = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
-        glow_draw = ImageDraw.Draw(glow)
-        glow_draw.ellipse([1020, 70, 1720, 990], fill=(0, 210, 255, 58))
-        glow = glow.filter(ImageFilter.GaussianBlur(radius=58))
-        base.alpha_composite(glow)
+            r_ch, g_ch, b_ch, a_ch = hero_scaled.split()
+            hero_rgb = Image.merge("RGB", (r_ch, g_ch, b_ch))
+            hero_rgb = ImageEnhance.Brightness(hero_rgb).enhance(1.05)
+            hero_rgb = ImageEnhance.Contrast(hero_rgb).enhance(1.06)
+            hero_rgb = hero_rgb.filter(ImageFilter.UnsharpMask(radius=1.4, percent=145, threshold=2))
+            hr, hg, hb = hero_rgb.split()
 
-        char_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
-        char_layer.paste(char_rgba, (960, 0), mask=mask)
-        base.alpha_composite(char_layer)
+            paste_y = max(18, TARGET_HEIGHT - scaled_h)
+            if hero_alpha_crop_top_ratio < 0.96 and paste_y + scaled_h < TARGET_HEIGHT:
+                fade_px = min(36, scaled_h // 4)
+                if fade_px > 0:
+                    fade_mask = Image.new("L", (scaled_w, scaled_h), 255)
+                    f_draw = ImageDraw.Draw(fade_mask)
+                    for fy in range(scaled_h - fade_px, scaled_h):
+                        factor = max(0.0, (scaled_h - 1 - fy) / float(fade_px))
+                        f_draw.line([(0, fy), (scaled_w, fy)], fill=int(255 * factor))
+                    a_ch = ImageChops.multiply(a_ch, fade_mask)
+
+            hero_final = Image.merge("RGBA", (hr, hg, hb, a_ch))
+            if scaled_w <= 735:
+                paste_x = max(950, min(SAFE_ZONE_X_MAX - scaled_w, 1350 - scaled_w // 2))
+            else:
+                paste_x = max(965, min(TARGET_WIDTH - scaled_w - 20, 1380 - scaled_w // 2))
+            hero_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+            hero_layer.paste(hero_final, (paste_x, paste_y))
+            base.alpha_composite(hero_layer)
+        else:
+            sw, sh = src.size
+            cy0_r, cy1_r, center_x_r = hero_crop_params if hero_crop_params is not None else (0.02, 0.76, 0.355)
+            char_target_w = 960
+            cy0 = max(0, int(sh * cy0_r))
+            cy1 = min(sh, int(sh * cy1_r))
+            crop_h = max(64, cy1 - cy0)
+            crop_w = int(round(crop_h * (char_target_w / float(TARGET_HEIGHT))))
+            cx0 = max(0, int(round(center_x_r * sw - 0.422 * crop_w)))
+            cx1 = min(sw, cx0 + crop_w)
+            if cx1 - cx0 < crop_w:
+                cx0 = max(0, cx1 - crop_w)
+
+            char_crop_raw = src.convert("RGB").crop((cx0, cy0, max(cx0 + 32, cx1), max(cy0 + 32, cy1)))
+            char_resized = char_crop_raw.resize((char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+            char_resized = ImageEnhance.Brightness(char_resized).enhance(1.06)
+            char_resized = ImageEnhance.Contrast(char_resized).enhance(1.06)
+            char_resized = char_resized.filter(ImageFilter.UnsharpMask(radius=1.6, percent=155, threshold=2))
+            char_rgba = char_resized.convert("RGBA")
+
+            # Soft horizontal alpha feather on left edge of character panel (keep right border full-bleed)
+            mask = Image.new("L", (char_target_w, TARGET_HEIGHT), 255)
+            m_draw = ImageDraw.Draw(mask)
+            feather_left = 115
+            for fx in range(feather_left):
+                a = int(255 * (fx / float(feather_left)) ** 1.4)
+                m_draw.line([(fx, 0), (fx, TARGET_HEIGHT)], fill=a)
+
+            glow = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+            glow_draw = ImageDraw.Draw(glow)
+            glow_draw.ellipse([1020, 70, 1720, 990], fill=(0, 210, 255, 58))
+            glow = glow.filter(ImageFilter.GaussianBlur(radius=58))
+            base.alpha_composite(glow)
+
+            char_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+            char_layer.paste(char_rgba, (960, 0), mask=mask)
+            base.alpha_composite(char_layer)
 
         # 4. Render giant high-contrast typography strictly in left safe zone (x: 255..995)
         text_x = 255
@@ -429,8 +482,8 @@ class CoverDesigner:
                 text_x,
                 120,
                 badge_text,
-                bg_color=(0, 130, 210, 240),
-                border_color=(0, 240, 255, 255),
+                bg_color=(230, 35, 95, 240),
+                border_color=(255, 215, 0, 255),
             )
 
         colors = [self.COLOR_GOLD, self.COLOR_WHITE, self.COLOR_CYAN]
@@ -474,6 +527,8 @@ class CoverDesigner:
         save_4x3_crop: bool = True,
         output_4x3_path: Optional[Union[str, Path]] = None,
         hero_crop_params: Optional[Tuple[float, float, float]] = None,
+        transparent_hero_path: Optional[Union[str, Path]] = None,
+        hero_alpha_crop_top_ratio: float = 0.68,
     ) -> CoverDesignResult:
         """Renders a 1920x1080 (16:9) cover and optional 1440x1080 (4:3) safe crop."""
         src_path = Path(base_image_path)
@@ -505,6 +560,8 @@ class CoverDesigner:
                 bottom_tags=tags,
                 repair_whiteboard_artifact=repair_whiteboard_artifact,
                 hero_crop_params=hero_crop_params,
+                transparent_hero_path=transparent_hero_path,
+                hero_alpha_crop_top_ratio=hero_alpha_crop_top_ratio,
             )
 
         rgb_cover = composed.convert("RGB")
@@ -555,8 +612,8 @@ class CoverDesigner:
 
         base_candidates = [
             assets_dir / "character_anchor.jpg",
-            pdir / "images" / "scene_1.jpg",
             assets_dir / "scene_cover.jpg",
+            pdir / "images" / "scene_1.jpg",
             assets_dir / "scene6_success_thumbsup.jpg",
             assets_dir / "scene2_base_url.jpg",
             assets_dir / "2b_teaching_base_url.jpg",
@@ -598,9 +655,11 @@ class CoverDesigner:
             else:
                 target_cover = delivery_dir / f"{pdir.name}_cover.jpg"
 
-        # Project-specific viral defaults (check 008 before dafeiyu; 003/009 explicitly)
+        # Project-specific viral defaults (check 008 before dafeiyu; check 003 before 004/2b)
         repair_wb = False
         hero_crop: Optional[Tuple[float, float, float]] = None
+        transparent_hero: Optional[Path] = None
+        hero_top_ratio = 0.68
         if "008" in pid or "diary" in pid or "takeover" in pid:
             h1 = hook_line1 or "把账号交给AI第5天"
             h2 = hook_line2 or "连夜爬完百万爆款"
@@ -621,20 +680,13 @@ class CoverDesigner:
             tags = bottom_tags or ["手撕Attention", "60FPS满帧"]
             repair_wb = True
             hero_crop = (0.06, 0.66, 0.348)
-        elif "004" in pid or "2b" in pid:
-            h1 = hook_line1 or "API狂报401/404？"
-            h2 = hook_line2 or "2B小姐姐手把手"
-            h3 = hook_line3 if hook_line3 is not None else "60秒彻底打通！"
-            badge = badge_text or "AI接管账号·第3期"
-            tags = bottom_tags or ["60FPS满帧", "200 OK全通"]
-            hero_crop = (0.02, 0.76, 0.355)
-        elif "002" in pid or "yowane" in pid or "cicd" in pid:
-            h1 = hook_line1 or "半夜发包又502？"
-            h2 = hook_line2 or "3D弱音25秒带你"
-            h3 = hook_line3 if hook_line3 is not None else "搞定CI/CD门禁！"
-            badge = badge_text or "AI接管账号·第4期"
-            tags = bottom_tags or ["60FPS满帧", "Docker全绿交付"]
-            hero_crop = (0.11, 0.66, 0.180)
+            scene_cov = assets_dir / "scene_cover.jpg"
+            if scene_cov.exists():
+                base_img = scene_cov
+            cut_005 = pdir / "output" / "cutouts" / "noshiro_cover_cutout.png"
+            noshiro_t = assets_dir / "noshiro_transparent.png"
+            transparent_hero = cut_005 if cut_005.exists() else (noshiro_t if noshiro_t.exists() else None)
+            hero_top_ratio = 0.64
         elif "003" in pid or "managing" in pid or "termflow" in pid:
             h1 = hook_line1 or "怕AI幻觉删库跑路？"
             h2 = hook_line2 or "2B手把手硬核拆解"
@@ -654,6 +706,43 @@ class CoverDesigner:
                 hero_crop = (0.04, 0.68, 0.352)
             else:
                 hero_crop = (0.02, 0.72, 0.320)
+        elif "004" in pid or "2b" in pid:
+            h1 = hook_line1 or "API狂报401/404？"
+            h2 = hook_line2 or "2B小姐姐手把手"
+            h3 = hook_line3 if hook_line3 is not None else "60秒彻底打通！"
+            badge = badge_text or "AI接管账号·第3期"
+            tags = bottom_tags or ["60FPS满帧", "200 OK全通"]
+            hi_res_2b = (
+                Path(__file__).resolve().parent.parent
+                / "library"
+                / "characters"
+                / "yorha_2b"
+                / "thumbs_up"
+                / "2b_thumbs_up_success.jpg"
+            )
+            fallback_2b = assets_dir / "scene6_success_thumbsup.jpg"
+            if hi_res_2b.exists():
+                base_img = hi_res_2b
+            elif fallback_2b.exists():
+                base_img = fallback_2b
+            cut_004 = pdir / "output" / "cutouts" / "2b_thumbs_up_cutout.png"
+            transparent_hero = cut_004 if cut_004.exists() else None
+            hero_crop = (0.04, 0.68, 0.352)
+            hero_top_ratio = 0.98
+        elif "002" in pid or "yowane" in pid or "cicd" in pid:
+            h1 = hook_line1 or "半夜发包又502？"
+            h2 = hook_line2 or "3D弱音25秒带你"
+            h3 = hook_line3 if hook_line3 is not None else "搞定CI/CD门禁！"
+            badge = badge_text or "AI接管账号·第4期"
+            tags = bottom_tags or ["60FPS满帧", "Docker全绿交付"]
+            hero_crop = (0.11, 0.66, 0.180)
+            scene_002 = assets_dir / "yowane_v3_scene5.jpg"
+            if scene_002.exists():
+                base_img = scene_002
+            pose5_t = assets_dir / "yowane_pose5_transparent.png"
+            alluring_t = assets_dir / "yowane_alluring_transparent.png"
+            transparent_hero = pose5_t if pose5_t.exists() else (alluring_t if alluring_t.exists() else None)
+            hero_top_ratio = 0.62
         elif "009" in pid or "rem" in pid or "aeflow" in pid:
             h1 = hook_line1 or "AI怎么自己点鼠标？"
             h2 = hook_line2 or "3D蕾姆60秒拆解"
@@ -678,4 +767,6 @@ class CoverDesigner:
             bottom_tags=tags,
             repair_whiteboard_artifact=repair_wb,
             hero_crop_params=hero_crop,
+            transparent_hero_path=transparent_hero,
+            hero_alpha_crop_top_ratio=hero_top_ratio,
         )

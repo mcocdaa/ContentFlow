@@ -725,12 +725,16 @@ class VideoQualityGate:
         edges = safe_crop.convert("L").filter(ImageFilter.FIND_EDGES)
         edge_mean = ImageStat.Stat(edges).mean[0]
 
+        left_typo_crop = rgb.crop((safe_x0, int(h * 0.08), int(w * 0.53), int(h * 0.88)))
+        left_typo_edge = ImageStat.Stat(left_typo_crop.convert("L").filter(ImageFilter.FIND_EDGES)).mean[0]
+        effective_typo_edge = max(edge_mean, left_typo_edge)
+
         crop_4x3_companion = cover_path.with_name(f"{cover_path.stem}_4x3{cover_path.suffix}")
         has_4x3_companion = crop_4x3_companion.exists()
 
-        if edge_mean >= 15.0:
+        if effective_typo_edge >= 15.0:
             dim.score += 7.0
-        elif edge_mean >= 10.0:
+        elif effective_typo_edge >= 10.0:
             dim.score += 5.0
             dim.issues.append("4:3 安全区内大字描边锐度中等，建议加粗 8px 纯黑描边")
         else:
@@ -740,9 +744,11 @@ class VideoQualityGate:
         # 3. Color Contrast & Dynamic Range (7 pts)
         luma_stat = ImageStat.Stat(safe_crop.convert("L"))
         luma_std = luma_stat.stddev[0]
-        if luma_std >= 58.0:
+        left_typo_luma_std = ImageStat.Stat(left_typo_crop.convert("L")).stddev[0]
+        effective_luma_std = max(luma_std, left_typo_luma_std)
+        if effective_luma_std >= 58.0:
             dim.score += 7.0
-        elif luma_std >= 42.0:
+        elif effective_luma_std >= 42.0:
             dim.score += 5.5
         else:
             dim.score += 3.0
@@ -754,7 +760,9 @@ class VideoQualityGate:
             "aspect_ratio": round(aspect, 3),
             "is_16x9": is_16x9,
             "safe_zone_edge_density": round(edge_mean, 2),
+            "left_typo_edge_density": round(left_typo_edge, 2),
             "safe_zone_luma_std": round(luma_std, 2),
+            "left_typo_luma_std": round(left_typo_luma_std, 2),
             "has_4x3_safe_crop": has_4x3_companion,
         }
         if is_16x9:
