@@ -24,7 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from PIL import Image, ImageChops, ImageFilter, ImageStat
 
 from config.settings import CONTENTFLOW_ROOT, DEFAULT_FONTS
-from core.aesthetic_evaluator import LocalAestheticEvaluator
+from core.aesthetic_evaluator import LocalAestheticEvaluator, release_pyiqa_models
+from core.human_preference_scorer import compute_local_audio_richness
 
 FORBIDDEN_COMMERCIAL_FONTS = {
     "stheitimedium.ttc",
@@ -38,6 +39,35 @@ FORBIDDEN_VOICE_CLONE_PATTERNS = [
     r"克隆.*石川由依",
     r"原版声优原声切片",
 ]
+
+
+def check_missing_glyphs(
+    text: str,
+    font_path: str = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    font_index: int = 2,
+) -> List[str]:
+    """Detects printable non-ASCII characters missing from the configured OpenType font cmap."""
+    if not text or not Path(font_path).exists():
+        return []
+    try:
+        from fontTools.ttLib import TTFont
+
+        ttf = TTFont(font_path, fontNumber=font_index)
+        cmap = ttf.getBestCmap() or {}
+    except Exception:
+        return []
+
+    ignored = {0xFEFF, 0x200B, 0x200C, 0x200D}
+    missing: List[str] = []
+    seen = set()
+    for ch in text:
+        cp = ord(ch)
+        if cp < 128 or cp in ignored or ch.isspace() or ch in seen:
+            continue
+        seen.add(ch)
+        if cp not in cmap:
+            missing.append(ch)
+    return missing
 
 
 @dataclass
@@ -433,6 +463,12 @@ class VideoQualityGate:
             blockers.append(f"Severe audio/video duration desync ({dur_diff:.2f}s > 1.5s)")
             dim.issues.append(f"音画时长严重不同步 ({dur_diff:.2f}s)")
 
+        rich = compute_local_audio_richness(video_path)
+        if v_dur >= 25.0 and rich["dead_air_ratio"] >= 0.28 and rich["noise_floor_p15_dbfs"] <= -55.0:
+            dim.issues.append(
+                f"检测到较长干声停顿间隙 (dead_air={rich['dead_air_ratio']:.1%}, p15={rich['noise_floor_p15_dbfs']} dBFS)，建议混入侧链闪避轻音乐与切镜音效以降低前3秒划走率"
+            )
+
         dim.details = {
             "codec": acodec,
             "sample_rate": sample_rate,
@@ -440,6 +476,7 @@ class VideoQualityGate:
             "mean_volume_db": mean_vol,
             "max_volume_db": max_vol,
             "av_duration_diff_sec": round(dur_diff, 3),
+            **rich,
         }
         dim.score = round(min(dim.score, 20.0), 1)
         return dim
@@ -868,6 +905,18 @@ class VideoQualityGate:
             dim.score += 3.0
             dim.issues.append("建议显式补充 GB 45438-2025《人工智能生成合成内容标识办法》AIGC 声明")
 
+        srt_texts = [
+            p.read_text(encoding="utf-8", errors="ignore")
+            for p in sorted((proj_dir / "delivery").glob("*.srt"))
+            if p.exists()
+        ]
+        missing_glyphs = check_missing_glyphs("\n".join(srt_texts)) if srt_texts else []
+        if missing_glyphs:
+            dim.score = max(0.0, dim.score - 2.0)
+            dim.issues.append(f"检测到 Noto Sans CJK SC 缺失字符（渲染将显示豆腐块 □）: {' '.join(missing_glyphs[:8])}")
+            if len(missing_glyphs) >= 3:
+                blockers.append(f"Missing OpenType glyphs in SRT subtitles: {''.join(missing_glyphs[:8])}")
+
         dim.details = {
             "detected_title": title,
             "title_front_loaded": has_front_brackets,
@@ -876,6 +925,7 @@ class VideoQualityGate:
             "has_aigc_declaration": has_aigc_label,
             "compliant_open_fonts": not font_violation,
             "voice_compliance_passed": not voice_violation,
+            "missing_glyphs": missing_glyphs,
         }
         dim.score = round(min(dim.score, 20.0), 1)
         return dim
@@ -930,17 +980,20 @@ class VideoQualityGate:
             for iss in d.issues:
                 recommendations.append(f"[{d.key}] {iss}")
 
-        return QualityGateReport(
-            project_id=project_id,
-            project_dir=str(proj_dir),
-            video_path=str(v_path) if v_path else None,
-            cover_path=str(c_path) if c_path else None,
-            total_score=total_score,
-            max_score=100.0,
-            grade=grade,
-            verdict=verdict,
-            passed=passed,
-            blockers=blockers,
-            dimensions={d.key: d.to_dict() for d in dims},
-            recommendations=recommendations,
-        )
+        try:
+            return QualityGateReport(
+                project_id=project_id,
+                project_dir=str(proj_dir),
+                video_path=str(v_path) if v_path else None,
+                cover_path=str(c_path) if c_path else None,
+                total_score=total_score,
+                max_score=100.0,
+                grade=grade,
+                verdict=verdict,
+                passed=passed,
+                blockers=blockers,
+                dimensions={d.key: d.to_dict() for d in dims},
+                recommendations=recommendations,
+            )
+        finally:
+            release_pyiqa_models()

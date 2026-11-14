@@ -249,8 +249,12 @@ class BilibiliAnalytics:
                 "traffic_status": "受限" if (d.get("limit_state") or item.get("is_only_self")) else "正常",
                 "tm_star_raw": tm_star_raw,
                 "tm_stars": tm_stars,
+                "tm_pass_rate_pct": round(int(d.get("tm_pass_rate") or d.get("tm_viewer_pass_rate") or 0) / 100.0, 2),
                 "cover_title_advice": tm_advice,
+                "crash_rate_pct": round(int(d.get("crash_rate") or 0) / 100.0, 2),
                 "crash_p50_pct": round(int(d.get("crash_p50") or 0) / 100.0, 2),
+                "full_play_ratio_pct": round(int(d.get("full_play_ratio") or 0) / 100.0, 2),
+                "interact_rate_pct": round(int(d.get("interact_rate") or 0) / 100.0, 2),
                 "interact_p50_pct": round(int(d.get("interact_p50") or 0) / 100.0, 2),
                 "play_trans_fan_p50_pct": round(int(d.get("play_trans_fan_p50") or 0) / 100.0, 2),
             }
@@ -414,6 +418,69 @@ class BilibiliAnalytics:
             },
         ]
 
+    @staticmethod
+    def build_optimization_directives(
+        archives: List[Dict[str, Any]],
+        account_uname: str = "",
+    ) -> List[Dict[str, Any]]:
+        """Synthesizes concrete studio optimization directives from Bilibili crowd telemetry & viewer requests."""
+        directives: List[Dict[str, Any]] = []
+        req_keywords = ("想看", "有没有", "翻唱", "求", "下期", "整活", "雨爱")
+        for arc in archives:
+            bvid = str(arc.get("bvid") or "")
+            title = str(arc.get("title") or "")
+            diag = arc.get("diagnose") or {}
+            crash = float(diag.get("crash_rate_pct") or 0.0)
+            crash_p50 = float(diag.get("crash_p50_pct") or 27.35)
+            tm_stars = float(diag.get("tm_stars") or 0.0)
+
+            if crash > max(35.0, crash_p50 + 8.0):
+                directives.append(
+                    {
+                        "priority": "P0",
+                        "type": "hook_and_bgm_upgrade",
+                        "bvid": bvid,
+                        "title": title,
+                        "crash_rate_pct": crash,
+                        "peer_p50_pct": crash_p50,
+                        "reason": f"3-5s 划走率 {crash:.1f}% 显著高于同类中位数 {crash_p50:.1f}%",
+                        "action": "移除「大家好」开场白，前1秒用无白板景深特写钩子+瞬态开场音效，并全片混入侧链闪避 cyber-lofi BGM",
+                    }
+                )
+
+            if 0.0 < tm_stars < 3.5:
+                directives.append(
+                    {
+                        "priority": "P1",
+                        "type": "cover_hero_contrast_upgrade",
+                        "bvid": bvid,
+                        "title": title,
+                        "tm_stars": tm_stars,
+                        "reason": f"B站官方封面标题评分 {tm_stars:g} 星 (< 3.5 星)",
+                        "action": "右侧换用胸腰以上高精度人物大特写并强化 4:3 安全区纯黑描边大字对比度",
+                    }
+                )
+
+            for cm in arc.get("recent_comments") or []:
+                uname = str(cm.get("uname") or "").strip()
+                msg = str(cm.get("message") or "").strip()
+                if not msg or (account_uname and uname == account_uname):
+                    continue
+                if any(k in msg for k in req_keywords):
+                    directives.append(
+                        {
+                            "priority": "P0",
+                            "type": "viewer_request",
+                            "bvid": bvid,
+                            "requester": uname,
+                            "message": msg,
+                            "reason": f"评论区观众 @{uname} 点菜需求：「{msg[:40]}」",
+                            "action": "加入下一期《赛博股东点菜/AI整活企划》排期并置顶回应",
+                        }
+                    )
+
+        return directives
+
     def generate_report(self, save_snapshot: bool = True) -> Dict[str, Any]:
         """Collects full account telemetry, archive stats, trending radar, and track strategy."""
         now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
@@ -421,6 +488,10 @@ class BilibiliAnalytics:
         archives_data = self.fetch_creator_archives()
         radar = self.fetch_trending_radar(limit=5)
         tracks = self.build_autonomous_track_strategy()
+        directives = self.build_optimization_directives(
+            archives_data["archives"],
+            account_uname=str(account.get("uname") or ""),
+        )
 
         report: Dict[str, Any] = {
             "timestamp": now_iso,
@@ -430,6 +501,7 @@ class BilibiliAnalytics:
             "archives": archives_data["archives"],
             "trending_radar": radar,
             "recommended_tracks": tracks,
+            "optimization_directives": directives,
         }
 
         if save_snapshot:
@@ -486,6 +558,15 @@ class BilibiliAnalytics:
             lines.append(f"- **Target Partition**: {t['target_partition']} (`tid={t['target_tid']}`)")
             lines.append(f"- **Viral Hook**: {t['viral_hook']}")
             lines.append(f"- **Why It Works**: {t['why_it_works']}")
+            lines.append("")
+
+        directives = report.get("optimization_directives") or []
+        if directives:
+            lines.extend(["## 3. Crowd-Telemetry & Comment Optimization Directives", ""])
+            for d in directives:
+                lines.append(
+                    f"- **[{d.get('priority', 'P1')}] `{d.get('type')}`** ({d.get('bvid', '')}): {d.get('reason')} -> {d.get('action')}"
+                )
             lines.append("")
 
         return "\n".join(lines) + "\n"

@@ -195,7 +195,7 @@ class BilibiliUploader:
         vault: Optional[AuthVault] = None,
         cookies: Optional[Dict[str, str]] = None,
         session: Optional[requests.Session] = None,
-        upcdn: str = "bda2",
+        upcdn: str = "tx",
     ) -> None:
         self.vault = vault or AuthVault()
         if cookies is not None:
@@ -266,14 +266,18 @@ class BilibiliUploader:
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
         cdn_candidates: List[str] = []
-        for candidate in (self.upcdn, "txa", "tx", "qn", "bda2"):
+        for candidate in (self.upcdn, "tx", "bda2", "qn", "txa"):
             if candidate and candidate not in cdn_candidates:
                 cdn_candidates.append(candidate)
 
         for idx, cdn in enumerate(cdn_candidates):
             try:
                 return self._upload_video_upos_with_cdn(video_path, cdn)
-            except (requests.exceptions.SSLError, requests.exceptions.ConnectionError) as exc:
+            except (
+                requests.exceptions.SSLError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+            ) as exc:
                 if idx + 1 < len(cdn_candidates):
                     logger.warning(
                         "Bilibili UPOS upload failed on upcdn=%s (%s); retrying on %s",
@@ -751,6 +755,7 @@ class BilibiliUploader:
         mission_id: Optional[int] = None,
         topic_id: Optional[int] = None,
         topic_name: Optional[str] = None,
+        dtime: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Updates an existing Bilibili archive via Creator Center (`/x/vu/web/edit`)."""
         view_json = self.get_archive_view(aid)
@@ -810,8 +815,9 @@ class BilibiliUploader:
             "open_elec": 1,
             "csrf": self.bili_jct,
         }
-        if arc.get("dtime"):
-            payload["dtime"] = int(arc["dtime"])
+        eff_dtime = int(dtime) if dtime is not None else (int(arc["dtime"]) if arc.get("dtime") else None)
+        if eff_dtime:
+            payload["dtime"] = eff_dtime
 
         eff_mission = mission_id if mission_id is not None else arc.get("mission_id")
         eff_topic = topic_id if topic_id is not None else arc.get("topic_id")
@@ -1372,7 +1378,7 @@ class MatrixPublisher:
         }
 
         if (execute_upload or remote_schedule) and has_cookies and manifest.get("video_path"):
-            uploader = BilibiliUploader(vault=self.vault, cookies=cookies, session=self.session, upcdn="txa")
+            uploader = BilibiliUploader(vault=self.vault, cookies=cookies, session=self.session, upcdn="tx")
             upload_mode = "schedule" if (safety_mode in ("schedule", "draft") or remote_schedule) else "direct"
             api_res = uploader.upload_to_bilibili_api(
                 video_path=Path(manifest["video_path"]),

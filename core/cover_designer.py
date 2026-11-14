@@ -396,20 +396,18 @@ class CoverDesigner:
 
         char_crop_raw = src.convert("RGB").crop((cx0, cy0, max(cx0 + 32, cx1), max(cy0 + 32, cy1)))
         char_resized = char_crop_raw.resize((char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS)
-        char_resized = char_resized.filter(ImageFilter.UnsharpMask(radius=1.5, percent=140, threshold=2))
+        char_resized = ImageEnhance.Brightness(char_resized).enhance(1.06)
+        char_resized = ImageEnhance.Contrast(char_resized).enhance(1.06)
+        char_resized = char_resized.filter(ImageFilter.UnsharpMask(radius=1.6, percent=155, threshold=2))
         char_rgba = char_resized.convert("RGBA")
 
-        # Soft horizontal alpha feather on left & right edge of character panel
+        # Soft horizontal alpha feather on left edge of character panel (keep right border full-bleed)
         mask = Image.new("L", (char_target_w, TARGET_HEIGHT), 255)
         m_draw = ImageDraw.Draw(mask)
         feather_left = 115
-        feather_right = 36
         for fx in range(feather_left):
             a = int(255 * (fx / float(feather_left)) ** 1.4)
             m_draw.line([(fx, 0), (fx, TARGET_HEIGHT)], fill=a)
-        for fx in range(feather_right):
-            a = int(255 * (fx / float(feather_right)) ** 1.4)
-            m_draw.line([(char_target_w - 1 - fx, 0), (char_target_w - 1 - fx, TARGET_HEIGHT)], fill=a)
 
         glow = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
         glow_draw = ImageDraw.Draw(glow)
@@ -643,7 +641,19 @@ class CoverDesigner:
             h3 = hook_line3 if hook_line3 is not None else "AI管AI四大护栏！"
             badge = badge_text or "AI接管账号·第6期"
             tags = bottom_tags or ["60FPS满帧", "MCP安全控制舱"]
-            hero_crop = (0.02, 0.76, 0.355)
+            hi_res_2b = (
+                Path(__file__).resolve().parent.parent
+                / "library"
+                / "characters"
+                / "yorha_2b"
+                / "thumbs_up"
+                / "2b_thumbs_up_success.jpg"
+            )
+            if hi_res_2b.exists():
+                base_img = hi_res_2b
+                hero_crop = (0.04, 0.68, 0.352)
+            else:
+                hero_crop = (0.02, 0.72, 0.320)
         elif "009" in pid or "rem" in pid or "aeflow" in pid:
             h1 = hook_line1 or "AI怎么自己点鼠标？"
             h2 = hook_line2 or "3D蕾姆60秒拆解"

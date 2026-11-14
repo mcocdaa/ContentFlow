@@ -13,8 +13,12 @@ Encapsulates the production architecture verified on Project 002 (97.5/100 Quali
 
 from __future__ import annotations
 
+import gc
+import json
 import math
+import os
 import subprocess
+import sys
 import tempfile
 import time
 import wave
@@ -28,6 +32,7 @@ import torch.nn.functional as F
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from config.settings import CONTENTFLOW_ROOT
+from core.audio_mixer import mix_voice_with_bgm_and_sfx
 
 FONT_BOLD = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
 FONT_REG = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
@@ -130,16 +135,14 @@ def load_studio_backdrop_and_chassis(
     return bg_rgba, chassis_clean
 
 
-def segment_character_rgba(
+def _segment_character_rgba_inprocess(
     src_image: Path,
     dst_png: Path,
     crop_roi: Optional[Tuple[float, float, float, float]] = None,
     clean_corner_wm: bool = True,
 ) -> Path:
-    """Segments a character cutout with transparent background using rembg and saves cached RGBA PNG."""
+    """Segments a character cutout with transparent background using rembg in the current process."""
     dst_png = Path(dst_png)
-    if dst_png.exists() and dst_png.stat().st_size > 10_000:
-        return dst_png
     dst_png.parent.mkdir(parents=True, exist_ok=True)
 
     with Image.open(src_image) as raw_im:
@@ -181,6 +184,55 @@ def segment_character_rgba(
     return dst_png
 
 
+def segment_character_rgba(
+    src_image: Path,
+    dst_png: Path,
+    crop_roi: Optional[Tuple[float, float, float, float]] = None,
+    clean_corner_wm: bool = True,
+    isolate_process: bool = True,
+) -> Path:
+    """Segments a character cutout via rembg (cached, child-process isolated so ORT RAM is freed)."""
+    dst_png = Path(dst_png)
+    if dst_png.exists() and dst_png.stat().st_size > 10_000:
+        return dst_png
+    if not isolate_process:
+        return _segment_character_rgba_inprocess(
+            src_image=Path(src_image),
+            dst_png=dst_png,
+            crop_roi=crop_roi,
+            clean_corner_wm=clean_corner_wm,
+        )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        req_json = Path(tmpdir) / "seg_req.json"
+        req_json.write_text(
+            json.dumps(
+                {
+                    "src_image": str(src_image),
+                    "dst_png": str(dst_png),
+                    "crop_roi": list(crop_roi) if crop_roi is not None else None,
+                    "clean_corner_wm": bool(clean_corner_wm),
+                }
+            ),
+            encoding="utf-8",
+        )
+        code = (
+            "import json, sys; from pathlib import Path; "
+            "from core.studio_renderer import _segment_character_rgba_inprocess; "
+            "p = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8')); "
+            "_segment_character_rgba_inprocess("
+            "Path(p['src_image']), Path(p['dst_png']), "
+            "tuple(p['crop_roi']) if p['crop_roi'] else None, bool(p['clean_corner_wm']))"
+        )
+        subprocess.run(
+            [sys.executable, "-c", code, str(req_json)],
+            cwd=str(CONTENTFLOW_ROOT),
+            env={**os.environ, "OMP_NUM_THREADS": "4", "MKL_NUM_THREADS": "4"},
+            check=True,
+        )
+    return dst_png
+
+
 def render_hologram_board_panel(
     board_size: Tuple[int, int],
     act_tag: str,
@@ -189,6 +241,7 @@ def render_hologram_board_panel(
     cards: List[Dict[str, Any]],
     accent_rgb: Tuple[int, int, int] = (0, 235, 255),
     footer_note: str = "",
+    active_card_idx: Optional[int] = None,
 ) -> Image.Image:
     """Renders a 2560x1440-matched vector-crisp holographic glass whiteboard overlay."""
     bw, bh = board_size
@@ -260,28 +313,59 @@ def render_hologram_board_panel(
         cy0 = content_top
         cy1 = cy0 + card_h
         c_accent: Tuple[int, int, int] = card.get("accent", accent_rgb)
+        is_focused = active_card_idx is None or idx == active_card_idx
+
+        if active_card_idx is not None and is_focused:
+            draw.rounded_rectangle(
+                [cx0 - 4, cy0 - 4, cx1 + 4, cy1 + 4],
+                radius=25,
+                outline=(c_accent[0], c_accent[1], c_accent[2], 125),
+                width=6,
+            )
+            card_fill = (18, 42, 86, 248)
+            card_outline = (c_accent[0], c_accent[1], c_accent[2], 255)
+            card_border_w = 5
+            stripe_fill = (c_accent[0], c_accent[1], c_accent[2], 225)
+            badge_fill = (8, 18, 36, 255)
+            head_fill = (255, 248, 148, 255)
+            bullet_fill = (238, 248, 255, 255)
+        elif active_card_idx is not None:
+            card_fill = (10, 22, 44, 212)
+            card_outline = (c_accent[0], c_accent[1], c_accent[2], 105)
+            card_border_w = 2
+            stripe_fill = (c_accent[0], c_accent[1], c_accent[2], 30)
+            badge_fill = (c_accent[0], c_accent[1], c_accent[2], 195)
+            head_fill = (220, 215, 165, 225)
+            bullet_fill = (185, 208, 232, 215)
+        else:
+            card_fill = (14, 29, 58, 232)
+            card_outline = (c_accent[0], c_accent[1], c_accent[2], 220)
+            card_border_w = 3
+            stripe_fill = (c_accent[0], c_accent[1], c_accent[2], 45)
+            badge_fill = (c_accent[0], c_accent[1], c_accent[2], 255)
+            head_fill = (255, 244, 175, 255)
+            bullet_fill = (224, 240, 255, 248)
+
         draw.rounded_rectangle(
             [cx0, cy0, cx1, cy1],
             radius=22,
-            fill=(14, 29, 58, 232),
-            outline=(c_accent[0], c_accent[1], c_accent[2], 220),
-            width=3,
+            fill=card_fill,
+            outline=card_outline,
+            width=card_border_w,
         )
         # Top accent stripe inside card
         draw.rounded_rectangle(
             [cx0 + 18, cy0 + 18, cx1 - 18, cy0 + 68],
             radius=12,
-            fill=(c_accent[0], c_accent[1], c_accent[2], 45),
+            fill=stripe_fill,
         )
         badge_str = str(card.get("badge", f"MODULE 0{idx + 1}"))
-        draw.text(
-            (cx0 + 30, cy0 + 26), badge_str, font=font_card_badge, fill=(c_accent[0], c_accent[1], c_accent[2], 255)
-        )
+        draw.text((cx0 + 30, cy0 + 26), badge_str, font=font_card_badge, fill=badge_fill)
 
         cur_y = cy0 + 88
         headline = str(card.get("headline", ""))
         for hline in _wrap_text(draw, headline, font_card_head, card_w - 56):
-            draw.text((cx0 + 28, cur_y), hline, font=font_card_head, fill=(255, 244, 175, 255))
+            draw.text((cx0 + 28, cur_y), hline, font=font_card_head, fill=head_fill)
             cur_y += 50
 
         cur_y += 14
@@ -294,7 +378,7 @@ def render_hologram_board_panel(
             for b_line in wrapped:
                 if cur_y > cy1 - 108:
                     break
-                draw.text((cx0 + 28, cur_y), b_line, font=font_card_body, fill=(224, 240, 255, 248))
+                draw.text((cx0 + 28, cur_y), b_line, font=font_card_body, fill=bullet_fill)
                 cur_y += 42
             cur_y += 10
 
@@ -496,6 +580,128 @@ def _draw_hud(
     return out
 
 
+def _detect_h264_encoder() -> str:
+    """Probes whether NVIDIA h264_nvenc works cleanly on this host, else falls back to libx264."""
+    try:
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=256x256:r=30:d=0.1",
+                "-c:v",
+                "h264_nvenc",
+                "-f",
+                "null",
+                "-",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        if proc.returncode == 0:
+            return "h264_nvenc"
+    except Exception:
+        pass
+    return "libx264"
+
+
+def _load_scene_gpu_state(
+    sc: Dict[str, Any],
+    bg_base: Image.Image,
+    chassis_base: Image.Image,
+    bg_bokeh: Image.Image,
+    px_grid: torch.Tensor,
+    py_grid: torch.Tensor,
+    upper_guard: torch.Tensor,
+    device: torch.device,
+) -> Dict[str, Any]:
+    """Prepares GPU tensors for a single active scene (`uint8` backgrounds keep VRAM minimal)."""
+    sc_idx = int(sc["index"])
+    cards = list(sc["cards"])
+    n_cards = max(1, len(cards))
+
+    char_canvas = Image.new("RGBA", bg_base.size, (0, 0, 0, 0))
+    with Image.open(sc["char_png"]) as raw_c:
+        char_src = raw_c.convert("RGBA")
+    bbox = char_src.getbbox()
+    if bbox is not None:
+        char_src = char_src.crop(bbox)
+    target_h = int(sc.get("char_target_h", 1180))
+    scale = target_h / float(max(1, char_src.height))
+    target_w = int(round(char_src.width * scale))
+    if target_w > 575:
+        target_w = 575
+        target_h = int(round(char_src.height * (575.0 / float(max(1, char_src.width)))))
+    char_scaled = char_src.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+    # Keep character centered cleanly at x_center (~310px in 2560px canvas) so nothing overlaps board (x>=600)
+    char_cx = int(sc.get("char_cx", 310))
+    char_x = max(14, min(588 - target_w, char_cx - target_w // 2))
+    char_y = int(sc.get("char_bottom_y", 1380)) - target_h
+
+    shadow = Image.new("RGBA", bg_base.size, (0, 0, 0, 0))
+    sdraw = ImageDraw.Draw(shadow)
+    ped_w = int(target_w * 0.72)
+    ped_cx = char_x + target_w // 2
+    ped_cy = char_y + target_h - 14
+    sdraw.ellipse([ped_cx - ped_w // 2, ped_cy - 18, ped_cx + ped_w // 2, ped_cy + 18], fill=(10, 15, 25, 130))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(12))
+    char_canvas.alpha_composite(char_scaled, (char_x, char_y))
+
+    bg_cards_u8: List[torch.Tensor] = []
+    for card_slot in range(n_cards):
+        board_img = render_hologram_board_panel(
+            board_size=chassis_base.size,
+            act_tag=str(sc["act_tag"]),
+            title=str(sc["board_title"]),
+            subtitle_bar=str(sc.get("board_subtitle", "")),
+            cards=cards,
+            accent_rgb=tuple(sc.get("accent_rgb", (0, 235, 255))),
+            footer_note=str(sc.get("footer_note", "")),
+            active_card_idx=card_slot if n_cards > 1 else None,
+        )
+        board = chassis_base.copy()
+        board.alpha_composite(board_img)
+
+        bg_with_board = bg_base.copy()
+        bg_with_board.alpha_composite(board, (600, 76))
+        bg_with_board.alpha_composite(shadow)
+        bg_1080 = bg_with_board.convert("RGB").resize((1920, 1080), Image.Resampling.LANCZOS)
+        bg_u8 = torch.from_numpy(np.array(bg_1080, dtype=np.uint8)).permute(2, 0, 1).unsqueeze(0).to(device)
+        bg_cards_u8.append(bg_u8)
+
+    closeup_bg_u8: Optional[torch.Tensor] = None
+    if bool(sc.get("enable_closeup", sc_idx == 1)):
+        bg_closeup = bg_bokeh.copy()
+        bg_closeup.alpha_composite(shadow)
+        closeup_1080 = bg_closeup.convert("RGB").resize((1920, 1080), Image.Resampling.LANCZOS)
+        closeup_bg_u8 = (
+            torch.from_numpy(np.array(closeup_1080, dtype=np.uint8)).permute(2, 0, 1).unsqueeze(0).to(device)
+        )
+
+    char_1080 = char_canvas.resize((1920, 1080), Image.Resampling.LANCZOS)
+    char_np = np.array(char_1080, dtype=np.float32)
+
+    hx, hy = sc.get("head_center", (275, 250))
+    ax, ay = sc.get("arm_center", (345, 380))
+    head_w = torch.exp(-((px_grid - hx) ** 2 + (py_grid - hy) ** 2) / (2.0 * (135.0**2))) * upper_guard
+    arm_w = torch.exp(-((px_grid - ax) ** 2 + (py_grid - ay) ** 2) / (2.0 * (145.0**2))) * upper_guard
+    torso_w = torch.exp(-((px_grid - hx) ** 2 + (py_grid - (hy + 175.0)) ** 2) / (2.0 * (150.0**2))) * upper_guard
+
+    return {
+        "bg_cards_u8": bg_cards_u8,
+        "closeup_bg_u8": closeup_bg_u8,
+        "char_rgb_t": torch.from_numpy(char_np[..., :3]).permute(2, 0, 1).unsqueeze(0).to(device),
+        "char_a_t": torch.from_numpy(char_np[..., 3:4]).permute(2, 0, 1).unsqueeze(0).to(device) / 255.0,
+        "head_w": head_w,
+        "arm_w": arm_w,
+        "torso_w": torso_w,
+    }
+
+
 def render_decoupled_60fps_episode(
     scenes: List[Dict[str, Any]],
     audio_mp3: Path,
@@ -506,11 +712,17 @@ def render_decoupled_60fps_episode(
     chassis_path: Path = DEFAULT_CHASSIS_PNG,
     darken_bg: float = 0.90,
     shareholder_pill_text: str = "★ 赛博股东致谢榜：@白的黑板 · @小咩先生",
-    closeup_hook_sec: float = 1.25,
+    closeup_hook_sec: float = 1.05,
     hip_guard_y: float = 640.0,
+    enable_bgm: bool = True,
 ) -> Path:
     """Renders a full 1920x1080 @ 60.00 FPS decoupled-layer episode with subtitles and -14 LUFS audio."""
     t0 = time.time()
+    if hasattr(torch, "set_num_threads"):
+        torch.set_num_threads(4)
+    if hasattr(cv2, "setNumThreads"):
+        cv2.setNumThreads(2)
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     fps = 60
     total_dur = float(scenes[-1]["end"])
@@ -519,67 +731,19 @@ def render_decoupled_60fps_episode(
     bg_base, chassis_base = load_studio_backdrop_and_chassis(
         bg_path=bg_path, chassis_path=chassis_path, darken_bg=darken_bg
     )
+    # Bokeh studio backdrop for crisp cold-open closeup (without any half-sliced hologram board)
+    bg_bokeh = bg_base.filter(ImageFilter.GaussianBlur(radius=16)).convert("RGBA")
+    rim_glow = Image.new("RGBA", bg_base.size, (0, 0, 0, 0))
+    rim_draw = ImageDraw.Draw(rim_glow)
+    rim_draw.ellipse([70, 120, 960, 1180], fill=(0, 220, 255, 42))
+    rim_glow = rim_glow.filter(ImageFilter.GaussianBlur(radius=75))
+    bg_bokeh.alpha_composite(rim_glow)
+
     kling_curves = extract_kling_motion_curves(num_samples=total_frames)
+    # Extract RMS envelope strictly from unmixed voice so character articulation follows speech
     audio_env = extract_audio_envelope(audio_mp3=audio_mp3, fps=fps, total_frames=total_frames)
     credits_pill_bgra = _make_credits_pill_bgra(shareholder_pill_text) if shareholder_pill_text else None
-
-    scene_tensors: Dict[int, Dict[str, torch.Tensor]] = {}
-    for sc in scenes:
-        sc_idx = int(sc["index"])
-        board_img = render_hologram_board_panel(
-            board_size=chassis_base.size,
-            act_tag=str(sc["act_tag"]),
-            title=str(sc["board_title"]),
-            subtitle_bar=str(sc.get("board_subtitle", "")),
-            cards=list(sc["cards"]),
-            accent_rgb=tuple(sc.get("accent_rgb", (0, 235, 255))),
-            footer_note=str(sc.get("footer_note", "")),
-        )
-        board = chassis_base.copy()
-        board.alpha_composite(board_img)
-
-        bg_with_board = bg_base.copy()
-        bg_with_board.alpha_composite(board, (600, 76))
-
-        char_canvas = Image.new("RGBA", bg_base.size, (0, 0, 0, 0))
-        with Image.open(sc["char_png"]) as raw_c:
-            char_src = raw_c.convert("RGBA")
-        bbox = char_src.getbbox()
-        if bbox is not None:
-            char_src = char_src.crop(bbox)
-        target_h = int(sc.get("char_target_h", 1180))
-        scale = target_h / float(max(1, char_src.height))
-        target_w = int(round(char_src.width * scale))
-        if target_w > 575:
-            target_w = 575
-            target_h = int(round(char_src.height * (575.0 / float(max(1, char_src.width)))))
-        char_scaled = char_src.resize((target_w, target_h), Image.Resampling.LANCZOS)
-
-        # Keep character centered cleanly at x_center (~310px in 2560px canvas) so nothing overlaps board (x>=600)
-        char_cx = int(sc.get("char_cx", 310))
-        char_x = max(14, min(588 - target_w, char_cx - target_w // 2))
-        char_y = int(sc.get("char_bottom_y", 1380)) - target_h
-
-        shadow = Image.new("RGBA", bg_base.size, (0, 0, 0, 0))
-        sdraw = ImageDraw.Draw(shadow)
-        ped_w = int(target_w * 0.72)
-        ped_cx = char_x + target_w // 2
-        ped_cy = char_y + target_h - 14
-        sdraw.ellipse([ped_cx - ped_w // 2, ped_cy - 18, ped_cx + ped_w // 2, ped_cy + 18], fill=(10, 15, 25, 130))
-        shadow = shadow.filter(ImageFilter.GaussianBlur(12))
-        bg_with_board.alpha_composite(shadow)
-        char_canvas.alpha_composite(char_scaled, (char_x, char_y))
-
-        bg_1080 = bg_with_board.convert("RGB").resize((1920, 1080), Image.Resampling.LANCZOS)
-        char_1080 = char_canvas.resize((1920, 1080), Image.Resampling.LANCZOS)
-
-        bg_np = np.array(bg_1080, dtype=np.float32)
-        char_np = np.array(char_1080, dtype=np.float32)
-        scene_tensors[sc_idx] = {
-            "bg_t": torch.from_numpy(bg_np).permute(2, 0, 1).unsqueeze(0).to(device),
-            "char_rgb_t": torch.from_numpy(char_np[..., :3]).permute(2, 0, 1).unsqueeze(0).to(device),
-            "char_a_t": torch.from_numpy(char_np[..., 3:4]).permute(2, 0, 1).unsqueeze(0).to(device) / 255.0,
-        }
+    vcodec = _detect_h264_encoder()
 
     h_px, w_px = 1080, 1920
     yy, xx = torch.meshgrid(
@@ -589,121 +753,20 @@ def render_decoupled_60fps_episode(
     )
     px_grid = (xx + 1.0) * 0.5 * (w_px - 1)
     py_grid = (yy + 1.0) * 0.5 * (h_px - 1)
+    upper_guard = torch.clamp((hip_guard_y - py_grid) / 80.0, 0.0, 1.0)
 
     final_mp4 = Path(final_mp4)
     final_mp4.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmpdir:
-        raw_nosub = Path(tmpdir) / "raw_60fps.mp4"
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "rawvideo",
-            "-vcodec",
-            "rawvideo",
-            "-pix_fmt",
-            "bgr24",
-            "-s",
-            f"{w_px}x{h_px}",
-            "-r",
-            str(fps),
-            "-i",
-            "-",
-            "-c:v",
-            "libx264",
-            "-profile:v",
-            "high",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "11",
-            "-pix_fmt",
-            "yuv420p",
-            "-color_primaries",
-            "bt709",
-            "-color_trc",
-            "bt709",
-            "-colorspace",
-            "bt709",
-            str(raw_nosub),
-        ]
-        proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        if proc.stdin is None:
-            raise RuntimeError("Failed to open FFmpeg rawvideo stdin pipe")
-
-        n_scenes = len(scenes)
-        for f_idx in range(total_frames):
-            t_global = f_idx / float(fps)
-            active_sc = scenes[-1]
-            for sc in scenes:
-                if float(sc["start"]) <= t_global < float(sc["end"]):
-                    active_sc = sc
-                    break
-
-            sc_idx = int(active_sc["index"])
-            t_local = t_global - float(active_sc["start"])
-            tensors = scene_tensors[sc_idx]
-
-            env_val = float(audio_env[f_idx])
-            h_dx = 0.42 * float(kling_curves["head_dx"][f_idx]) + 1.1 * math.sin(t_local * 2.4)
-            h_dy = 0.42 * float(kling_curves["head_dy"][f_idx]) + 1.6 * env_val * math.sin(t_local * 5.8)
-            a_dx = 0.45 * float(kling_curves["arm_dx"][f_idx]) + 2.8 * math.sin(t_local * 2.7)
-            a_dy = 0.45 * float(kling_curves["arm_dy"][f_idx]) + 3.2 * math.cos(t_local * 2.5)
-            breath_dy = 1.5 * math.sin(t_local * 2.1)
-
-            hx, hy = active_sc.get("head_center", (275, 250))
-            ax, ay = active_sc.get("arm_center", (345, 380))
-
-            upper_guard = torch.clamp((hip_guard_y - py_grid) / 80.0, 0.0, 1.0)
-            head_w = torch.exp(-((px_grid - hx) ** 2 + (py_grid - hy) ** 2) / (2.0 * (135.0**2))) * upper_guard
-            arm_w = torch.exp(-((px_grid - ax) ** 2 + (py_grid - ay) ** 2) / (2.0 * (145.0**2))) * upper_guard
-            torso_w = (
-                torch.exp(-((px_grid - hx) ** 2 + (py_grid - (hy + 175.0)) ** 2) / (2.0 * (150.0**2))) * upper_guard
+        audio_input_path = Path(audio_mp3)
+        if enable_bgm:
+            mixed_master = Path(tmpdir) / "mixed_master.mp3"
+            audio_input_path = mix_voice_with_bgm_and_sfx(
+                voice_mp3=audio_mp3,
+                output_mp3=mixed_master,
+                scenes=scenes,
             )
-
-            dx_char = head_w * h_dx + arm_w * a_dx + torso_w * (0.25 * h_dx)
-            dy_char = head_w * h_dy + arm_w * a_dy + torso_w * breath_dy
-
-            grid_char_x = xx - dx_char * (2.0 / w_px)
-            grid_char_y = yy - dy_char * (2.0 / h_px)
-            grid_char = torch.stack([grid_char_x, grid_char_y], dim=-1).unsqueeze(0)
-
-            warped_rgb = F.grid_sample(
-                tensors["char_rgb_t"], grid_char, mode="bilinear", padding_mode="border", align_corners=True
-            )
-            warped_a = F.grid_sample(
-                tensors["char_a_t"], grid_char, mode="bilinear", padding_mode="zeros", align_corners=True
-            )
-            comp = tensors["bg_t"] * (1.0 - warped_a) + warped_rgb * warped_a
-
-            is_closeup = (t_local < closeup_hook_sec) and bool(active_sc.get("enable_closeup", True))
-            if is_closeup:
-                cam_zoom = float(active_sc.get("closeup_zoom", 1.26))
-                off_x = float(active_sc.get("closeup_offset_x", -0.215))
-                off_y = float(active_sc.get("closeup_offset_y", -0.145))
-                grid_view_x = (xx / cam_zoom) + off_x
-                grid_view_y = (yy / cam_zoom) + off_y
-                grid_view = torch.stack([grid_view_x, grid_view_y], dim=-1).unsqueeze(0)
-                comp = F.grid_sample(comp, grid_view, mode="bilinear", padding_mode="border", align_corners=True)
-
-            comp_bgr = comp.squeeze(0).permute(1, 2, 0).clamp(0, 255).byte().cpu().numpy()[..., ::-1].copy()
-            comp_bgr = _draw_hud(
-                comp_bgr,
-                sc_idx=sc_idx,
-                n_scenes=n_scenes,
-                t_global=t_global,
-                total_dur=total_dur,
-                speech_env=env_val,
-                is_closeup_hook=is_closeup,
-                credits_pill_bgra=credits_pill_bgra,
-                show_credits_pill=(sc_idx == n_scenes),
-            )
-            proc.stdin.write(comp_bgr.tobytes())
-
-        proc.stdin.close()
-        proc.wait()
-        if proc.returncode != 0:
-            raise RuntimeError("FFmpeg rawvideo encode failed")
+            gc.collect()
 
         sub_style = (
             "Fontname=Noto Sans CJK SC,"
@@ -721,13 +784,69 @@ def render_decoupled_60fps_episode(
             f"subtitles={Path(srt_file).resolve().as_posix()}:force_style='{sub_style}',"
             "setsar=1,setdar=16/9,fps=60,format=yuv420p"
         )
+        final_vcodec_args = (
+            [
+                "-c:v",
+                "h264_nvenc",
+                "-profile:v",
+                "high",
+                "-preset",
+                "p4",
+                "-rc",
+                "cbr",
+                "-b:v",
+                "5600k",
+                "-minrate",
+                "5000k",
+                "-maxrate",
+                "6500k",
+                "-bufsize",
+                "8000k",
+            ]
+            if vcodec == "h264_nvenc"
+            else [
+                "-c:v",
+                "libx264",
+                "-profile:v",
+                "high",
+                "-preset",
+                "veryfast",
+                "-threads",
+                "4",
+                "-x264-params",
+                "nal-hrd=cbr:rc-lookahead=10",
+                "-b:v",
+                "5600k",
+                "-minrate",
+                "5600k",
+                "-maxrate",
+                "5600k",
+                "-bufsize",
+                "8000k",
+            ]
+        )
         cmd_final = [
             "ffmpeg",
             "-y",
+            "-nostats",
+            "-loglevel",
+            "error",
+            "-threads",
+            "2",
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{w_px}x{h_px}",
+            "-r",
+            str(fps),
             "-i",
-            str(raw_nosub),
+            "-",
             "-i",
-            str(audio_mp3),
+            str(audio_input_path),
             "-vf",
             vf_final,
             "-af",
@@ -737,19 +856,8 @@ def render_decoupled_60fps_episode(
             "-map",
             "1:a:0",
             "-r",
-            "60",
-            "-c:v",
-            "libx264",
-            "-profile:v",
-            "high",
-            "-preset",
-            "fast",
-            "-b:v",
-            "6800k",
-            "-maxrate",
-            "9500k",
-            "-bufsize",
-            "14000k",
+            str(fps),
+            *final_vcodec_args,
             "-pix_fmt",
             "yuv420p",
             "-color_primaries",
@@ -769,7 +877,133 @@ def render_decoupled_60fps_episode(
             "+faststart",
             str(final_mp4),
         ]
-        subprocess.run(cmd_final, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(cmd_final, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if proc.stdin is None:
+            raise RuntimeError("Failed to open FFmpeg rawvideo stdin pipe")
+
+        n_scenes = len(scenes)
+        current_loaded_sc_idx: Optional[int] = None
+        active_state: Optional[Dict[str, Any]] = None
+
+        with torch.no_grad():
+            for f_idx in range(total_frames):
+                t_global = f_idx / float(fps)
+                active_sc = scenes[-1]
+                for sc in scenes:
+                    if float(sc["start"]) <= t_global < float(sc["end"]):
+                        active_sc = sc
+                        break
+
+                sc_idx = int(active_sc["index"])
+                sc_start = float(active_sc["start"])
+                sc_end = float(active_sc["end"])
+                sc_dur = max(0.2, sc_end - sc_start)
+                t_local = t_global - sc_start
+
+                if sc_idx != current_loaded_sc_idx or active_state is None:
+                    active_state = None
+                    gc.collect()
+                    if device.type == "cuda":
+                        torch.cuda.empty_cache()
+                    active_state = _load_scene_gpu_state(
+                        sc=active_sc,
+                        bg_base=bg_base,
+                        chassis_base=chassis_base,
+                        bg_bokeh=bg_bokeh,
+                        px_grid=px_grid,
+                        py_grid=py_grid,
+                        upper_guard=upper_guard,
+                        device=device,
+                    )
+                    current_loaded_sc_idx = sc_idx
+
+                env_val = float(audio_env[f_idx])
+                h_dx = 0.42 * float(kling_curves["head_dx"][f_idx]) + 1.1 * math.sin(t_local * 2.4)
+                h_dy = 0.42 * float(kling_curves["head_dy"][f_idx]) + 1.8 * env_val * math.sin(t_local * 5.8)
+                a_dx = 0.45 * float(kling_curves["arm_dx"][f_idx]) + 2.8 * math.sin(t_local * 2.7)
+                a_dy = 0.45 * float(kling_curves["arm_dy"][f_idx]) + 3.2 * math.cos(t_local * 2.5)
+                breath_dy = 1.5 * math.sin(t_local * 2.1)
+
+                dx_char = (
+                    active_state["head_w"] * h_dx
+                    + active_state["arm_w"] * a_dx
+                    + active_state["torso_w"] * (0.25 * h_dx)
+                )
+                dy_char = (
+                    active_state["head_w"] * h_dy + active_state["arm_w"] * a_dy + active_state["torso_w"] * breath_dy
+                )
+
+                grid_char_x = xx - dx_char * (2.0 / w_px)
+                grid_char_y = yy - dy_char * (2.0 / h_px)
+                grid_char = torch.stack([grid_char_x, grid_char_y], dim=-1).unsqueeze(0)
+
+                warped_rgb = F.grid_sample(
+                    active_state["char_rgb_t"], grid_char, mode="bilinear", padding_mode="border", align_corners=True
+                )
+                warped_a = F.grid_sample(
+                    active_state["char_a_t"], grid_char, mode="bilinear", padding_mode="zeros", align_corners=True
+                )
+
+                is_closeup = (t_local < closeup_hook_sec) and bool(active_sc.get("enable_closeup", sc_idx == 1))
+                if is_closeup:
+                    closeup_u8: Optional[torch.Tensor] = active_state["closeup_bg_u8"]
+                    bg_layer = (closeup_u8 if closeup_u8 is not None else active_state["bg_cards_u8"][0]).float()
+                else:
+                    bg_list: List[torch.Tensor] = active_state["bg_cards_u8"]
+                    n_bgs = len(bg_list)
+                    if n_bgs == 1:
+                        bg_layer = bg_list[0].float()
+                    else:
+                        slot_f = min(float(n_bgs) - 1e-4, max(0.0, (t_local / sc_dur) * float(n_bgs)))
+                        card_i = int(slot_f)
+                        frac_in_slot = slot_f - float(card_i)
+                        blend_win = min(0.25, 0.22 * float(n_bgs) / sc_dur)
+                        if card_i > 0 and frac_in_slot < blend_win:
+                            alpha_b = frac_in_slot / max(1e-4, blend_win)
+                            bg_layer = bg_list[card_i - 1].float() * (1.0 - alpha_b) + bg_list[card_i].float() * alpha_b
+                        else:
+                            bg_layer = bg_list[card_i].float()
+
+                comp = bg_layer * (1.0 - warped_a) + warped_rgb * warped_a
+
+                if is_closeup:
+                    base_zoom = float(active_sc.get("closeup_zoom", 1.26))
+                    ease_p = min(1.0, t_local / max(0.2, closeup_hook_sec))
+                    cam_zoom = (base_zoom + 0.03) - 0.06 * ease_p
+                    off_x = float(active_sc.get("closeup_offset_x", -0.225))
+                    off_y = float(active_sc.get("closeup_offset_y", -0.155))
+                    grid_view_x = (xx / cam_zoom) + off_x
+                    grid_view_y = (yy / cam_zoom) + off_y
+                    grid_view = torch.stack([grid_view_x, grid_view_y], dim=-1).unsqueeze(0)
+                    comp = F.grid_sample(comp, grid_view, mode="bilinear", padding_mode="border", align_corners=True)
+
+                comp_bgr = (
+                    comp.squeeze(0)[[2, 1, 0], :, :].permute(1, 2, 0).clamp(0, 255).byte().contiguous().cpu().numpy()
+                )
+                comp_bgr = _draw_hud(
+                    comp_bgr,
+                    sc_idx=sc_idx,
+                    n_scenes=n_scenes,
+                    t_global=t_global,
+                    total_dur=total_dur,
+                    speech_env=env_val,
+                    is_closeup_hook=is_closeup,
+                    credits_pill_bgra=credits_pill_bgra,
+                    show_credits_pill=(sc_idx == n_scenes),
+                )
+                proc.stdin.write(memoryview(comp_bgr))
+
+        active_state = None
+        del xx, yy, px_grid, py_grid, upper_guard
+        gc.collect()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+        proc.stdin.close()
+        proc.stdin = None
+        _, stderr_bytes = proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"FFmpeg encode failed: {stderr_bytes.decode(errors='ignore')[-500:]}")
 
     if out_copy_mp4 is not None:
         out_copy_mp4 = Path(out_copy_mp4)
@@ -778,5 +1012,5 @@ def render_decoupled_60fps_episode(
 
         shutil.copy2(final_mp4, out_copy_mp4)
 
-    print(f"[+] Rendered {total_frames} frames in {time.time() - t0:.1f}s -> {final_mp4}")
+    print(f"[+] Rendered {total_frames} frames ({vcodec}, bgm={enable_bgm}) in {time.time() - t0:.1f}s -> {final_mp4}")
     return final_mp4

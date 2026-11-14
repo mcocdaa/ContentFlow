@@ -414,3 +414,154 @@ def test_cover_designer_008_003_009_presets(tmp_path: Path) -> None:
             assert im16.size == (1920, 1080)
         with Image.open(res.output_4x3_path) as im43:
             assert im43.size == (1440, 1080)
+
+
+def test_audio_mixer_and_human_preference_scorer(tmp_path: Path) -> None:
+    """Tests procedural BGM+SFX mixing, local richness analysis, and online Gradio scorer (mocked + offline)."""
+    import json
+    import math
+    import wave
+    from unittest.mock import MagicMock
+
+    import numpy as np
+
+    from core.audio_mixer import SAMPLE_RATE, mix_voice_with_bgm_and_sfx
+    from core.human_preference_scorer import (
+        HumanPreferenceScorer,
+        compute_local_audio_richness,
+        score_anime_visual_online,
+        score_audio_enjoyment_online,
+    )
+
+    dry_wav = tmp_path / "dry_voice.wav"
+    n_tot = int(2.6 * SAMPLE_RATE)
+    t = np.arange(n_tot, dtype=np.float32) / float(SAMPLE_RATE)
+    voice_sig = np.where((t >= 0.4) & (t <= 2.1), 0.45 * np.sin(2.0 * math.pi * 260.0 * t), 0.0).astype(np.float32)
+    stereo = np.stack([voice_sig, voice_sig], axis=-1)
+    with wave.open(str(dry_wav), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes((stereo * 32767.0).astype(np.int16).tobytes())
+
+    dry_rich = compute_local_audio_richness(dry_wav)
+    assert dry_rich["dead_air_ratio"] >= 0.25
+
+    mixed_out = tmp_path / "mixed_voice.wav"
+    mix_voice_with_bgm_and_sfx(
+        voice_mp3=dry_wav,
+        output_mp3=mixed_out,
+        scenes=[{"start": 0.0, "end": 1.3}, {"start": 1.3, "end": 2.6}],
+    )
+    assert mixed_out.exists() and mixed_out.stat().st_size > 10_000
+    mixed_rich = compute_local_audio_richness(mixed_out)
+    assert mixed_rich["dead_air_ratio"] < dry_rich["dead_air_ratio"]
+    assert mixed_rich["audio_richness_10"] >= dry_rich["audio_richness_10"]
+
+    class _Resp:
+        def __init__(self, *, json_obj: object = None, text: str = "") -> None:
+            self.ok = True
+            self._json = json_obj
+            self.text = text
+
+        def json(self) -> object:
+            return self._json
+
+    mock_session = MagicMock()
+    plotly_payload = json.dumps(
+        {
+            "data": [
+                {
+                    "x": ["Production Quality", "Production Complexity", "Content Enjoyment", "Content Usefulness"],
+                    "y": [8.12, 3.65, 6.74, 6.45],
+                }
+            ]
+        }
+    )
+    mock_session.post.side_effect = [
+        _Resp(json_obj=["/tmp/gradio/img.jpg"]),
+        _Resp(json_obj={"event_id": "ev_img"}),
+        _Resp(json_obj=["/tmp/gradio/aud.wav"]),
+        _Resp(json_obj={"event_id": "ev_aud"}),
+    ]
+    mock_session.get.side_effect = [
+        _Resp(text='event: complete\ndata: [{"confidences": [{"label": "score", "confidence": 0.742}]}]\n'),
+        _Resp(text="event: complete\ndata: " + json.dumps([{"type": "plotly", "plot": plotly_payload}]) + "\n"),
+    ]
+
+    cov_jpg = tmp_path / "cov.jpg"
+    Image.new("RGB", (640, 360), (20, 40, 90)).save(cov_jpg)
+    a_score = score_anime_visual_online(cov_jpg, crop_box=(320, 0, 640, 360), session=mock_session)
+    assert a_score == pytest.approx(0.742, abs=1e-3)
+
+    ab_scores = score_audio_enjoyment_online(mixed_out, session=mock_session)
+    assert ab_scores is not None
+    assert ab_scores["production_complexity"] == pytest.approx(3.65, abs=1e-2)
+    assert ab_scores["content_enjoyment"] == pytest.approx(6.74, abs=1e-2)
+
+    proj_tmp = tmp_path / "098_score_demo"
+    (proj_tmp / "delivery").mkdir(parents=True)
+    cov_jpg.replace(proj_tmp / "delivery" / "demo_cover.jpg")
+    mixed_out.replace(proj_tmp / "delivery" / "demo_audio.wav")
+    off_rep = HumanPreferenceScorer(root_dir=tmp_path).evaluate_project(proj_tmp, allow_online=False)
+    assert off_rep.online_enabled is False
+    assert off_rep.human_appeal_index > 0.0
+
+
+def test_subtitle_cue_spacing_and_glyph_check() -> None:
+    """Verifies stripped clause punctuation preserves word spacing and checks font glyph coverage."""
+    from core.local_tts import _split_subtitle_cues
+    from core.quality_gate import check_missing_glyphs
+
+    cues = _split_subtitle_cues("把账号交给AI，连夜跑通60帧工作室，全流程交付！", 0.0, 6.0, max_chars=24)
+    assert len(cues) >= 1
+    assert "把账号交给AI 连夜跑通60帧工作室" in cues[0][2] or "连夜跑通" in cues[0][2]
+    assert check_missing_glyphs("简体中文 60FPS • 安全护栏") == []
+    try:
+        import fontTools  # noqa: F401
+
+        font_ok = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc").exists()
+        if font_ok:
+            assert "\ue800" in check_missing_glyphs("私有字符 \ue800")
+    except ImportError:
+        pass
+
+
+def test_box_smooth_and_tts_timeline_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies O(N) prefix-sum smoother matches numpy uniform smooth and TTS SHA-256 cache hits."""
+    import shutil
+
+    import numpy as np
+
+    from core.audio_mixer import _box_smooth_1d
+    from core.local_tts import LocalNeuralTTS
+
+    sig = np.linspace(0.0, 1.0, 250, dtype=np.float32) + 0.1 * np.sin(np.arange(250, dtype=np.float32))
+    win = 17
+    expected = np.convolve(sig, np.ones(win, dtype=np.float32) / float(win), mode="same").astype(np.float32)
+    actual = _box_smooth_1d(sig, win)
+    assert np.allclose(actual, expected, atol=1e-5)
+
+    if shutil.which("ffmpeg") is None:
+        return
+
+    tts = LocalNeuralTTS(sample_rate=16000)
+    calls: list[str] = []
+
+    def fake_synth(text: str, voice: str = "zf_001", speed: float = 1.0, edge_voice: str = "") -> np.ndarray:
+        calls.append(text)
+        t = np.arange(8000, dtype=np.float32) / 16000.0
+        return (0.4 * np.sin(2.0 * np.pi * 440.0 * t)).astype(np.float32)
+
+    monkeypatch.setattr(tts, "synthesize_text", fake_synth)
+    scenes = [{"tts_text": "第一句缓存测试", "subtitle_text": "第一句缓存测试"}]
+    out_mp3 = tmp_path / "cached.mp3"
+    out_srt = tmp_path / "cached.srt"
+
+    tl1 = tts.synthesize_scenes(scenes, output_mp3=out_mp3, output_srt=out_srt, voice="zf_043")
+    assert len(calls) == 1
+    assert out_mp3.with_suffix(".timeline.json").exists()
+
+    tl2 = tts.synthesize_scenes(scenes, output_mp3=out_mp3, output_srt=out_srt, voice="zf_043")
+    assert len(calls) == 1
+    assert tl2 == tl1

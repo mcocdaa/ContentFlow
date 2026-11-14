@@ -8,9 +8,14 @@ and outputs frame-accurate SRT subtitles + act timeline boundaries.
 from __future__ import annotations
 
 import asyncio
+import gc
+import hashlib
+import json
 import logging
+import os
 import re
 import subprocess
+import sys
 import tempfile
 import wave
 from pathlib import Path
@@ -51,12 +56,12 @@ def _split_subtitle_cues(
     merged: List[str] = []
     cur = ""
     for part in raw_parts:
-        clean_part = part.rstrip("，。！？；：,!?;") if len(merged) >= 0 else part
-        if cur and len(cur) + len(clean_part) > max_chars:
+        clean_part = part.rstrip("，。！？；：,!?;")
+        if cur and len(cur) + 1 + len(clean_part) > max_chars:
             merged.append(cur.rstrip("，。；：,;"))
             cur = clean_part
         else:
-            cur = f"{cur}{clean_part}"
+            cur = f"{cur} {clean_part}" if cur else clean_part
     if cur:
         merged.append(cur.rstrip("，。；：,;"))
 
@@ -174,7 +179,19 @@ class LocalNeuralTTS:
             logger.warning("Kokoro TTS failed (%s); falling back to edge-tts (%s)", exc, edge_voice)
             return self._synth_edge_tts(text, edge_voice=edge_voice, speed=speed)
 
-    def synthesize_scenes(
+    def close(self) -> None:
+        """Releases loaded TTS models and clears cached GPU VRAM."""
+        self._pipelines.clear()
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    def _synthesize_scenes_inprocess(
         self,
         scenes: List[Dict[str, str]],
         output_mp3: Path,
@@ -185,10 +202,7 @@ class LocalNeuralTTS:
         tail_pad_sec: float = 0.30,
         edge_voice: str = "zh-CN-XiaoxiaoNeural",
     ) -> List[Dict[str, Any]]:
-        """Synthesizes multi-scene audio MP3 + SRT captions and returns exact scene timestamps."""
-        if not scenes:
-            raise ValueError("scenes list must not be empty")
-
+        """Synthesizes multi-scene audio MP3 + SRT captions in-process and frees models afterward."""
         output_mp3 = Path(output_mp3)
         output_srt = Path(output_srt)
         output_mp3.parent.mkdir(parents=True, exist_ok=True)
@@ -204,80 +218,210 @@ class LocalNeuralTTS:
         srt_lines: List[str] = []
         cue_idx = 1
 
-        for idx, sc in enumerate(scenes):
-            tts_text = str(sc.get("tts_text") or sc.get("subtitle_text") or "").strip()
-            sub_text = str(sc.get("subtitle_text") or sc.get("tts_text") or "").strip()
-            wav_samples = self.synthesize_text(tts_text, voice=voice, speed=speed, edge_voice=edge_voice)
+        try:
+            for idx, sc in enumerate(scenes):
+                tts_text = str(sc.get("tts_text") or sc.get("subtitle_text") or "").strip()
+                sub_text = str(sc.get("subtitle_text") or sc.get("tts_text") or "").strip()
+                wav_samples = self.synthesize_text(tts_text, voice=voice, speed=speed, edge_voice=edge_voice)
 
-            # Peak-normalize each segment gently so loudness stays uniform across acts
-            peak = float(np.max(np.abs(wav_samples))) if wav_samples.size else 1.0
-            if peak > 1e-4:
-                wav_samples = np.clip(wav_samples * (0.88 / peak), -0.98, 0.98)
+                # Peak-normalize each segment gently so loudness stays uniform across acts
+                peak = float(np.max(np.abs(wav_samples))) if wav_samples.size else 1.0
+                if peak > 1e-4:
+                    wav_samples = np.clip(wav_samples * (0.88 / peak), -0.98, 0.98)
 
-            speech_dur = wav_samples.size / float(self.sample_rate)
-            act_start = 0.0 if idx == 0 else cursor_sec
-            speech_start = cursor_sec
-            speech_end = cursor_sec + speech_dur
+                speech_dur = wav_samples.size / float(self.sample_rate)
+                act_start = 0.0 if idx == 0 else cursor_sec
+                speech_start = cursor_sec
+                speech_end = cursor_sec + speech_dur
 
-            audio_parts.append(wav_samples)
-            if idx < len(scenes) - 1:
-                pad_len = pause_samples
-                act_end = speech_end + pause_sec
-            else:
-                pad_len = tail_samples
-                act_end = speech_end + tail_pad_sec
+                audio_parts.append(wav_samples)
+                if idx < len(scenes) - 1:
+                    pad_len = pause_samples
+                    act_end = speech_end + pause_sec
+                else:
+                    pad_len = tail_samples
+                    act_end = speech_end + tail_pad_sec
 
-            audio_parts.append(np.zeros(pad_len, dtype=np.float32))
-            cursor_sec = act_end
+                audio_parts.append(np.zeros(pad_len, dtype=np.float32))
+                cursor_sec = act_end
 
-            timeline.append(
-                {
-                    "index": idx + 1,
-                    "start": round(act_start, 3),
-                    "end": round(act_end, 3),
-                    "duration": round(act_end - act_start, 3),
-                    "speech_duration": round(speech_dur, 3),
-                    "subtitle_text": sub_text,
-                }
+                timeline.append(
+                    {
+                        "index": idx + 1,
+                        "start": round(act_start, 3),
+                        "end": round(act_end, 3),
+                        "duration": round(act_end - act_start, 3),
+                        "speech_duration": round(speech_dur, 3),
+                        "subtitle_text": sub_text,
+                    }
+                )
+
+                for c_start, c_end, c_text in _split_subtitle_cues(sub_text, speech_start, speech_end):
+                    srt_lines.append(str(cue_idx))
+                    srt_lines.append(f"{format_srt_timestamp(c_start)} --> {format_srt_timestamp(c_end)}")
+                    srt_lines.append(c_text)
+                    srt_lines.append("")
+                    cue_idx += 1
+
+            master_wav = np.concatenate(audio_parts)
+            pcm16 = (np.clip(master_wav, -1.0, 1.0) * 32767.0).astype(np.int16)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_wav = Path(tmpdir) / "master.wav"
+                with wave.open(str(tmp_wav), "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(self.sample_rate)
+                    wf.writeframes(pcm16.tobytes())
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(tmp_wav),
+                        "-ac",
+                        "2",
+                        "-ar",
+                        "48000",
+                        "-c:a",
+                        "libmp3lame",
+                        "-b:a",
+                        "192k",
+                        str(output_mp3),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                )
+
+            output_srt.write_text("\n".join(srt_lines), encoding="utf-8")
+            return timeline
+        finally:
+            self.close()
+
+    def synthesize_scenes(
+        self,
+        scenes: List[Dict[str, str]],
+        output_mp3: Path,
+        output_srt: Path,
+        voice: str = "zf_001",
+        speed: float = 1.03,
+        pause_sec: float = 0.22,
+        tail_pad_sec: float = 0.30,
+        edge_voice: str = "zh-CN-XiaoxiaoNeural",
+        isolate_process: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Synthesizes multi-scene audio MP3 + SRT captions and returns exact scene timestamps."""
+        if not scenes:
+            raise ValueError("scenes list must not be empty")
+
+        output_mp3 = Path(output_mp3)
+        output_srt = Path(output_srt)
+        meta_path = output_mp3.with_suffix(".timeline.json")
+
+        payload_key = json.dumps(
+            {
+                "scenes": scenes,
+                "voice": voice,
+                "speed": speed,
+                "pause_sec": pause_sec,
+                "tail_pad_sec": tail_pad_sec,
+                "sr": self.sample_rate,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        digest = hashlib.sha256(payload_key.encode("utf-8")).hexdigest()
+
+        if output_mp3.exists() and output_mp3.stat().st_size > 1024 and output_srt.exists() and meta_path.exists():
+            try:
+                cached = json.loads(meta_path.read_text(encoding="utf-8"))
+                if cached.get("sha256") == digest and isinstance(cached.get("timeline"), list):
+                    return cached["timeline"]
+            except Exception:
+                pass
+
+        is_patched = (
+            ("synthesize_text" in self.__dict__)
+            or ("_synth_kokoro" in self.__dict__)
+            or (type(self).synthesize_text is not LocalNeuralTTS.synthesize_text)
+            or (type(self)._synth_kokoro is not LocalNeuralTTS._synth_kokoro)
+        )
+
+        if isolate_process and not is_patched:
+            repo_root = Path(__file__).resolve().parent.parent
+            with tempfile.TemporaryDirectory() as tmpdir:
+                req_json = Path(tmpdir) / "tts_req.json"
+                resp_json = Path(tmpdir) / "tts_resp.json"
+                req_json.write_text(
+                    json.dumps(
+                        {
+                            "repo_id": self.repo_id,
+                            "sample_rate": self.sample_rate,
+                            "device": self.device,
+                            "scenes": scenes,
+                            "output_mp3": str(output_mp3),
+                            "output_srt": str(output_srt),
+                            "voice": voice,
+                            "speed": speed,
+                            "pause_sec": pause_sec,
+                            "tail_pad_sec": tail_pad_sec,
+                            "edge_voice": edge_voice,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    [sys.executable, "-m", "core.local_tts", str(req_json), str(resp_json)],
+                    cwd=str(repo_root),
+                    env={**os.environ, "OMP_NUM_THREADS": "4", "MKL_NUM_THREADS": "4"},
+                    check=True,
+                )
+                timeline = json.loads(resp_json.read_text(encoding="utf-8"))
+        else:
+            timeline = self._synthesize_scenes_inprocess(
+                scenes=scenes,
+                output_mp3=output_mp3,
+                output_srt=output_srt,
+                voice=voice,
+                speed=speed,
+                pause_sec=pause_sec,
+                tail_pad_sec=tail_pad_sec,
+                edge_voice=edge_voice,
             )
 
-            for c_start, c_end, c_text in _split_subtitle_cues(sub_text, speech_start, speech_end):
-                srt_lines.append(str(cue_idx))
-                srt_lines.append(f"{format_srt_timestamp(c_start)} --> {format_srt_timestamp(c_end)}")
-                srt_lines.append(c_text)
-                srt_lines.append("")
-                cue_idx += 1
-
-        master_wav = np.concatenate(audio_parts)
-        pcm16 = (np.clip(master_wav, -1.0, 1.0) * 32767.0).astype(np.int16)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_wav = Path(tmpdir) / "master.wav"
-            with wave.open(str(tmp_wav), "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(self.sample_rate)
-                wf.writeframes(pcm16.tobytes())
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(tmp_wav),
-                    "-ac",
-                    "2",
-                    "-ar",
-                    "48000",
-                    "-c:a",
-                    "libmp3lame",
-                    "-b:a",
-                    "192k",
-                    str(output_mp3),
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-
-        output_srt.write_text("\n".join(srt_lines), encoding="utf-8")
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(
+            json.dumps({"sha256": digest, "timeline": timeline}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         return timeline
+
+
+def _cli_main() -> None:
+    if len(sys.argv) != 3:
+        raise SystemExit("Usage: python -m core.local_tts <req_json> <resp_json>")
+    req_path = Path(sys.argv[1])
+    resp_path = Path(sys.argv[2])
+    req = json.loads(req_path.read_text(encoding="utf-8"))
+    tts_worker = LocalNeuralTTS(
+        repo_id=str(req.get("repo_id", DEFAULT_KOKORO_REPO)),
+        sample_rate=int(req.get("sample_rate", KOKORO_SAMPLE_RATE)),
+        device=req.get("device"),
+    )
+    tl = tts_worker._synthesize_scenes_inprocess(
+        scenes=req["scenes"],
+        output_mp3=Path(req["output_mp3"]),
+        output_srt=Path(req["output_srt"]),
+        voice=str(req.get("voice", "zf_001")),
+        speed=float(req.get("speed", 1.03)),
+        pause_sec=float(req.get("pause_sec", 0.22)),
+        tail_pad_sec=float(req.get("tail_pad_sec", 0.30)),
+        edge_voice=str(req.get("edge_voice", "zh-CN-XiaoxiaoNeural")),
+    )
+    resp_path.write_text(json.dumps(tl, ensure_ascii=False), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    _cli_main()

@@ -713,3 +713,102 @@ def test_sync_live_pinned_comments(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert len(pinned_calls) == 1
     assert pinned_calls[0]["aid"] == 10011
     assert "第11期全新待置顶评论内容" in pinned_calls[0]["message"]
+
+
+def test_edit_archive_dtime_timeout_fallback_and_analytics_directives(tmp_path: Path) -> None:
+    """Verifies scheduled dtime preservation/override, UPOS Timeout fallback, and analytics directives."""
+    from core.analytics import BilibiliAnalytics
+
+    mock_session = MagicMock()
+    mock_session.get.return_value = _DummyResponse(
+        {
+            "code": 0,
+            "data": {
+                "archive": {
+                    "aid": 223344,
+                    "title": "定时排期标题",
+                    "cover": "https://archive.biliimg.com/bfs/archive/old.jpg",
+                    "tid": 231,
+                    "tag": "AI",
+                    "desc": "旧简介",
+                    "copyright": 1,
+                    "dtime": 1794738600,
+                },
+                "videos": [{"filename": "oldfile", "title": "P1", "desc": "", "cid": 11}],
+            },
+        }
+    )
+    mock_session.post.side_effect = [
+        _DummyResponse({"code": 0, "data": {"aid": 223344}}),
+        _DummyResponse({"code": 0, "data": {"aid": 223344}}),
+    ]
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "s", "bili_jct": "j", "DedeUserID": "10000001"},
+        session=mock_session,
+    )
+    res_keep = uploader.edit_archive(aid=223344, description="更新描述")
+    assert res_keep["submitted_payload"]["dtime"] == 1794738600
+
+    res_override = uploader.edit_archive(aid=223344, description="重设排期", dtime=1794825000)
+    assert res_override["submitted_payload"]["dtime"] == 1794825000
+
+    # Timeout fallback on UPOS chunk upload
+    vid = tmp_path / "timeout_demo.mp4"
+    vid.write_bytes(b"0123456789" * 64)
+    sess_to = MagicMock()
+    sess_to.get.side_effect = [
+        _DummyResponse(
+            {
+                "OK": 1,
+                "upos_uri": "upos://ugcupos/t1.mp4",
+                "endpoint": "//upos-cs-upcdntxa.bilivideo.com",
+                "auth": "ak=1",
+                "chunk_size": 10485760,
+                "biz_id": 101,
+            }
+        ),
+        _DummyResponse(
+            {
+                "OK": 1,
+                "upos_uri": "upos://ugcupos/tx_ok.mp4",
+                "endpoint": "//upos-cs-upcdntx.bilivideo.com",
+                "auth": "ak=2",
+                "chunk_size": 10485760,
+                "biz_id": 202,
+            }
+        ),
+    ]
+    sess_to.post.side_effect = [
+        requests.exceptions.Timeout("connect timed out"),
+        _DummyResponse({"OK": 1, "upload_id": "up2"}),
+        _DummyResponse({"OK": 1}),
+    ]
+    sess_to.put.return_value = _DummyResponse({"OK": 1})
+    up2 = BilibiliUploader(cookies={"SESSDATA": "s", "bili_jct": "j"}, session=sess_to, upcdn="txa")
+    upos_out = up2.upload_video_upos(vid)
+    assert upos_out["bili_filename"] == "tx_ok"
+
+    directives = BilibiliAnalytics.build_optimization_directives(
+        [
+            {
+                "bvid": "BV1Bounce",
+                "title": "干声教程",
+                "diagnose": {"crash_rate_pct": 63.63, "crash_p50_pct": 27.35, "tm_stars": 3.3},
+                "recent_comments": [
+                    {"uname": "白的黑板", "message": "有没有翻唱司凤版雨爱[doge]"},
+                    {"uname": "creator_bot", "message": "有没有想看的下期"},
+                ],
+            },
+            {
+                "bvid": "BV1LowStar",
+                "title": "低星封面",
+                "diagnose": {"crash_rate_pct": 25.0, "crash_p50_pct": 27.35, "tm_stars": 2.0},
+                "recent_comments": [],
+            },
+        ],
+        account_uname="creator_bot",
+    )
+    types = {d["type"] for d in directives}
+    assert types == {"hook_and_bgm_upgrade", "viewer_request", "cover_hero_contrast_upgrade"}
+    req = next(d for d in directives if d["type"] == "viewer_request")
+    assert req["requester"] == "白的黑板"

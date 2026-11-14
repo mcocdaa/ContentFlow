@@ -10,6 +10,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add project root to sys.path
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -670,6 +671,14 @@ def cmd_analytics(args):
         print(f"    • {t['name']} (tid={t['target_tid']})")
         print(f"      Hook: {t['viral_hook']}")
 
+    directives = report.get("optimization_directives") or []
+    if directives:
+        print("\n  [Auto-Optimization Directives from Crowd & Comments]")
+        for d in directives:
+            print(f"    • [{d.get('priority', 'P1')}] ({d.get('type')}) {d.get('bvid', '')}: {d.get('reason')}")
+            if d.get("action"):
+                print(f"      Action: {d['action']}")
+
     if report.get("snapshot_md"):
         print(f"\n  • Saved Snapshot JSON: {report.get('snapshot_json')}")
         print(f"  • Saved Growth Report: {report.get('snapshot_md')}\n")
@@ -706,15 +715,75 @@ def cmd_quality_check(args):
         video_path=getattr(args, "video", None),
         cover_path=getattr(args, "cover", None),
     )
+
+    online_rep = None
+    if getattr(args, "online_eval", False):
+        from core.human_preference_scorer import HumanPreferenceScorer
+
+        online_rep = HumanPreferenceScorer(root_dir=CONTENTFLOW_ROOT).evaluate_project(
+            project=args.project,
+            video_path=Path(args.video) if getattr(args, "video", None) else None,
+            cover_path=Path(args.cover) if getattr(args, "cover", None) else None,
+            allow_online=True,
+        )
+
     if getattr(args, "json", False):
-        print(report.to_json())
+        payload = report.to_dict()
+        if online_rep is not None:
+            payload["human_preference"] = online_rep.to_dict()
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(report.format_terminal_report())
+        if online_rep is not None:
+            _print_human_preference_summary(online_rep)
+
     if getattr(args, "output_json", None):
         out_p = Path(args.output_json)
         out_p.parent.mkdir(parents=True, exist_ok=True)
-        out_p.write_text(report.to_json(), encoding="utf-8")
+        payload = report.to_dict()
+        if online_rep is not None:
+            payload["human_preference"] = online_rep.to_dict()
+        out_p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if report.passed else 1
+
+
+def _print_human_preference_summary(rep: Any) -> None:
+    print(f"=== Online & Local Human-Perception Aesthetic Report: {rep.project_id} ===")
+    print(f"  • Human Appeal Index:      {rep.human_appeal_index:.1f} / 100")
+    print(
+        f"  • Anime Appeal (skytnt):   full_cover={rep.full_cover_anime_score} | "
+        f"hero_portrait={rep.hero_portrait_anime_score} | keyframe_char={rep.keyframe_hero_anime_score}"
+    )
+    print(
+        f"  • Audio MOS (Audiobox):    PQ={rep.audiobox_pq} | PC={rep.audiobox_pc} | "
+        f"CE={rep.audiobox_ce} | CU={rep.audiobox_cu}"
+    )
+    print(
+        f"  • Local Aesthetics & Bed:  cover_IQA={rep.local_cover_aesthetic_10} | "
+        f"video_IQA={rep.local_video_aesthetic_10} | audio_rich={rep.local_audio_richness_10} "
+        f"(dead_air={rep.dead_air_ratio:.1%})"
+    )
+    for r in rep.recommendations:
+        print(f"    → {r}")
+    print("")
+
+
+def cmd_human_score(args):
+    """Scores a project using online Anime Aesthetic + Meta Audiobox Aesthetics + local IQA."""
+    from core.human_preference_scorer import HumanPreferenceScorer
+
+    scorer = HumanPreferenceScorer(root_dir=CONTENTFLOW_ROOT)
+    rep = scorer.evaluate_project(
+        project=args.project,
+        video_path=Path(args.video) if getattr(args, "video", None) else None,
+        cover_path=Path(args.cover) if getattr(args, "cover", None) else None,
+        allow_online=not getattr(args, "offline", False),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(rep.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        _print_human_preference_summary(rep)
+    return 0
 
 
 def cmd_design_cover(args):
@@ -947,9 +1016,19 @@ def main():
     p_qc.add_argument("--video", default=None, help="Optional explicit video file path")
     p_qc.add_argument("--cover", default=None, help="Optional explicit cover file path")
     p_qc.add_argument("--threshold", type=float, default=80.0, help="Passing score threshold (default: 80.0)")
+    p_qc.add_argument("--online-eval", action="store_true", help="Also run online HuggingFace Aesthetic + Audiobox MOS")
     p_qc.add_argument("--json", action="store_true", help="Output structured JSON report to stdout")
     p_qc.add_argument("--output-json", default=None, help="Save structured JSON report to file")
     p_qc.set_defaults(func=cmd_quality_check)
+
+    # human-score
+    p_hs = subparsers.add_parser("human-score", help="Score visual & audio appeal via online HF Spaces + local IQA")
+    p_hs.add_argument("--project", required=True, help="Project ID or name (e.g. 008 or 003)")
+    p_hs.add_argument("--video", default=None, help="Optional explicit video file path")
+    p_hs.add_argument("--cover", default=None, help="Optional explicit cover file path")
+    p_hs.add_argument("--offline", action="store_true", help="Skip remote HF Space HTTP calls and score locally")
+    p_hs.add_argument("--json", action="store_true", help="Output structured JSON report to stdout")
+    p_hs.set_defaults(func=cmd_human_score)
 
     # design-cover
     p_dc = subparsers.add_parser(

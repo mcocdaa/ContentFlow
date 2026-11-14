@@ -113,6 +113,18 @@ def _get_pyiqa_models(allow_download: bool = False) -> Tuple[Optional[Any], Opti
         return None, None, "cpu"
 
 
+def release_pyiqa_models() -> None:
+    """Frees cached TOPIQ-IAA / HyperIQA models and reclaims CUDA VRAM after QC."""
+    if not _PYIQA_CACHE:
+        return
+    import gc
+
+    _PYIQA_CACHE.clear()
+    gc.collect()
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 class LocalAestheticEvaluator:
     """Evaluates camera stability, anti-ghosting, and human-calibrated aesthetics locally."""
 
