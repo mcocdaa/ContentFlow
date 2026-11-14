@@ -1372,7 +1372,7 @@ class MatrixPublisher:
         }
 
         if (execute_upload or remote_schedule) and has_cookies and manifest.get("video_path"):
-            uploader = BilibiliUploader(vault=self.vault, cookies=cookies, session=self.session)
+            uploader = BilibiliUploader(vault=self.vault, cookies=cookies, session=self.session, upcdn="txa")
             upload_mode = "schedule" if (safety_mode in ("schedule", "draft") or remote_schedule) else "direct"
             api_res = uploader.upload_to_bilibili_api(
                 video_path=Path(manifest["video_path"]),
@@ -1560,3 +1560,76 @@ class MatrixPublisher:
             "schedule_at": schedule_at,
             "platforms": results_by_platform,
         }
+
+    def sync_live_pinned_comments(self) -> List[Dict[str, Any]]:
+        """Syncs and pins `pinned_comment` for newly released public archives that do not yet have one."""
+        from core.analytics import BilibiliAnalytics
+
+        analytics = BilibiliAnalytics(vault=self.vault, session=self.session)
+        uploader = BilibiliUploader(vault=self.vault, session=self.session, upcdn="txa")
+        if not uploader.is_authenticated:
+            raise RuntimeError("Bilibili SESSDATA and bili_jct cookies are required to sync pinned comments")
+
+        arc_resp = analytics.fetch_creator_archives(status="pubed", ps=30)
+        archives = arc_resp.get("archives") or []
+        live_by_bvid: Dict[str, Dict[str, Any]] = {}
+        live_by_title: Dict[str, Dict[str, Any]] = {}
+        for arc in archives:
+            if arc.get("state") == 0 or arc.get("state_desc") == "开放浏览":
+                bvid = str(arc.get("bvid") or "").strip()
+                title = str(arc.get("title") or "").strip()
+                if bvid:
+                    live_by_bvid[bvid] = arc
+                if title:
+                    live_by_title[title] = arc
+
+        results: List[Dict[str, Any]] = []
+        if not self.projects_dir.exists():
+            return results
+
+        for proj_dir in sorted(p for p in self.projects_dir.iterdir() if p.is_dir()):
+            bili_md = proj_dir / "delivery" / "bilibili.md"
+            if not bili_md.exists():
+                continue
+            meta = self.discover_metadata(proj_dir, platform="bilibili")
+            pinned_msg = str(meta.get("pinned_comment") or "").strip()
+            if not pinned_msg:
+                continue
+
+            matched_arc: Optional[Dict[str, Any]] = None
+            manifest_file = proj_dir / "delivery" / "staged_bilibili" / "publish_manifest.json"
+            if manifest_file.exists():
+                try:
+                    m_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+                    m_bvid = str((m_data.get("advisor_receipt") or {}).get("bvid") or "").strip()
+                    if m_bvid and m_bvid in live_by_bvid:
+                        matched_arc = live_by_bvid[m_bvid]
+                except Exception:
+                    matched_arc = None
+            if matched_arc is None:
+                matched_arc = live_by_title.get(str(meta.get("title") or "").strip())
+            if matched_arc is None or not matched_arc.get("aid"):
+                continue
+
+            aid = int(matched_arc["aid"])
+            bvid = str(matched_arc.get("bvid") or "")
+            existing = analytics.fetch_archive_comments(aid, ps=20)
+            prefix = pinned_msg[:18]
+            already_present = any(prefix and prefix in str(c.get("message") or "") for c in existing)
+            if already_present:
+                results.append({"project_id": proj_dir.name, "bvid": bvid, "aid": aid, "status": "already_pinned"})
+                continue
+
+            pin_res = uploader.post_and_pin_comment(aid=aid, message=pinned_msg)
+            results.append(
+                {
+                    "project_id": proj_dir.name,
+                    "bvid": bvid,
+                    "aid": aid,
+                    "status": "pinned_now" if pin_res.get("pinned") else "comment_posted_only",
+                    "rpid": pin_res.get("rpid"),
+                    "added": bool(pin_res.get("added")),
+                    "pinned": bool(pin_res.get("pinned")),
+                }
+            )
+        return results

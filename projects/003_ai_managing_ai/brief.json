@@ -68,5 +68,12 @@
   "links": {
     "github": "https://github.com/mcocdaa/TermFlow",
     "docs": "https://github.com/mcocdaa/TermFlow#readme"
+  },
+  "deliverables": {
+    "video_file": "projects/003_ai_managing_ai/delivery/3D手办2B拆解AI管理AI四大死穴_final.mp4",
+    "cover_file": "projects/003_ai_managing_ai/delivery/3D手办2B拆解AI管理AI四大死穴_cover.jpg",
+    "cover_4x3_file": "projects/003_ai_managing_ai/delivery/3D手办2B拆解AI管理AI四大死穴_cover_4x3.jpg",
+    "audio_file": "projects/003_ai_managing_ai/delivery/3D手办2B拆解AI管理AI四大死穴_audio.mp3",
+    "subtitle_file": "projects/003_ai_managing_ai/delivery/3D手办2B拆解AI管理AI四大死穴_subtitle.srt"
   }
 }

@@ -580,7 +580,15 @@ def test_discover_metadata_compliance_footer_and_real_projects(tmp_path: Path) -
     assert "【AIGC" in meta_tmp["description"]
 
     mp_real = MatrixPublisher()
-    expected_tids = {"007": 25, "005": 231, "008": 231, "004": 231, "002": 231}
+    expected_tids = {
+        "007": 25,
+        "005": 231,
+        "008": 231,
+        "004": 231,
+        "002": 231,
+        "003": 231,
+        "009": 231,
+    }
     for pid, exp_tid in expected_tids.items():
         pdir = mp_real.resolve_project_dir(pid)
         meta = mp_real.discover_metadata(pdir)
@@ -635,3 +643,73 @@ def test_upload_video_upos_ssl_error_falls_back_to_next_cdn(tmp_path: Path) -> N
     assert upos_info["biz_id"] == 333444
     assert mock_session.get.call_count == 2
     assert mock_session.put.call_count == 1
+
+
+def test_sync_live_pinned_comments(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    proj_already = tmp_path / "010_already_pinned"
+    (proj_already / "delivery" / "staged_bilibili").mkdir(parents=True)
+    (proj_already / "delivery" / "bilibili.md").write_text(
+        "* **主选分区**：科技 -> 人工智能\n"
+        "* **视频标题**：已置顶测试标题\n"
+        "* **简介**：含【借物表】与【AIGC】声明\n"
+        "* **置顶评论**：“报告各位赛博股东，第10期置顶测试评论内容”\n",
+        encoding="utf-8",
+    )
+    (proj_already / "delivery" / "staged_bilibili" / "publish_manifest.json").write_text(
+        json.dumps({"advisor_receipt": {"bvid": "BV1AlreadyOk"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    proj_needs = tmp_path / "011_needs_pin"
+    (proj_needs / "delivery" / "staged_bilibili").mkdir(parents=True)
+    (proj_needs / "delivery" / "bilibili.md").write_text(
+        "* **主选分区**：科技 -> 人工智能\n"
+        "* **视频标题**：待置顶测试标题\n"
+        "* **简介**：含【借物表】与【AIGC】声明\n"
+        "* **置顶评论**：“报告各位赛博股东，第11期全新待置顶评论内容”\n",
+        encoding="utf-8",
+    )
+    (proj_needs / "delivery" / "staged_bilibili" / "publish_manifest.json").write_text(
+        json.dumps({"advisor_receipt": {"bvid": "BV1NeedsPin"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    vault = AuthVault(vault_dir=tmp_path / "vault")
+    vault.save_bilibili_session({"SESSDATA": "sess_sync", "bili_jct": "csrf_sync", "DedeUserID": "10000002"})
+
+    import core.analytics as analytics_mod
+
+    def fake_fetch_archives(self: Any, status: str = "pubed", ps: int = 30) -> Dict[str, Any]:
+        return {
+            "archives": [
+                {"aid": 10010, "bvid": "BV1AlreadyOk", "title": "已置顶测试标题", "state": 0, "state_desc": "开放浏览"},
+                {"aid": 10011, "bvid": "BV1NeedsPin", "title": "待置顶测试标题", "state": 0, "state_desc": "开放浏览"},
+            ]
+        }
+
+    def fake_fetch_comments(self: Any, aid: int, ps: int = 20) -> List[Dict[str, Any]]:
+        if aid == 10010:
+            return [{"rpid": 555, "message": "报告各位赛博股东，第10期置顶测试评论内容"}]
+        return [{"rpid": 556, "message": "普通路人评论"}]
+
+    pinned_calls: List[Dict[str, Any]] = []
+
+    def fake_post_and_pin(self: Any, aid: int, message: str) -> Dict[str, Any]:
+        pinned_calls.append({"aid": aid, "message": message})
+        return {"rpid": 777888, "added": True, "pinned": True}
+
+    monkeypatch.setattr(analytics_mod.BilibiliAnalytics, "fetch_creator_archives", fake_fetch_archives)
+    monkeypatch.setattr(analytics_mod.BilibiliAnalytics, "fetch_archive_comments", fake_fetch_comments)
+    monkeypatch.setattr(BilibiliUploader, "post_and_pin_comment", fake_post_and_pin)
+
+    mp = MatrixPublisher(projects_dir=tmp_path, vault=vault)
+    sync_results = mp.sync_live_pinned_comments()
+
+    by_proj = {item["project_id"]: item for item in sync_results}
+    assert by_proj["010_already_pinned"]["status"] == "already_pinned"
+    assert by_proj["011_needs_pin"]["status"] == "pinned_now"
+    assert by_proj["011_needs_pin"]["pinned"] is True
+    assert by_proj["011_needs_pin"]["rpid"] == 777888
+    assert len(pinned_calls) == 1
+    assert pinned_calls[0]["aid"] == 10011
+    assert "第11期全新待置顶评论内容" in pinned_calls[0]["message"]

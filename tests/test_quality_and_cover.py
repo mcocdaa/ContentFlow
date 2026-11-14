@@ -397,3 +397,20 @@ def test_cover_designer_002_preset_and_qc_contact_sheet_path(tmp_path: Path) -> 
     assert not (proj / "output" / "output").exists()
     if vid.stat().st_size > 8192:
         assert (proj / "output" / "diagnostic_contact_sheet.jpg").exists()
+
+
+def test_cover_designer_008_003_009_presets(tmp_path: Path) -> None:
+    """Verifies 008, 003, and 009 viral cover presets produce crisp 16:9 (1920x1080) and 4:3 (1440x1080) covers."""
+    designer = CoverDesigner()
+    for pid, out_name in [
+        ("008_ai_agent_day2_takeover_diary", "008_cover.jpg"),
+        ("003_ai_managing_ai", "003_cover.jpg"),
+        ("009_rem_aeflow_gui_agent", "009_cover.jpg"),
+    ]:
+        res = designer.design_project_cover(CONTENTFLOW_ROOT / "projects" / pid, output_path=tmp_path / out_name)
+        assert res.output_path.exists()
+        assert res.output_4x3_path is not None and res.output_4x3_path.exists()
+        with Image.open(res.output_path) as im16:
+            assert im16.size == (1920, 1080)
+        with Image.open(res.output_4x3_path) as im43:
+            assert im43.size == (1440, 1080)

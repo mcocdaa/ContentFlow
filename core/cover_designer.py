@@ -561,6 +561,9 @@ class CoverDesigner:
             assets_dir / "scene_cover.jpg",
             assets_dir / "scene6_success_thumbsup.jpg",
             assets_dir / "scene2_base_url.jpg",
+            assets_dir / "2b_teaching_base_url.jpg",
+            assets_dir / "dafeiyu_master_stage_9x16.jpg",
+            assets_dir / "rem_base_cover.jpg",
             assets_dir / "yowane_v3_scene5.jpg",
             assets_dir / "yowane_v3_scene3.jpg",
             assets_dir / "noshiro_reference.jpg",
@@ -597,10 +600,16 @@ class CoverDesigner:
             else:
                 target_cover = delivery_dir / f"{pdir.name}_cover.jpg"
 
-        # Project-specific viral defaults
+        # Project-specific viral defaults (check 008 before dafeiyu; 003/009 explicitly)
         repair_wb = False
         hero_crop: Optional[Tuple[float, float, float]] = None
-        if "007" in pid or "dafeiyu" in pid:
+        if "008" in pid or "diary" in pid or "takeover" in pid:
+            h1 = hook_line1 or "把账号交给AI第5天"
+            h2 = hook_line2 or "连夜爬完百万爆款"
+            h3 = hook_line3 if hook_line3 is not None else "搭好全自动产线！"
+            badge = badge_text or "AI接管账号·第5期"
+            tags = bottom_tags or ["60FPS满帧", "赛博股东招募"]
+        elif "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"
             h3 = hook_line3 if hook_line3 is not None else "60帧纯享热舞！"
@@ -628,6 +637,20 @@ class CoverDesigner:
             badge = badge_text or "AI接管账号·第4期"
             tags = bottom_tags or ["60FPS满帧", "Docker全绿交付"]
             hero_crop = (0.11, 0.66, 0.180)
+        elif "003" in pid or "managing" in pid or "termflow" in pid:
+            h1 = hook_line1 or "怕AI幻觉删库跑路？"
+            h2 = hook_line2 or "2B手把手硬核拆解"
+            h3 = hook_line3 if hook_line3 is not None else "AI管AI四大护栏！"
+            badge = badge_text or "AI接管账号·第6期"
+            tags = bottom_tags or ["60FPS满帧", "MCP安全控制舱"]
+            hero_crop = (0.02, 0.76, 0.355)
+        elif "009" in pid or "rem" in pid or "aeflow" in pid:
+            h1 = hook_line1 or "AI怎么自己点鼠标？"
+            h2 = hook_line2 or "3D蕾姆60秒拆解"
+            h3 = hook_line3 if hook_line3 is not None else "跨桌面GUI智能体！"
+            badge = badge_text or "AI接管账号·第7期"
+            tags = bottom_tags or ["60FPS满帧", "独立视口不抢鼠标"]
+            hero_crop = (0.04, 0.76, 0.625)
         else:
             h1 = hook_line1 or "硬核AI技术实录"
             h2 = hook_line2 or pdir.name[:12]

@@ -1,0 +1,35 @@
+{
+  "project_id": "009_rem_aeflow_gui_agent",
+  "name": "3D手办蕾姆拆解跨桌面GUI智能体(AEFlow)",
+  "tagline": "AI怎么像人一样自己点鼠标操作电脑？60帧全息拆解独立视口GUI智能体架构",
+  "category": "计算机技术",
+  "description": "当桌面GUI智能体在电脑上代操作时，如何做到既能视觉看懂任何软件界面，又彻底不抢占人类用户的鼠标与键盘焦点？本期由3D手办蕾姆出镜，60秒拆解AgentEverywhereFlow (AEFlow) 独立虚拟视口、Screenshot→VLM→Atomic Action闭环与多端协同架构。",
+  "target_audience": [
+    "B站科技区观众",
+    "AI Agent 与自动化极客",
+    "二次元技术科普观众"
+  ],
+  "pain_points": [
+    "传统RPA脚本换个分辨率或按钮位置就彻底报错失效",
+    "普通桌面Agent运行时直接抢走人类用户的物理鼠标和焦点，根本没法并行工作"
+  ],
+  "solutions": [
+    "独立虚拟视口与硬件光标物理隔离，AI在专属沙盒桌面静默执行，人类零干扰",
+    "Screenshot→VLM定位→原子动作→状态回执，全闭环跨应用零API适配运行"
+  ],
+  "tech_stack": [
+    "AgentEverywhereFlow (AEFlow)",
+    "Python 3.12",
+    "Xvfb / Virtual Viewport",
+    "VLM UI Grounding",
+    "Kokoro-82M-v1.1-zh",
+    "PyTorch CUDA 60FPS"
+  ],
+  "call_to_action": "三连+关注锁定『赛博股东致谢榜』，评论区点菜下期手办主角与硬核专题！",
+  "deliverables": {
+    "final_video": "delivery/3D手办蕾姆拆解GUI智能体_final.mp4",
+    "cover_16x9": "delivery/3D手办蕾姆拆解GUI智能体_cover.jpg",
+    "cover_4x3": "delivery/3D手办蕾姆拆解GUI智能体_cover_4x3.jpg",
+    "subtitle_srt": "delivery/3D手办蕾姆拆解GUI智能体_subtitle.srt"
+  }
+}

@@ -676,6 +676,23 @@ def cmd_analytics(args):
     return 0
 
 
+def cmd_sync_pins(args):
+    """Automatically posts and pins pinned_comment on newly opened public Bilibili videos."""
+    from core.publisher import MatrixPublisher
+
+    pub = MatrixPublisher()
+    try:
+        items = pub.sync_live_pinned_comments()
+    except Exception as exc:
+        print(f"[-] sync-pins failed: {exc}")
+        return 1
+
+    print(f"[+] Checked public Bilibili archives ({len(items)} project match(es)):")
+    for item in items:
+        print(f"    • {item['project_id']} [{item['bvid']}]: {item['status']} (aid={item['aid']})")
+    return 0
+
+
 def cmd_quality_check(args):
     """Runs the 100-point objective VideoQualityGate on a project."""
     from core.quality_gate import VideoQualityGate
@@ -917,6 +934,12 @@ def main():
     p_ana.add_argument("--radar", action="store_true", help="Include real-time Bilibili partition trending radar")
     p_ana.add_argument("--no-save", action="store_true", help="Do not write snapshot files to library/analytics/")
     p_ana.set_defaults(func=cmd_analytics)
+
+    # sync-pins
+    p_pins = subparsers.add_parser(
+        "sync-pins", help="Post and pin saved shareholder comments on newly opened Bilibili videos"
+    )
+    p_pins.set_defaults(func=cmd_sync_pins)
 
     # quality-check
     p_qc = subparsers.add_parser("quality-check", help="Run 100-point objective VideoQualityGate on a project")
