@@ -991,7 +991,7 @@ def render_decoupled_60fps_episode(
                     credits_pill_bgra=credits_pill_bgra,
                     show_credits_pill=(sc_idx == n_scenes),
                 )
-                proc.stdin.write(memoryview(comp_bgr))
+                proc.stdin.write(comp_bgr.data)
 
         active_state = None
         del xx, yy, px_grid, py_grid, upper_guard
