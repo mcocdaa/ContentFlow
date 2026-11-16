@@ -1,0 +1,31 @@
+{
+  "project_id": "012_dafeiyu_dazhanhongtu_villa",
+  "name": "大肥鱼·水池里面银龙鱼？豪华别墅爆跳机械版《大展鸿图》",
+  "tagline": "前5秒岭南豪宅功夫茶桌霸气放话，5秒后泳池岸边爆跳机械震感舞！",
+  "category": "宅舞",
+  "creative_spec": {
+    "archetype": "cantonese_boss_tea_to_poolside_popping",
+    "setting": "广式豪宅功夫茶桌→夜景别墅发光泳池",
+    "meme_source": "大展鸿图（水池里面银龙鱼梗） × 机械震感舞"
+  },
+  "description": "精准狙击全网千万级热梗“水池里面银龙鱼？”双关名场面！前5秒墨镜唐装大肥鱼在岭南豪华别墅功夫茶桌前霸气喝茶摊牌，紧接零帧切入夜景发光锦鲤泳池岸边，跟随真《大展鸿图》原声鼓点狂飙1080P 60FPS机械震感舞+多机位怼脸切镜！",
+  "target_audience": [
+    "B站鬼畜热梗与舞蹈整活区观众",
+    "《大展鸿图》二创与机械舞爱好者",
+    "DeepSeek蓝色大肥鱼粉丝与赛博股东"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K)",
+    "Kling 4.0 I2V + Kling 3.0 Motion Control (1080p)",
+    "BilibiliBgmHunter (Real Viral Audio)",
+    "EpisodeAssembler (OpenCV DIS 60FPS + Beat Punch-In)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/大肥鱼爆改别墅大展鸿图机械舞_final.mp4",
+    "cover": "delivery/大肥鱼爆改别墅大展鸿图机械舞_cover.jpg",
+    "cover_16x9": "delivery/大肥鱼爆改别墅大展鸿图机械舞_cover.jpg",
+    "cover_4x3": "delivery/大肥鱼爆改别墅大展鸿图机械舞_cover_4x3.jpg",
+    "subtitle_srt": "delivery/大肥鱼爆改别墅大展鸿图机械舞_subtitle.srt"
+  }
+}

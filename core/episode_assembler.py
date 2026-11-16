@@ -11,6 +11,7 @@ Codifies shared video engineering across episodes:
 
 from __future__ import annotations
 
+import gc
 import json
 import math
 import subprocess
@@ -32,6 +33,7 @@ class ActSpec:
     punch_scale: float = 1.32
     focus_y_ratio: float = 0.34
     beats_per_shot: int = 4
+    punch_start_sec: float = 0.0
 
 
 @dataclass
@@ -46,6 +48,44 @@ class EpisodeSpec:
     width: int = 1920
     height: int = 1080
     loudnorm_target_i: float = -14.0
+
+
+def _crop_frame_to_target(frm: np.ndarray, target_w: int = 1920, target_h: int = 1080) -> np.ndarray:
+    """Uniformly center-crops a single decoded frame to target_w x target_h (never stretches)."""
+    h, w = frm.shape[:2]
+    if w == target_w and h == target_h:
+        return frm
+    if w >= target_w and h >= target_h and (w - target_w) <= 32 and (h - target_h) <= 32:
+        # Kling 1920x1088 / slightly padded outputs: center-crop exact pixels
+        y0 = max(0, (h - target_h) // 2)
+        x0 = max(0, (w - target_w) // 2)
+        return frm[y0 : y0 + target_h, x0 : x0 + target_w]
+    scale = max(target_w / float(w), target_h / float(h))
+    rw, rh = int(round(w * scale)), int(round(h * scale))
+    resized = cv2.resize(frm, (rw, rh), interpolation=cv2.INTER_LANCZOS4)
+    y0 = max(0, (rh - target_h) // 2)
+    x0 = max(0, (rw - target_w) // 2)
+    return resized[y0 : y0 + target_h, x0 : x0 + target_w]
+
+
+def probe_video_frame_info(video_path: Union[str, Path]) -> Tuple[int, float]:
+    """Counts frames via decode-free cap.grab() and reads valid FPS with O(1) memory."""
+    vpath = Path(video_path)
+    cap = cv2.VideoCapture(str(vpath))
+    if not cap.isOpened():
+        raise RuntimeError(f"Unable to open video: {vpath}")
+    src_fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    if src_fps <= 1.0 or math.isnan(src_fps):
+        src_fps = 30.0
+    n_in = 0
+    try:
+        while cap.grab():
+            n_in += 1
+    finally:
+        cap.release()
+    if n_in <= 0:
+        raise RuntimeError(f"Video has 0 frames: {vpath}")
+    return n_in, src_fps
 
 
 def load_cropped_1080p_frames(
@@ -69,24 +109,51 @@ def load_cropped_1080p_frames(
             ok, frm = cap.read()
             if not ok:
                 break
-            h, w = frm.shape[:2]
-            if w != target_w or h != target_h:
-                if w >= target_w and h >= target_h and (w - target_w) <= 32 and (h - target_h) <= 32:
-                    # Kling 1920x1088 / slightly padded outputs: center-crop exact pixels
-                    y0 = max(0, (h - target_h) // 2)
-                    x0 = max(0, (w - target_w) // 2)
-                    frm = frm[y0 : y0 + target_h, x0 : x0 + target_w]
-                else:
-                    scale = max(target_w / float(w), target_h / float(h))
-                    rw, rh = int(round(w * scale)), int(round(h * scale))
-                    resized = cv2.resize(frm, (rw, rh), interpolation=cv2.INTER_LANCZOS4)
-                    y0 = max(0, (rh - target_h) // 2)
-                    x0 = max(0, (rw - target_w) // 2)
-                    frm = resized[y0 : y0 + target_h, x0 : x0 + target_w]
-            frames.append(frm)
+            frames.append(_crop_frame_to_target(frm, target_w=target_w, target_h=target_h))
     finally:
         cap.release()
     return frames, src_fps
+
+
+def _compute_bidirectional_dis_flow(
+    f0: np.ndarray,
+    f1: np.ndarray,
+    dis: cv2.DISOpticalFlow,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Computes upscaled symmetric forward/backward DIS optical flow fields."""
+    h, w = f0.shape[:2]
+    s0 = cv2.resize(cv2.cvtColor(f0, cv2.COLOR_BGR2GRAY), (max(8, w // 2), max(8, h // 2)))
+    s1 = cv2.resize(cv2.cvtColor(f1, cv2.COLOR_BGR2GRAY), (max(8, w // 2), max(8, h // 2)))
+    flow_f = cv2.resize(dis.calc(s0, s1, cast(Any, None)), (w, h), interpolation=cv2.INTER_LINEAR) * 2.0
+    flow_b = cv2.resize(dis.calc(s1, s0, cast(Any, None)), (w, h), interpolation=cv2.INTER_LINEAR) * 2.0
+    return flow_f, flow_b
+
+
+def _blend_optical_flow_pair(
+    f0: np.ndarray,
+    f1: np.ndarray,
+    flow_f: np.ndarray,
+    flow_b: np.ndarray,
+    gx: np.ndarray,
+    gy: np.ndarray,
+    alpha: float,
+) -> np.ndarray:
+    """Warps f0 forward and f1 backward using precomputed optical flow and alpha-blends."""
+    w0 = cv2.remap(
+        f0,
+        gx - alpha * flow_f[..., 0],
+        gy - alpha * flow_f[..., 1],
+        cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    w1 = cv2.remap(
+        f1,
+        gx - (1.0 - alpha) * flow_b[..., 0],
+        gy - (1.0 - alpha) * flow_b[..., 1],
+        cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    return cv2.addWeighted(w0, 1.0 - alpha, w1, alpha, 0)
 
 
 def iter_interpolated_60fps(
@@ -120,32 +187,77 @@ def iter_interpolated_60fps(
             continue
 
         if cached_idx != i0:
-            f0 = raw_frames[i0]
-            f1 = raw_frames[i0 + 1]
-            s0 = cv2.resize(cv2.cvtColor(f0, cv2.COLOR_BGR2GRAY), (max(8, w // 2), max(8, h // 2)))
-            s1 = cv2.resize(cv2.cvtColor(f1, cv2.COLOR_BGR2GRAY), (max(8, w // 2), max(8, h // 2)))
-            cached_flow_f = cv2.resize(dis.calc(s0, s1, cast(Any, None)), (w, h), interpolation=cv2.INTER_LINEAR) * 2.0
-            cached_flow_b = cv2.resize(dis.calc(s1, s0, cast(Any, None)), (w, h), interpolation=cv2.INTER_LINEAR) * 2.0
+            cached_flow_f, cached_flow_b = _compute_bidirectional_dis_flow(raw_frames[i0], raw_frames[i0 + 1], dis)
             cached_idx = i0
 
         assert cached_flow_f is not None and cached_flow_b is not None
-        f0 = raw_frames[i0]
-        f1 = raw_frames[i0 + 1]
-        w0 = cv2.remap(
-            f0,
-            gx - alpha * cached_flow_f[..., 0],
-            gy - alpha * cached_flow_f[..., 1],
-            cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REPLICATE,
-        )
-        w1 = cv2.remap(
-            f1,
-            gx - (1.0 - alpha) * cached_flow_b[..., 0],
-            gy - (1.0 - alpha) * cached_flow_b[..., 1],
-            cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REPLICATE,
-        )
-        yield cv2.addWeighted(w0, 1.0 - alpha, w1, alpha, 0)
+        yield _blend_optical_flow_pair(raw_frames[i0], raw_frames[i0 + 1], cached_flow_f, cached_flow_b, gx, gy, alpha)
+
+
+def stream_interpolated_60fps(
+    video_path: Union[str, Path],
+    n_in: int,
+    src_fps: float,
+    dis: cv2.DISOpticalFlow,
+    target_fps: float = 60.0,
+    target_w: int = 1920,
+    target_h: int = 1080,
+) -> Iterator[np.ndarray]:
+    """Streams src_fps -> target_fps frames using an O(1) 2-frame sliding window (<45 MiB RAM)."""
+    if n_in <= 0:
+        return
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Unable to open video for streaming: {video_path}")
+
+    try:
+        ok0, raw0 = cap.read()
+        if not ok0:
+            return
+        f0 = _crop_frame_to_target(raw0, target_w=target_w, target_h=target_h)
+        if n_in == 1:
+            yield f0
+            return
+
+        ok1, raw1 = cap.read()
+        f1: Optional[np.ndarray] = _crop_frame_to_target(raw1, target_w=target_w, target_h=target_h) if ok1 else None
+        if f1 is None:
+            yield f0
+            return
+
+        out_count = int(round((n_in - 1) * (target_fps / src_fps))) + 1
+        gx, gy = np.meshgrid(np.arange(target_w, dtype=np.float32), np.arange(target_h, dtype=np.float32))
+        cur_i0 = 0
+        cached_idx = -1
+        cached_flow_f: Optional[np.ndarray] = None
+        cached_flow_b: Optional[np.ndarray] = None
+
+        for k in range(out_count):
+            pos = k * (src_fps / target_fps)
+            i0 = min(int(math.floor(pos)), n_in - 1)
+            alpha = pos - i0
+
+            while cur_i0 < i0:
+                if f1 is None:
+                    break
+                f0 = f1
+                cur_i0 += 1
+                ok_next, raw_next = cap.read()
+                f1 = _crop_frame_to_target(raw_next, target_w=target_w, target_h=target_h) if ok_next else None
+
+            if alpha < 1e-3 or i0 >= n_in - 1 or f1 is None:
+                yield f0
+                continue
+
+            if cached_idx != i0:
+                cached_flow_f, cached_flow_b = _compute_bidirectional_dis_flow(f0, f1, dis)
+                cached_idx = i0
+
+            assert cached_flow_f is not None and cached_flow_b is not None
+            yield _blend_optical_flow_pair(f0, f1, cached_flow_f, cached_flow_b, gx, gy, alpha)
+    finally:
+        cap.release()
 
 
 def apply_beat_camera_framing(
@@ -155,9 +267,10 @@ def apply_beat_camera_framing(
     punch_scale: float = 1.32,
     focus_y_ratio: float = 0.34,
     beats_per_shot: int = 4,
+    punch_start_sec: float = 0.0,
 ) -> np.ndarray:
     """Alternates wide choreography shots (1.0x) with beat-synced medium close-ups (punch_scale)."""
-    if bpm <= 0 or punch_scale <= 1.01:
+    if bpm <= 0 or punch_scale <= 1.01 or t_act_sec < punch_start_sec:
         return frame
     beat_sec = 60.0 / float(bpm)
     shot_dur = beat_sec * max(1, int(beats_per_shot))
@@ -207,6 +320,7 @@ class EpisodeAssembler:
                 punch_scale=float(a.get("punch_scale") or 1.32),
                 focus_y_ratio=float(a.get("focus_y_ratio") or 0.34),
                 beats_per_shot=int(a.get("beats_per_shot") or 4),
+                punch_start_sec=float(a.get("punch_start_sec") or 0.0),
             )
             for a in data["acts"]
         ]
@@ -232,21 +346,17 @@ class EpisodeAssembler:
 
     @classmethod
     def assemble(cls, spec: EpisodeSpec) -> Dict[str, Any]:
-        """Executes optical-flow 60FPS interpolation, beat-synced camera framing, and FFmpeg encode."""
+        """Executes O(1)-memory optical-flow 60FPS interpolation, beat framing, and FFmpeg encode."""
         if not spec.acts:
             raise ValueError("EpisodeSpec.acts must not be empty")
         if not spec.audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {spec.audio_path}")
 
-        loaded_acts: List[Tuple[ActSpec, List[np.ndarray], float, int]] = []
-        total_out_frames = 0
+        act_infos: List[Tuple[ActSpec, int, float, int]] = []
         for act in spec.acts:
-            frames, src_fps = load_cropped_1080p_frames(act.video_path, target_w=spec.width, target_h=spec.height)
-            if not frames:
-                raise RuntimeError(f"Video has 0 frames: {act.video_path}")
-            n_out = int(round((len(frames) - 1) * (spec.target_fps / src_fps))) + 1
-            loaded_acts.append((act, frames, src_fps, n_out))
-            total_out_frames += n_out
+            n_in, src_fps = probe_video_frame_info(act.video_path)
+            n_out = int(round((n_in - 1) * (spec.target_fps / src_fps))) + 1
+            act_infos.append((act, n_in, src_fps, n_out))
 
         spec.output_mp4_path.parent.mkdir(parents=True, exist_ok=True)
         vf_parts: List[str] = []
@@ -336,34 +446,56 @@ class EpisodeAssembler:
 
         out_idx = 0
         act_boundaries: List[float] = []
-        for act_idx, (act, frames, src_fps, n_out) in enumerate(loaded_acts):
-            act_boundaries.append(round(out_idx / spec.target_fps, 3))
-            next_trans = loaded_acts[act_idx + 1][0].transition_in if act_idx + 1 < len(loaded_acts) else "none"
-            for local_i, frm in enumerate(iter_interpolated_60fps(frames, src_fps, dis, target_fps=spec.target_fps)):
-                cur = frm
-                if act.beat_punch_bpm is not None:
-                    cur = apply_beat_camera_framing(
-                        cur,
-                        t_act_sec=local_i / spec.target_fps,
-                        bpm=act.beat_punch_bpm,
-                        punch_scale=act.punch_scale,
-                        focus_y_ratio=act.focus_y_ratio,
-                        beats_per_shot=act.beats_per_shot,
-                    )
-                if next_trans != "none":
-                    dist_end = (n_out - 1) - local_i
-                    if dist_end < 4:
-                        cur = apply_transition_flash(cur, next_trans, 0.62 * (1.0 - dist_end / 4.0))
-                if act.transition_in != "none" and local_i < 5:
-                    cur = apply_transition_flash(cur, act.transition_in, 0.62 * (1.0 - local_i / 5.0))
-                proc.stdin.write(cur.tobytes())
-                out_idx += 1
+        try:
+            for act_idx, (act, n_in, src_fps, n_out) in enumerate(act_infos):
+                act_boundaries.append(round(out_idx / spec.target_fps, 3))
+                next_trans = act_infos[act_idx + 1][0].transition_in if act_idx + 1 < len(act_infos) else "none"
+                frame_stream = stream_interpolated_60fps(
+                    act.video_path,
+                    n_in=n_in,
+                    src_fps=src_fps,
+                    dis=dis,
+                    target_fps=spec.target_fps,
+                    target_w=spec.width,
+                    target_h=spec.height,
+                )
+                for local_i, frm in enumerate(frame_stream):
+                    cur = frm
+                    if act.beat_punch_bpm is not None:
+                        cur = apply_beat_camera_framing(
+                            cur,
+                            t_act_sec=local_i / spec.target_fps,
+                            bpm=act.beat_punch_bpm,
+                            punch_scale=act.punch_scale,
+                            focus_y_ratio=act.focus_y_ratio,
+                            beats_per_shot=act.beats_per_shot,
+                            punch_start_sec=act.punch_start_sec,
+                        )
+                    if next_trans != "none":
+                        dist_end = (n_out - 1) - local_i
+                        if dist_end < 4:
+                            cur = apply_transition_flash(cur, next_trans, 0.62 * (1.0 - dist_end / 4.0))
+                    if act.transition_in != "none" and local_i < 5:
+                        cur = apply_transition_flash(cur, act.transition_in, 0.62 * (1.0 - local_i / 5.0))
+                    proc.stdin.write(cur.tobytes())
+                    out_idx += 1
 
-        proc.stdin.close()
-        proc.stdin = None
-        _, err = proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError(f"FFmpeg encode failed: {err.decode(errors='ignore')[-500:]}")
+            proc.stdin.close()
+            proc.stdin = None
+            _, err = proc.communicate()
+            if proc.returncode != 0:
+                raise RuntimeError(f"FFmpeg encode failed: {err.decode(errors='ignore')[-500:]}")
+        finally:
+            if proc.stdin is not None:
+                try:
+                    proc.stdin.close()
+                except Exception:
+                    pass
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            del dis
+            gc.collect()
 
         return {
             "output_mp4": str(spec.output_mp4_path),

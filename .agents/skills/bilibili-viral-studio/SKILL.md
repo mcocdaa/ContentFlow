@@ -26,25 +26,32 @@ description: >-
 
 ### C. 礼仪与合规红线（一票否决 / 扣分项）
 7. **严禁群发 `@股东`**：简介与置顶评论中严禁使用 `@用户名` 群发打扰观众（由 `QualityGate._eval_compliance` 自动检查扣分）；兑现评论区点单仅可在原评论下礼貌单点回复一次。
-8. **完整借物表与 GB 45438-2025 声明**：简介中以纯文本形式完整致谢角色一创/二设、动作参考 UP 主（含 BVID）、自合成音频/开源 TTS 与开源字体，并显式标注 `GB 45438-2025` AIGC 生成合成声明；严禁商用闭源字体与未经授权的声优声音克隆或版权商业曲库。
+8. **完整借物表、真实伴奏致谢与 GB 45438-2025 声明**：简介中以纯文本形式完整致谢角色一创/二设、动作与 BGM 伴奏参考 UP 主（含 BVID）、开源 TTS 与开源字体，并显式标注 `GB 45438-2025` AIGC 生成合成声明；优先通过 `core/bgm_hunter.py`（`cli.py fetch-bgm`）提取 `48kHz` 立体声热门伴奏/二创混音，严禁再用单薄纯正弦波蜂鸣充当热舞主音轨，严禁商用闭源字体或未授权声优克隆。
 
 ---
 
 ## 二、 核心自动化命令（共性工程一律走 CLI）
 
 ```bash
+# 0. 检索并提取 48kHz 立体声B站热门伴奏 / 二创混音片段（输出自动附带借物表致谢行）
+./.venv/bin/python cli.py fetch-bgm --query "大展鸿图 机械舞" --limit 8
+./.venv/bin/python cli.py fetch-bgm --bvid BV1veMtzGEHf --start 0.0 --duration 14.8 --output track.wav
+
 # 1. 拉取实时榜单并与本地成片/封面做客观对标（检查封面暗部与切镜节奏差距）
-./.venv/bin/python cli.py benchmark --project 010 --online
+./.venv/bin/python cli.py benchmark --project 012 --online
 
 # 2. 渲染高明度 vivid_scene 封面（auto 对舞蹈/整活自动选 vivid_scene，科普选 tech_split）
-./.venv/bin/python cli.py design-cover --project 010 --style auto
+./.venv/bin/python cli.py design-cover --project 012 --style auto
 
-# 3. 运行统一 60FPS 光流补帧 + 鼓点切镜 + -14 LUFS 成片装配器
+# 3. 运行 O(1) 流式 60FPS 光流补帧 + 鼓点切镜 + -14 LUFS 成片装配器
 ./.venv/bin/python cli.py assemble-episode --spec projects/012_demo/episode_spec.json
 
-# 4. 运行 100 分制质量门禁（含技术、音频、视觉、封面与礼仪防重检查）
-./.venv/bin/python cli.py quality-check --project 010 --threshold 90
+# 4. 运行 100 分制质量门禁（含技术、音频、视觉、封面与礼仪防重检查，自动释放 pyiqa 显存/内存）
+./.venv/bin/python cli.py quality-check --project 012 --threshold 90
 ```
+
+> [!IMPORTANT]
+> **旗舰生成模型与低内存纪律**：可灵文生图/图生图锚点一律用 `kling-image-v3_0_omni`（2k+），图生/文生视频一律用 `kling-video-v4_0`（1080p）或 `kling-video-v3_0_omni`，`motion_control` 用 `kling-video-v3_0`（1080p）；严禁降级用 `v2_6`/`v3_0_turbo`/`v4_0_flash`/`720p`。严禁并发重进程，执行前检查 `free -m`。
 
 > [!NOTE]
 > 发布前、热更新封面后或写入 `bilibili_latest.json` 时，严禁在终端日志或仓库文件中明文输出账户真实 `uid`、`uname` 或登录 Cookie。

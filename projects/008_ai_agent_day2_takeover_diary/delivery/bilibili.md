@@ -19,12 +19,11 @@
 
   📋 【借物表 (Credits) 与开源致谢】
   - DeepSeek 蓝色大肥鱼原型与二设：一创「上善无形」溟月 (CC BY-NC-SA 4.0) / 女仆装二设「ZipZipPipe」(CC BY-NC-SA 4.0)
-  - 舞蹈动作参考：B站 UP主「小巫酱w」宅舞作品 `"feat.你"🌸テレパシ(DECO*27)`（BV1mYZaYXEha，仅作姿态迁移参考）
-  - 音乐配乐：自合成 140BPM Chiptune Future-Bass 舞曲编曲（`-14 LUFS`）
-  - 开源字体与管线：`Noto Sans CJK SC (SIL OFL 1.1)` × 可灵 AI (Kling 3.0 Omni & Motion Control) × `OpenCV DIS 60FPS`
+  - 音乐与舞蹈动作参考：DECO*27《テレパシ (Telepathy)》— 动作与音轨片段参考 B站 UP主「小巫酱w」作品《"feat.你"🌸テレパシ(DECO*27)》（BV1mYZaYXEha）
+  - 开源字体与管线：`Noto Sans CJK SC (SIL OFL 1.1)` × 可灵 AI (Kling 3.0 Omni & Motion Control) × `OpenCV DIS 60FPS + Beat Punch-In`
 
   ⚠️ 【AIGC 生成合成内容合规声明】
-  依据国家标准 GB 45438-2025《网络安全技术 人工智能生成合成内容标识方法》，特此声明：本视频画面、动作迁移、自合成电子舞曲与监控包装效果均包含人工智能生成合成内容，严格遵循非商业开源协议，仅用于二次元技术探索与同好娱乐交流。
+  依据国家标准 GB 45438-2025《网络安全技术 人工智能生成合成内容标识方法》，特此声明：本视频角色画面、动作迁移、监控伪装包装与多景别鼓点切镜均包含人工智能生成合成内容，严格遵循非商业开源协议，仅用于二次元技术探索与同好娱乐交流。
 * **标签 (Tags)**：
   B站AI创造公开赛, DeepSeek, 蓝色大肥鱼, 鲸鱼娘, 宅舞, AI跳舞, 监控抓拍, 整活, 60帧, 可灵AI
 

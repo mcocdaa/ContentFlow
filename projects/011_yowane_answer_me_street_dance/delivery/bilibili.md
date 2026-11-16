@@ -17,13 +17,14 @@
 
   📋 【借物表 (Credits) 与开源致谢】
   - 角色原型：弱音ハク (Yowane Haku) — 原案设计 CAFFEIN / Crypton Future Media, INC.（严格遵循 Piapro Character License PCL 与 CC BY-NC 3.0 非商业同人规范）
-  - 舞蹈动作参考：B站 UP主「兔熊乱忙」街头舞蹈作品《没有SHINee、没有太阳，就算阴天我也要跳出光芒！》（BV1n6ovYQEZX，仅作跨形象单人全身姿态迁移参考）
+  - 舞蹈与配乐参考：
+    1) 第一幕 Phonk 节奏片段：B站 UP主「折木Phonk质量检测员」作品（BV1cwvTzfEoj）
+    2) 第二幕街舞动作与舞曲参考：B站 UP主「兔熊乱忙」街头舞蹈作品《没有SHINee、没有太阳，就算阴天我也要跳出光芒！》（BV1n6ovYQEZX，仅作跨形象姿态迁移与伴奏参考）
   - 玩梗致敬：全网打工人热梗「回答我 Look in my eyes！」× 18:30 准点下班反转文化
-  - 音乐与人声：自合成 130BPM Drift-Phonk 牛铃与 808 鼓组原创街头舞曲（`-14 LUFS`）× `Kokoro-82M-v1.1-zh` 本地念白合成（无未授权商业音乐、无真人声优声音克隆）
-  - 开源字体与技术管线：`Noto Sans CJK SC (SIL OFL 1.1)` × 可灵 AI (Kling 3.0 Omni & 2.6 I2V & 3.0 Motion Control) × `OpenCV DIS Optical Flow 60FPS`
+  - 开源字体与技术管线：`Noto Sans CJK SC (SIL OFL 1.1)` × `Kokoro-82M-v1.1-zh` × 可灵 AI × `OpenCV DIS Optical Flow 60FPS + Beat Punch-In`
 
   ⚠️ 【AIGC 生成合成内容合规声明】
-  依据国家标准 GB 45438-2025《网络安全技术 人工智能生成合成内容标识方法》，特此声明：本视频角色画面、动作迁移、自合成街头舞曲及本地神经语音念白均包含人工智能生成合成内容，严格遵循非商业开源协议，仅用于二次元整活创作与技术交流。
+  依据国家标准 GB 45438-2025《网络安全技术 人工智能生成合成内容标识方法》，特此声明：本视频角色画面、动作迁移、第一幕神经语音念白及多景别鼓点切镜均包含人工智能生成合成内容，严格遵循非商业开源协议，仅用于二次元整活创作与技术交流。
 * **标签 (Tags)**：
   B站AI创造公开赛, 弱音, 弱音Haku, 回答我, LookInMyEyes, 打工人下班, 街舞, 宅舞, 60帧, 可灵AI
 

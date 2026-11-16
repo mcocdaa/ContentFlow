@@ -890,6 +890,32 @@ def cmd_assemble_episode(args):
     return 0
 
 
+def cmd_fetch_bgm(args):
+    """Searches Bilibili viral BGM candidates or extracts a 48kHz stereo WAV accompaniment clip."""
+    from core.bgm_hunter import BilibiliBgmHunter
+
+    hunter = BilibiliBgmHunter()
+    if getattr(args, "query", None):
+        items = hunter.search_bgm(args.query, limit=int(getattr(args, "limit", 8)))
+        print(json.dumps(items, ensure_ascii=False, indent=2))
+        return 0
+
+    src = getattr(args, "bvid", None) or getattr(args, "source", None)
+    if not src:
+        print("[-] Provide either --query <keyword> or --bvid/--source <bvid|path>")
+        return 1
+    out = Path(getattr(args, "output", None) or "extracted_bgm.wav")
+    dur = float(args.duration) if getattr(args, "duration", None) is not None else None
+    info = hunter.extract_audio_clip(
+        source=src,
+        output_wav=out,
+        start_sec=float(getattr(args, "start", 0.0)),
+        duration_sec=dur,
+    )
+    print(json.dumps(info, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="ContentFlow: Universal Multi-Modal Content & Video Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1118,6 +1144,17 @@ def main():
     p_ae = subparsers.add_parser("assemble-episode", help="Assemble a multi-act 60FPS MP4 from an EpisodeSpec JSON")
     p_ae.add_argument("--spec", required=True, help="Path to EpisodeSpec JSON file")
     p_ae.set_defaults(func=cmd_assemble_episode)
+
+    # fetch-bgm
+    p_bgm = subparsers.add_parser("fetch-bgm", help="Search viral BGM tracks or extract 48kHz stereo WAV slices")
+    p_bgm.add_argument("--query", default=None, help="WBI search keyword on Bilibili")
+    p_bgm.add_argument("--limit", type=int, default=8, help="Max search results (default: 8)")
+    p_bgm.add_argument("--bvid", default=None, help="Bilibili BVID to extract audio from")
+    p_bgm.add_argument("--source", default=None, help="Local media path to extract audio from")
+    p_bgm.add_argument("--start", type=float, default=0.0, help="Start offset in seconds")
+    p_bgm.add_argument("--duration", type=float, default=None, help="Duration in seconds")
+    p_bgm.add_argument("--output", default=None, help="Output 48kHz stereo WAV path")
+    p_bgm.set_defaults(func=cmd_fetch_bgm)
 
     args = parser.parse_args()
     return args.func(args)

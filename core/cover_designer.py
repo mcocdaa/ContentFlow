@@ -880,6 +880,22 @@ class CoverDesigner:
             cut_011 = pdir / "output" / "cutouts" / "yowane_office_rage_cutout.png"
             transparent_hero = cut_011 if cut_011.exists() else None
             hero_top_ratio = 0.90
+        elif "012" in pid or "hongtu" in pid or "villa" in pid:
+            h1 = hook_line1 or "水池里面银龙鱼？"
+            h2 = hook_line2 or "看清楚是大肥鱼！"
+            h3 = hook_line3 if hook_line3 is not None else "别墅爆跳大展鸿图"
+            badge = badge_text or "千万热歌整活"
+            tags = bottom_tags or ["原声大展鸿图", "60FPS机械舞"]
+            pool_bg = assets_dir / "dafeiyu_act2_villa_pool_16x9.jpg"
+            tea_bg = assets_dir / "dafeiyu_act1_villa_tea_16x9.jpg"
+            if pool_bg.exists():
+                base_img = pool_bg
+            elif tea_bg.exists():
+                base_img = tea_bg
+            hero_crop = (0.04, 0.78, 0.52)
+            cut_012 = pdir / "output" / "cutouts" / "dafeiyu_villa_boss_cutout.png"
+            transparent_hero = cut_012 if cut_012.exists() else None
+            hero_top_ratio = 0.90
         elif "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"
@@ -973,7 +989,10 @@ class CoverDesigner:
 
         resolved_style = cover_style
         if resolved_style is None:
-            is_ent_id = any(k in pid for k in ("008", "010", "011", "sifeng", "yuai", "answer_me", "street_dance"))
+            is_ent_id = any(
+                k in pid
+                for k in ("008", "010", "011", "012", "sifeng", "yuai", "answer_me", "street_dance", "hongtu", "villa")
+            )
             brief_cat = ""
             brief_file = pdir / "brief.json"
             if brief_file.exists():

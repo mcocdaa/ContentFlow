@@ -34,10 +34,11 @@ description: >-
 * 检索可灵参考舞步时，必须生成 `1fps` 抽帧联系表并经 `read_file` 确认：单人全身入镜、无镜头跳切、无行人遮挡，且转 16:9 参考时必须等比填充（`force_original_aspect_ratio=decrease`）防止拉伸。
 
 ### 第 4 步：共性自动化装配与视觉质检
-* 通过可灵 AI 生成 16:9 2K 关键帧锚点与 1080P 动态视频（**严禁并行重负载，调用前检查 `free -m`**；提示词纯视觉描述，不带商业 IP 名）。
-* **多景别 60FPS 装配**：配置 `episode_spec.json` 并调用 `./.venv/bin/python cli.py assemble-episode --spec ...`，为中长段落启用 `beat_punch_bpm` 鼓点近景切镜。
+* **旗舰模型与纯视觉提示词**：通过可灵 AI 旗舰模型生成素材（锚点 `kling-image-v3_0_omni` 2k、I2V/T2V `kling-video-v4_0` 1080p、`motion_control` `kling-video-v3_0` 1080p；**严禁降级使用 `v2_6`/`v3_0_turbo`/`v4_0_flash`/`720p`**；提示词纯视觉描述，不带商业 IP 名；调用前检查 `free -m`，严禁并发重负载）。
+* **真爆款伴奏提取与混音**：通过 `./.venv/bin/python cli.py fetch-bgm`（`core/bgm_hunter.py`）检索并提取 B 站热梗伴奏/二创高燃切片（`48kHz` 立体声 WAV + `concat_or_duck_segments` 侧链闪避混音），并在 `bilibili.md` 借物表中完整致谢 BGM 来源 BVID，告别正弦波蜂鸣。
+* **O(1) 低内存多景别 60FPS 装配**：配置 `episode_spec.json` 并调用 `./.venv/bin/python cli.py assemble-episode --spec ...`（流式两帧滑窗 `< 45 MiB` 内存），为中长段落启用 `beat_punch_bpm` 鼓点近景切镜。
 * **高明度封面生成**：运行 `./.venv/bin/python cli.py design-cover --project <new_id> --style vivid_scene`。
-* **双保险验收**：先跑 `./.venv/bin/python cli.py quality-check --project <new_id> --threshold 90`（`0` Blocker 且 `>= 90` 分），再用 `read_file` 亲自审阅 `diagnostic_contact_sheet.jpg` 与 `*_cover.jpg` / `*_cover_4x3.jpg`。
+* **双保险验收**：先跑 `./.venv/bin/python cli.py quality-check --project <new_id> --threshold 90`（`0` Blocker 且 `>= 90` 分，自动释放 PyTorch 显存与内存），再用 `read_file` 亲自审阅 `diagnostic_contact_sheet.jpg` 与 `*_cover.jpg` / `*_cover_4x3.jpg`。
 
 ### 第 5 步：合规投递与下一轮数据回收
 * 确认 `bilibili.md` 中零 `@`、借物表与 `GB 45438-2025` 声明完整，然后执行 `cli.py publish`。

@@ -11,6 +11,7 @@ plus hard Blockers using ffprobe, ffmpeg, Pillow, and metadata compliance checks
 
 from __future__ import annotations
 
+import gc
 import json
 import re
 import shutil
@@ -1004,42 +1005,42 @@ class VideoQualityGate:
         c_path = Path(cover_path) if cover_path else auto_cover
 
         blockers: List[str] = []
-        probe_data = self._probe_media(v_path) if (v_path and v_path.exists()) else {}
-
-        d_tech = self._eval_technical(v_path, probe_data, blockers)
-        d_audio = self._eval_audio(v_path, probe_data, blockers)
-        d_visual = self._eval_visual_dynamics(v_path, probe_data, proj_dir=proj_dir)
-        d_cover = self._eval_cover_ctr(c_path, blockers)
-        d_comp = self._eval_compliance(proj_dir, blockers)
-
-        dims = [d_tech, d_audio, d_visual, d_cover, d_comp]
-        total_score = round(sum(d.score for d in dims), 1)
-        passed = (len(blockers) == 0) and (total_score >= self.pass_threshold)
-
-        if blockers:
-            grade = "F"
-            verdict = "BLOCKED"
-        elif total_score >= 90.0:
-            grade = "S"
-            verdict = "VIRAL_READY"
-        elif total_score >= self.pass_threshold:
-            grade = "A"
-            verdict = "PUBLISH_READY"
-        elif total_score >= 60.0:
-            grade = "B"
-            verdict = "NEEDS_POLISH"
-        else:
-            grade = "F"
-            verdict = "REJECTED"
-
-        recommendations: List[str] = []
-        for b in blockers:
-            recommendations.append(f"[BLOCKER修复] {b}")
-        for d in dims:
-            for iss in d.issues:
-                recommendations.append(f"[{d.key}] {iss}")
-
         try:
+            probe_data = self._probe_media(v_path) if (v_path and v_path.exists()) else {}
+
+            d_tech = self._eval_technical(v_path, probe_data, blockers)
+            d_audio = self._eval_audio(v_path, probe_data, blockers)
+            d_visual = self._eval_visual_dynamics(v_path, probe_data, proj_dir=proj_dir)
+            d_cover = self._eval_cover_ctr(c_path, blockers)
+            d_comp = self._eval_compliance(proj_dir, blockers)
+
+            dims = [d_tech, d_audio, d_visual, d_cover, d_comp]
+            total_score = round(sum(d.score for d in dims), 1)
+            passed = (len(blockers) == 0) and (total_score >= self.pass_threshold)
+
+            if blockers:
+                grade = "F"
+                verdict = "BLOCKED"
+            elif total_score >= 90.0:
+                grade = "S"
+                verdict = "VIRAL_READY"
+            elif total_score >= self.pass_threshold:
+                grade = "A"
+                verdict = "PUBLISH_READY"
+            elif total_score >= 60.0:
+                grade = "B"
+                verdict = "NEEDS_POLISH"
+            else:
+                grade = "F"
+                verdict = "REJECTED"
+
+            recommendations: List[str] = []
+            for b in blockers:
+                recommendations.append(f"[BLOCKER修复] {b}")
+            for d in dims:
+                for iss in d.issues:
+                    recommendations.append(f"[{d.key}] {iss}")
+
             return QualityGateReport(
                 project_id=project_id,
                 project_dir=str(proj_dir),
@@ -1056,3 +1057,4 @@ class VideoQualityGate:
             )
         finally:
             release_pyiqa_models()
+            gc.collect()

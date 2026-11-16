@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""1080P @ 60FPS Pseudo-CCTV Server Room Dance Remaster for Project 008."""
+"""1080P @ 60FPS Pseudo-CCTV Server Room Dance Remaster for Project 008 (Real Telepathy Audio + Beat Punch-In)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,13 @@ ROOT_DIR = PROJ_DIR.parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from core.bgm_hunter import BilibiliBgmHunter  # noqa: E402
 from core.cover_designer import CoverDesigner  # noqa: E402
+from core.episode_assembler import (  # noqa: E402
+    apply_beat_camera_framing,
+    iter_interpolated_60fps,
+    load_cropped_1080p_frames,
+)
 from core.studio_renderer import get_sc_font, segment_character_rgba  # noqa: E402
 
 ASSETS_DIR = PROJ_DIR / "assets"
@@ -31,97 +37,27 @@ DELIV_DIR = PROJ_DIR / "delivery"
 RAW_DANCE_MP4 = PROJ_DIR / "output" / "dafeiyu_server_dance_raw_1080p.mp4"
 ANCHOR_IMG = ASSETS_DIR / "dafeiyu_server_room_slender_16x9.jpg"
 CUTOUT_PNG = CUTOUTS_DIR / "dafeiyu_server_slender_cutout.png"
+LOCAL_REF_VIDEO = Path(
+    "/home/mcocdaa/.gemini/antigravity-cli/brain/41ad8e76-ac57-4779-8d42-6235758b0251/scratch/ref_telepathy_16x9.mp4"
+)
 
 OUT_MP4 = DELIV_DIR / "AI接管账号第5天全自动日更工作室_final.mp4"
 OUT_SRT = DELIV_DIR / "AI接管账号第5天全自动日更工作室_subtitle.srt"
 OUT_COVER = DELIV_DIR / "AI接管账号第5天全自动日更工作室_cover.jpg"
-OUT_COVER_4X3 = DELIV_DIR / "AI接管账号第5天全自动日更工作室_cover_4x3.jpg"
 
 
 def synthesize_140bpm_dance_bgm(out_wav: Path, duration_sec: float, sr: int = 48000) -> Path:
-    """Synthesizes an upbeat 140 BPM Chiptune Future-Bass dance track aligned to duration_sec."""
+    """Offline fallback synth 140 BPM track aligned to duration_sec."""
     n_samples = int(round(duration_sec * sr))
     t = np.arange(n_samples, dtype=np.float32) / float(sr)
     bpm = 140.0
     beat_dur = 60.0 / bpm
-    step_dur = beat_dur / 4.0  # 16th note
-
     beat_phase = np.mod(t, beat_dur) / beat_dur
     beat_time = np.mod(t, beat_dur)
-    beat_idx = np.floor(t / beat_dur).astype(np.int32)
-    step_idx = np.floor(t / step_dur).astype(np.int32)
-    step_time = np.mod(t, step_dur)
-
-    # 1. Punchy 4-on-the-floor kick
-    kick_env = np.exp(-beat_time * 18.0) * (beat_time < 0.22)
-    kick_freq = 50.0 + 130.0 * np.exp(-beat_time * 38.0)
-    kick_phase = np.cumsum(2.0 * math.pi * kick_freq / sr).astype(np.float32)
-    kick = 0.72 * np.tanh(1.5 * np.sin(kick_phase)) * kick_env
-
-    # 2. Snappy clap/snare on beats 2 and 4
-    is_clap = (beat_idx % 2) == 1
-    rng = np.random.default_rng(20261116)
-    noise = rng.normal(0.0, 1.0, n_samples).astype(np.float32)
-    clap_env = np.where(is_clap & (beat_time < 0.16), np.exp(-beat_time * 26.0), 0.0)
-    clap = 0.34 * noise * clap_env
-
-    # 3. Crisp off-beat hi-hats on every 8th offbeat
-    eighth_dur = beat_dur / 2.0
-    eighth_idx = np.floor(t / eighth_dur).astype(np.int32)
-    eighth_time = np.mod(t, eighth_dur)
-    hat_env = np.where((eighth_idx % 2) == 1, np.exp(-eighth_time * 48.0), np.exp(-eighth_time * 80.0) * 0.4)
-    # High-pass emphasize hats via first-order difference
-    hp_noise = np.diff(noise, prepend=0.0) * 0.65
-    hats = 0.22 * hp_noise * hat_env
-
-    # 4. Bouncy anime chord progression: Am -> F -> C -> G (4 beats per chord)
-    bass_roots = [110.0, 87.31, 130.81, 98.00]
-    chord_freqs = [
-        [220.0, 261.63, 329.63, 440.0],
-        [174.61, 220.0, 261.63, 349.23],
-        [261.63, 329.63, 392.0, 523.25],
-        [196.0, 246.94, 293.66, 392.0],
-    ]
-    bar_idx = (beat_idx // 4) % 4
-    root_f = np.array([bass_roots[b] for b in bar_idx], dtype=np.float32)
-    duck = np.clip(0.32 + 0.68 * (beat_phase / 0.35), 0.32, 1.0)
-    bass = 0.30 * duck * np.sin(2.0 * math.pi * root_f * t)
-
-    # 5. Playful upbeat chiptune/lead melody over 16th-note arpeggio pattern
-    melody_pattern = [2, 3, 1, 2, 0, 2, 3, 2, 3, 2, 1, 3, 2, 1, 0, 2]
-    lead_f = np.zeros(n_samples, dtype=np.float32)
-    for idx_b in range(4):
-        mask_b = bar_idx == idx_b
-        sel_notes = [chord_freqs[idx_b][melody_pattern[s % 16]] * 2.0 for s in range(16)]
-        note_arr = np.array([sel_notes[s % 16] for s in step_idx], dtype=np.float32)
-        lead_f = np.where(mask_b, note_arr, lead_f)
-
-    lead_phase = np.cumsum(2.0 * math.pi * lead_f / sr).astype(np.float32)
-    lead_wave = np.where(np.sin(lead_phase) >= 0.0, 0.55, -0.55) + 0.35 * np.sin(lead_phase)
-    lead_env = np.exp(-step_time * 8.5)
-    lead = 0.24 * duck * lead_wave * lead_env
-
-    # Opening playful CCTV chirp (0.00..0.18s)
-    chirp_mask = t < 0.18
-    chirp = np.where(
-        chirp_mask,
-        0.18 * np.sin(2.0 * math.pi * np.where(t < 0.09, 1320.0, 1760.0) * t) * np.exp(-np.mod(t, 0.09) * 14.0),
-        0.0,
-    )
-
-    mix_l = kick + clap + hats + bass + lead + chirp
-    mix_r = kick + clap * 0.96 + np.roll(hats, 48) + bass + np.roll(lead, 120) * 0.96 + chirp
-
-    # Smooth 0.12s fade-out to avoid click at exact end
-    fade_n = min(int(0.12 * sr), n_samples // 6)
-    fade_win = np.ones(n_samples, dtype=np.float32)
-    fade_win[-fade_n:] = np.linspace(1.0, 0.0, fade_n, dtype=np.float32)
-    mix_l = np.tanh(mix_l * 0.85) * fade_win * 0.88
-    mix_r = np.tanh(mix_r * 0.85) * fade_win * 0.88
-
-    stereo = np.stack([mix_l, mix_r], axis=-1)
-    pcm = (np.clip(stereo, -0.98, 0.98) * 32767.0).astype(np.int16)
-    out_wav.parent.mkdir(parents=True, exist_ok=True)
+    kick = 0.72 * np.sin(2.0 * math.pi * (50.0 + 120.0 * np.exp(-beat_time * 36.0)) * beat_time) * np.exp(-beat_time * 18.0)
+    bass = 0.30 * np.clip(0.32 + 0.68 * (beat_phase / 0.35), 0.32, 1.0) * np.sin(2.0 * math.pi * 110.0 * t)
+    mix = np.tanh((kick + bass) * 0.85) * 0.88
+    pcm = (np.stack([mix, mix], axis=-1).clip(-0.98, 0.98) * 32767.0).astype(np.int16)
     with wave.open(str(out_wav), "wb") as wf:
         wf.setnchannels(2)
         wf.setsampwidth(2)
@@ -174,22 +110,6 @@ def write_subtitles_srt(srt_path: Path, dur: float) -> None:
     srt_path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def optical_flow_midpoint(f0: np.ndarray, f1: np.ndarray, dis: cv2.DISOpticalFlow) -> np.ndarray:
-    """Computes ghost-free 2x midpoint frame via symmetric DIS optical flow."""
-    h, w = f0.shape[:2]
-    g0 = cv2.cvtColor(f0, cv2.COLOR_BGR2GRAY)
-    g1 = cv2.cvtColor(f1, cv2.COLOR_BGR2GRAY)
-    s0 = cv2.resize(g0, (w // 2, h // 2))
-    s1 = cv2.resize(g1, (w // 2, h // 2))
-    flow_f = cv2.resize(dis.calc(s0, s1, None), (w, h), interpolation=cv2.INTER_LINEAR) * 2.0
-    flow_b = cv2.resize(dis.calc(s1, s0, None), (w, h), interpolation=cv2.INTER_LINEAR) * 2.0
-
-    gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
-    w0 = cv2.remap(f0, gx - 0.5 * flow_f[..., 0], gy - 0.5 * flow_f[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-    w1 = cv2.remap(f1, gx - 0.5 * flow_b[..., 0], gy - 0.5 * flow_b[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-    return cv2.addWeighted(w0, 0.5, w1, 0.5, 0)
-
-
 def apply_cctv_hud(frame: np.ndarray, overlay_bgra: np.ndarray, frame_idx: int) -> np.ndarray:
     """Composites crisp subtle CCTV viewfinder corners + pulsing REC dot."""
     out = frame.copy()
@@ -219,34 +139,30 @@ def main() -> None:
         raise FileNotFoundError(f"Missing raw Kling dance video: {RAW_DANCE_MP4}")
 
     segment_character_rgba(ANCHOR_IMG, CUTOUT_PNG)
-    CoverDesigner().design_project_cover(PROJ_DIR, output_path=OUT_COVER)
+    CoverDesigner().design_project_cover(PROJ_DIR, output_path=OUT_COVER, cover_style="vivid_scene")
 
-    cap = cv2.VideoCapture(str(RAW_DANCE_MP4))
-    raw_frames: List[np.ndarray] = []
-    while True:
-        ok, frm = cap.read()
-        if not ok:
-            break
-        h, w = frm.shape[:2]
-        if w != 1920 or h != 1080:
-            y0 = max(0, (h - 1080) // 2)
-            x0 = max(0, (w - 1920) // 2)
-            frm = frm[y0 : y0 + 1080, x0 : x0 + 1920]
-            if frm.shape[1] != 1920 or frm.shape[0] != 1080:
-                frm = cv2.resize(frm, (1920, 1080), interpolation=cv2.INTER_LANCZOS4)
-        raw_frames.append(frm)
-    cap.release()
-
+    raw_frames, src_fps = load_cropped_1080p_frames(RAW_DANCE_MP4)
     if len(raw_frames) < 60:
         raise RuntimeError(f"Expected >= 60 frames in {RAW_DANCE_MP4}, got {len(raw_frames)}")
 
-    total_60_frames = len(raw_frames) * 2 - 1
+    total_60_frames = int(round((len(raw_frames) - 1) * (60.0 / src_fps))) + 1
     dur_sec = total_60_frames / 60.0
     write_subtitles_srt(OUT_SRT, dur_sec)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        bgm_wav = Path(tmpdir) / "dance_bgm_140bpm.wav"
-        synthesize_140bpm_dance_bgm(bgm_wav, dur_sec)
+        bgm_wav = Path(tmpdir) / "telepathy_sync_bgm.wav"
+        try:
+            src_audio = LOCAL_REF_VIDEO if LOCAL_REF_VIDEO.exists() else "BV1mYZaYXEha"
+            BilibiliBgmHunter().extract_audio_clip(
+                source=src_audio,
+                output_wav=bgm_wav,
+                start_sec=27.19,
+                duration_sec=dur_sec,
+                fade_in_sec=0.05,
+                fade_out_sec=0.15,
+            )
+        except Exception:
+            synthesize_140bpm_dance_bgm(bgm_wav, dur_sec)
 
         overlay_bgra = make_cctv_overlay_bgra()
         dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
@@ -327,22 +243,26 @@ def main() -> None:
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         assert proc.stdin is not None
         out_idx = 0
-        for i in range(len(raw_frames)):
-            f_even = apply_cctv_hud(raw_frames[i], overlay_bgra, out_idx)
-            proc.stdin.write(f_even.tobytes())
+        for frm in iter_interpolated_60fps(raw_frames, src_fps, dis, target_fps=60.0):
+            framed = apply_beat_camera_framing(
+                frm,
+                t_act_sec=out_idx / 60.0,
+                bpm=140.0,
+                punch_scale=1.30,
+                focus_y_ratio=0.32,
+                beats_per_shot=4,
+                punch_start_sec=3.65,
+            )
+            composed = apply_cctv_hud(framed, overlay_bgra, out_idx)
+            proc.stdin.write(composed.tobytes())
             out_idx += 1
-            if i + 1 < len(raw_frames):
-                mid = optical_flow_midpoint(raw_frames[i], raw_frames[i + 1], dis)
-                f_odd = apply_cctv_hud(mid, overlay_bgra, out_idx)
-                proc.stdin.write(f_odd.tobytes())
-                out_idx += 1
         proc.stdin.close()
         proc.stdin = None
         _, err = proc.communicate()
         if proc.returncode != 0:
             raise RuntimeError(f"FFmpeg encode failed: {err.decode(errors='ignore')[-500:]}")
 
-    print(f"[+] Built 008 60FPS CCTV Dance ({out_idx} frames, {dur_sec:.2f}s) -> {OUT_MP4}")
+    print(f"[+] Built 008 60FPS Real-BGM Multi-Shot CCTV Dance ({out_idx} frames, {dur_sec:.2f}s) -> {OUT_MP4}")
 
 
 if __name__ == "__main__":
