@@ -1,0 +1,31 @@
+{
+  "project_id": "013_yowane_rooftop_lixicheng_march",
+  "name": "早八弱音·困成狗听到前奏被强行开机！樱花天台狂跳《李羲承进行曲》",
+  "tagline": "前5秒阳光天台早八困到打哈欠，咚咚咚前奏一响瞬间瞪眼被强行开机狂飙滑步进行曲！",
+  "category": "宅舞",
+  "creative_spec": {
+    "archetype": "sleepy_campus_rooftop_forced_boot_march",
+    "setting": "晴空樱花校园天台长椅→阳光蓝天青春天台舞台",
+    "meme_source": "早八困成狗被强行开机 × 李羲承进行曲魔性滑步舞"
+  },
+  "description": "紧跟全网千万播放现象级热梗“像不像早八被前奏强行开机的你？”×《李羲承进行曲》魔性咚咚咚滑步挑战！前5秒银发红瞳学姐弱音在晴空樱花校园天台握着冰美式困到打哈欠，鼓点一响瞳孔地震原地弹起，零帧切换元气学院风冲上阳光天台中央，全程1080P 60FPS多景别鼓点切镜丝滑狂跳《李羲承进行曲》！",
+  "target_audience": [
+    "B站宅舞与鬼畜热梗冲浪观众",
+    "早八大学生与打工人共鸣群体",
+    "弱音ハク(Yowane Haku)同人爱好者"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K)",
+    "Kling 4.0 I2V + Kling 3.0 Motion Control (1080p)",
+    "BilibiliBgmHunter (Real Viral Audio)",
+    "EpisodeAssembler (OpenCV DIS 60FPS + Beat Punch-In + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/早八弱音樱花天台李羲承进行曲_final.mp4",
+    "cover": "delivery/早八弱音樱花天台李羲承进行曲_cover.jpg",
+    "cover_16x9": "delivery/早八弱音樱花天台李羲承进行曲_cover.jpg",
+    "cover_4x3": "delivery/早八弱音樱花天台李羲承进行曲_cover_4x3.jpg",
+    "subtitle_srt": "delivery/早八弱音樱花天台李羲承进行曲_subtitle.srt"
+  }
+}

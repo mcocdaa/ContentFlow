@@ -20,9 +20,11 @@ from core.episode_assembler import (
     EpisodeAssembler,
     EpisodeSpec,
     apply_beat_camera_framing,
+    apply_hook_banner_overlay,
     iter_interpolated_60fps,
     load_cropped_1080p_frames,
     probe_video_frame_info,
+    render_hook_banner_rgba,
     stream_interpolated_60fps,
 )
 from core.quality_gate import VideoQualityGate
@@ -264,3 +266,114 @@ def test_bgm_hunter_local_extract_and_sidechain_duck_and_punch_start(tmp_path: P
     )
     assert not np.array_equal(at_punch, wide)
     assert (at_punch[..., 0] > 200).sum() > (wide[..., 0] > 200).sum()
+
+
+def test_episode_assembler_hook_banner_overlay(tmp_path: Path) -> None:
+    """Verifies EpisodeSpec/_parse_spec_dict hook fields, <1 MiB RGBA patch, and t < hook_banner_sec gating."""
+    default_spec = EpisodeSpec(
+        acts=[ActSpec(video_path=tmp_path / "act1.mp4")],
+        audio_path=tmp_path / "audio.wav",
+        output_mp4_path=tmp_path / "out.mp4",
+    )
+    assert default_spec.hook_banner_text is None
+    assert default_spec.hook_banner_sec == 1.6
+
+    parsed = EpisodeAssembler._parse_spec_dict(
+        {
+            "acts": [{"video_path": "act1.mp4"}],
+            "audio_path": "bgm.wav",
+            "output_mp4_path": "final.mp4",
+            "hook_banner_text": "  高能预警：下一秒全员开摇！  ",
+            "hook_banner_sec": 1.35,
+        },
+        base_dir=tmp_path,
+    )
+    assert parsed.hook_banner_text == "高能预警：下一秒全员开摇！"
+    assert parsed.hook_banner_sec == 1.35
+
+    parsed_blank = EpisodeAssembler._parse_spec_dict(
+        {
+            "acts": [{"video_path": "act1.mp4"}],
+            "audio_path": "bgm.wav",
+            "output_mp4_path": "final.mp4",
+            "hook_banner_text": "   ",
+            "hook_banner_sec": 0.0,
+        },
+        base_dir=tmp_path,
+    )
+    assert parsed_blank.hook_banner_text is None
+    assert parsed_blank.hook_banner_sec == 0.0
+
+    # Pre-rendered 1080p RGBA patch must stay compact (< 1 MiB) and leave inactive frames untouched
+    patch_1080 = render_hook_banner_rgba("⚡ 高能预警：深夜机房突然开摇！", frame_width=1920, frame_height=1080)
+    assert patch_1080 is not None
+    assert patch_1080.ndim == 3 and patch_1080.shape[2] == 4 and patch_1080.dtype == np.uint8
+    assert patch_1080.nbytes < 1024 * 1024
+
+    base_frame = np.full((1080, 1920, 3), (45, 70, 120), dtype=np.uint8)
+    base_snapshot = base_frame.copy()
+    f_pop = apply_hook_banner_overlay(base_frame, patch_1080, t_sec=0.0, hook_banner_sec=1.6)
+    f_steady = apply_hook_banner_overlay(base_frame, patch_1080, t_sec=0.25, hook_banner_sec=1.6)
+    f_inactive = apply_hook_banner_overlay(base_frame, patch_1080, t_sec=1.6, hook_banner_sec=1.6)
+
+    assert np.array_equal(base_frame, base_snapshot)
+    assert f_inactive is base_frame
+    assert not np.array_equal(f_pop[:180, 560:1360], base_frame[:180, 560:1360])
+    assert not np.array_equal(f_steady[:180, 560:1360], base_frame[:180, 560:1360])
+    assert not np.array_equal(f_pop[:180, 560:1360], f_steady[:180, 560:1360])
+    assert np.array_equal(f_steady[240:, :], base_frame[240:, :])
+
+    # End-to-end streaming assembly via JSON spec: active window (t < 0.35s) vs clean tail (t >= 0.40s)
+    act_vid = tmp_path / "hook_act_24fps.mp4"
+    _write_synthetic_video(act_vid, width=640, height=360, fps=24, n_frames=18)
+    aud_wav = tmp_path / "hook_track.wav"
+    _write_test_wav(aud_wav, dur_sec=0.85)
+    out_mp4 = tmp_path / "hook_assembled_60fps.mp4"
+    spec_json = tmp_path / "episode_spec.json"
+    spec_json.write_text(
+        json.dumps(
+            {
+                "acts": [{"video_path": act_vid.name}],
+                "audio_path": aud_wav.name,
+                "output_mp4_path": out_mp4.name,
+                "target_fps": 60.0,
+                "width": 640,
+                "height": 360,
+                "hook_banner_text": "高能预警：下一秒丝滑开摇！",
+                "hook_banner_sec": 0.35,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    res = EpisodeAssembler.assemble_from_json(spec_json)
+    assert out_mp4.exists()
+    assert res["frames"] >= 40
+
+    cap = cv2.VideoCapture(str(out_mp4))
+    assert cap.isOpened()
+    decoded_frames: list[np.ndarray] = []
+    try:
+        while True:
+            ok, frm = cap.read()
+            if not ok:
+                break
+            decoded_frames.append(frm)
+    finally:
+        cap.release()
+
+    assert len(decoded_frames) >= 36
+    for idx in range(1, 18):
+        frm = decoded_frames[idx]
+        ref_bg = frm[15:52, 10:60].astype(np.float32).mean(axis=(0, 1))
+        top_center_diff = float(np.abs(frm[15:52, 230:410].astype(np.float32) - ref_bg).mean())
+        assert top_center_diff > 18.0, f"Expected active hook banner at frame {idx}, got diff={top_center_diff:.2f}"
+
+    for idx in range(24, len(decoded_frames)):
+        frm = decoded_frames[idx]
+        ref_bg = frm[15:52, 10:60].astype(np.float32).mean(axis=(0, 1))
+        top_center_diff = float(np.abs(frm[15:52, 230:410].astype(np.float32) - ref_bg).mean())
+        assert top_center_diff < 5.0, (
+            f"Expected un-overlaid frame {idx} after hook_banner_sec, got diff={top_center_diff:.2f}"
+        )

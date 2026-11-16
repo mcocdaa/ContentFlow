@@ -896,6 +896,25 @@ class CoverDesigner:
             cut_012 = pdir / "output" / "cutouts" / "dafeiyu_villa_boss_cutout.png"
             transparent_hero = cut_012 if cut_012.exists() else None
             hero_top_ratio = 0.90
+        elif "013" in pid or "rooftop" in pid or "lixicheng" in pid:
+            h1 = hook_line1 or "早八困成狗？"
+            h2 = hook_line2 or "前奏一响强行开机"
+            h3 = hook_line3 if hook_line3 is not None else "弱音狂跳进行曲！"
+            badge = badge_text or "早八人真实写照"
+            tags = bottom_tags or ["李羲承进行曲", "60FPS天台热舞"]
+            rooftop_clean = assets_dir / "yowane_rooftop_clean_bg_16x9.jpg"
+            rooftop_stage = assets_dir / "yowane_act2_rooftop_stage_16x9.jpg"
+            rooftop_sleepy = assets_dir / "yowane_act1_rooftop_sleepy_16x9.jpg"
+            if rooftop_clean.exists():
+                base_img = rooftop_clean
+            elif rooftop_stage.exists():
+                base_img = rooftop_stage
+            elif rooftop_sleepy.exists():
+                base_img = rooftop_sleepy
+            hero_crop = (0.04, 0.78, 0.50)
+            cut_013 = pdir / "output" / "cutouts" / "yowane_rooftop_hero_cutout.png"
+            transparent_hero = cut_013 if cut_013.exists() else None
+            hero_top_ratio = 0.88
         elif "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"
@@ -991,7 +1010,21 @@ class CoverDesigner:
         if resolved_style is None:
             is_ent_id = any(
                 k in pid
-                for k in ("008", "010", "011", "012", "sifeng", "yuai", "answer_me", "street_dance", "hongtu", "villa")
+                for k in (
+                    "008",
+                    "010",
+                    "011",
+                    "012",
+                    "013",
+                    "sifeng",
+                    "yuai",
+                    "answer_me",
+                    "street_dance",
+                    "hongtu",
+                    "villa",
+                    "rooftop",
+                    "lixicheng",
+                )
             )
             brief_cat = ""
             brief_file = pdir / "brief.json"

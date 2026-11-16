@@ -21,6 +21,9 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+from config.settings import DEFAULT_FONTS
 
 
 @dataclass
@@ -48,6 +51,8 @@ class EpisodeSpec:
     width: int = 1920
     height: int = 1080
     loudnorm_target_i: float = -14.0
+    hook_banner_text: Optional[str] = None
+    hook_banner_sec: float = 1.6
 
 
 def _crop_frame_to_target(frm: np.ndarray, target_w: int = 1920, target_h: int = 1080) -> np.ndarray:
@@ -303,6 +308,262 @@ def apply_transition_flash(frame: np.ndarray, mode: str, alpha: float) -> np.nda
     return cv2.addWeighted(frame, 1.0 - alpha, flash, alpha, 0)
 
 
+def _load_hook_banner_font(size: int) -> Union[ImageFont.FreeTypeFont, ImageFont.ImageFont]:
+    """Loads Noto Sans CJK SC Bold (fallback DEFAULT_FONTS) at the requested pixel size."""
+    candidates: List[str] = ["/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"]
+    for fpath in DEFAULT_FONTS:
+        if fpath not in candidates:
+            candidates.append(fpath)
+    for cand in candidates:
+        if Path(cand).exists():
+            lower = cand.lower()
+            if "notosanscjk" in lower and lower.endswith(".ttc"):
+                try:
+                    return ImageFont.truetype(cand, size=size, index=2)
+                except Exception:
+                    pass
+            try:
+                return ImageFont.truetype(cand, size=size)
+            except Exception:
+                continue
+    return ImageFont.load_default(size=size)
+
+
+def _sanitize_hook_banner_text(raw_text: str) -> str:
+    """Strips emoji/dingbat codepoints missing from CJK fonts so no .notdef boxes appear."""
+    kept: List[str] = []
+    for ch in raw_text:
+        cp = ord(ch)
+        if cp > 0xFFFF or (0x2600 <= cp <= 0x27BF) or (0xFE00 <= cp <= 0xFE0F) or cp in (0x200B, 0x200D, 0xFEFF):
+            continue
+        kept.append(" " if ch in ("\r", "\n", "\t") else ch)
+    return " ".join("".join(kept).split()).strip()
+
+
+def _split_hook_banner_segments(text: str) -> Tuple[str, str]:
+    """Splits a hook headline into (cyan_prefix, gold_main) when a concise prefix exists."""
+    for sep in ("：", ":", "｜", "|", "·"):
+        if sep in text:
+            left, right = text.split(sep, 1)
+            left_s, right_s = left.strip(), right.strip()
+            if 1 <= len(left_s) <= 8 and right_s:
+                return f"{left_s}{sep}", right_s
+    if " " in text:
+        left, right = text.split(" ", 1)
+        left_s, right_s = left.strip(), right.strip()
+        if 2 <= len(left_s) <= 7 and right_s:
+            return f"{left_s} ", right_s
+    return "", text
+
+
+def render_hook_banner_rgba(
+    text: str,
+    frame_width: int = 1920,
+    frame_height: int = 1080,
+) -> Optional[np.ndarray]:
+    """Pre-renders a compact variety capsule RGBA patch (bh, bw, 4) (<1 MiB RAM)."""
+    clean_text = _sanitize_hook_banner_text(text)
+    if not clean_text:
+        return None
+
+    scale = max(0.25, min(frame_width / 1920.0, frame_height / 1080.0))
+    max_bw = max(120, min(int(round(frame_width * 0.80)), 1400))
+    start_size = max(13, int(round(42 * scale)))
+    min_size = max(10, int(round(22 * scale)))
+    stroke_w = max(2, int(round(4 * scale)))
+    pad_x = max(10, int(round(30 * scale)))
+    pad_y = max(5, int(round(13 * scale)))
+    icon_w = max(8, int(round(20 * scale)))
+    icon_gap = max(5, int(round(11 * scale)))
+    margin = max(2, int(round(4 * scale)))
+    border_w = max(2, int(round(3 * scale)))
+
+    prefix, main_text = _split_hook_banner_segments(clean_text)
+    full_text = f"{prefix}{main_text}"
+
+    probe_img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    probe_draw = ImageDraw.Draw(probe_img)
+    font_size = start_size
+    font = _load_hook_banner_font(font_size)
+    bbox = probe_draw.textbbox((0, 0), full_text, font=font, stroke_width=stroke_w)
+    while font_size > min_size:
+        cand_bw = int(bbox[2] - bbox[0]) + icon_w + icon_gap + pad_x * 2 + margin * 2
+        if cand_bw <= max_bw:
+            break
+        font_size = max(min_size, font_size - 2)
+        font = _load_hook_banner_font(font_size)
+        bbox = probe_draw.textbbox((0, 0), full_text, font=font, stroke_width=stroke_w)
+
+    tw = max(8, int(bbox[2] - bbox[0]))
+    th = max(8, int(bbox[3] - bbox[1]))
+    pill_w = icon_w + icon_gap + tw + pad_x * 2
+    pill_h = th + pad_y * 2
+    bw = pill_w + margin * 2
+    bh = pill_h + margin * 2
+
+    canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+
+    sh_off = max(1, int(round(3 * scale)))
+    px0, py0 = margin, margin
+    px1, py1 = margin + pill_w - 1, margin + pill_h - 1
+    radius = pill_h // 2
+
+    # Subtle drop shadow + dark variety capsule with bright gold #FFD700 border and cyan inner rim
+    draw.rounded_rectangle(
+        [px0 + sh_off, py0 + sh_off, px1 + sh_off, py1 + sh_off],
+        radius=radius,
+        fill=(0, 0, 0, 125),
+    )
+    draw.rounded_rectangle(
+        [px0, py0, px1, py1],
+        radius=radius,
+        fill=(16, 20, 34, 232),
+        outline=(255, 215, 0, 255),
+        width=border_w,
+    )
+    if pill_h > border_w * 4:
+        draw.rounded_rectangle(
+            [px0 + border_w, py0 + border_w, px1 - border_w, py1 - border_w],
+            radius=max(2, radius - border_w),
+            outline=(0, 240, 255, 135),
+            width=1,
+        )
+
+    # Geometric cyan lightning spark icon (avoids missing emoji glyphs)
+    icon_h = max(10, int(round(pill_h * 0.54)))
+    ix = float(px0 + pad_x)
+    iy = float(py0 + (pill_h - icon_h) / 2.0)
+    iw_f = float(icon_w)
+    ih_f = float(icon_h)
+    bolt_pts = [
+        (ix + iw_f * 0.58, iy),
+        (ix + iw_f * 0.12, iy + ih_f * 0.54),
+        (ix + iw_f * 0.46, iy + ih_f * 0.54),
+        (ix + iw_f * 0.34, iy + ih_f),
+        (ix + iw_f * 0.88, iy + ih_f * 0.44),
+        (ix + iw_f * 0.52, iy + ih_f * 0.44),
+    ]
+    draw.polygon(bolt_pts, fill=(0, 240, 255, 255), outline=(0, 0, 0, 230))
+
+    # Black-stroked gold-cyan headline typography
+    tx = int(px0 + pad_x + icon_w + icon_gap - bbox[0])
+    ty = int(py0 + (pill_h - th) // 2 - bbox[1])
+    text_sh = max(1, int(round(2 * scale)))
+    draw.text(
+        (tx + text_sh, ty + text_sh),
+        full_text,
+        font=font,
+        fill=(0, 0, 0, 190),
+        stroke_width=stroke_w,
+        stroke_fill=(0, 0, 0, 190),
+    )
+    if prefix:
+        draw.text(
+            (tx, ty),
+            prefix,
+            font=font,
+            fill=(0, 240, 255, 255),
+            stroke_width=stroke_w,
+            stroke_fill=(0, 0, 0, 255),
+        )
+        adv = int(round(float(draw.textlength(prefix, font=font))))
+        draw.text(
+            (tx + adv, ty),
+            main_text,
+            font=font,
+            fill=(255, 215, 0, 255),
+            stroke_width=stroke_w,
+            stroke_fill=(0, 0, 0, 255),
+        )
+    else:
+        draw.text(
+            (tx, ty),
+            main_text,
+            font=font,
+            fill=(255, 215, 0, 255),
+            stroke_width=stroke_w,
+            stroke_fill=(0, 0, 0, 255),
+        )
+
+    # Enforce strict < 1 MiB RGBA patch footprint and fit within max_bw
+    max_pixels = 230_000  # 230k * 4 bytes = ~0.88 MiB < 1 MiB
+    if bw > max_bw or (bw * bh) > max_pixels:
+        fit_ratio = min(max_bw / float(bw), math.sqrt(max_pixels / float(bw * bh)))
+        nbw = max(16, int(round(bw * fit_ratio)))
+        nbh = max(8, int(round(bh * fit_ratio)))
+        canvas = canvas.resize((nbw, nbh), Image.Resampling.LANCZOS)
+
+    return np.ascontiguousarray(np.asarray(canvas, dtype=np.uint8))
+
+
+def apply_hook_banner_overlay(
+    frame: np.ndarray,
+    banner_rgba: Optional[np.ndarray],
+    t_sec: float,
+    hook_banner_sec: float = 1.6,
+    top_y: Optional[int] = None,
+    pop_in_sec: float = 0.18,
+) -> np.ndarray:
+    """Composites a pre-rendered RGBA banner patch onto a BGR frame while t_sec < hook_banner_sec."""
+    if (
+        banner_rgba is None
+        or banner_rgba.size == 0
+        or hook_banner_sec <= 0.0
+        or t_sec < 0.0
+        or t_sec >= hook_banner_sec
+    ):
+        return frame
+
+    fh, fw = frame.shape[:2]
+    bh_orig, bw_orig = banner_rgba.shape[:2]
+
+    if pop_in_sec > 1e-6 and t_sec < pop_in_sec:
+        u = max(0.0, min(1.0, t_sec / pop_in_sec))
+        ease = 1.0 - (1.0 - u) ** 3
+        cur_scale = 0.86 + 0.14 * ease
+        alpha_gain = 0.76 + 0.24 * ease
+        slide_dy = int(round(-6.0 * (1.0 - ease) * (fh / 1080.0)))
+    else:
+        cur_scale = 1.0
+        alpha_gain = 1.0
+        slide_dy = 0
+
+    if abs(cur_scale - 1.0) > 1e-3:
+        pw = max(4, int(round(bw_orig * cur_scale)))
+        ph = max(4, int(round(bh_orig * cur_scale)))
+        interp = cv2.INTER_AREA if cur_scale < 1.0 else cv2.INTER_LINEAR
+        active_rgba = cv2.resize(banner_rgba, (pw, ph), interpolation=interp)
+    else:
+        active_rgba = banner_rgba
+        ph, pw = bh_orig, bw_orig
+
+    base_y = top_y if top_y is not None else max(8, int(round(52.0 * (fh / 1080.0))))
+    y0 = base_y + (bh_orig - ph) // 2 + slide_dy
+    x0 = (fw - pw) // 2
+
+    sx0 = max(0, -x0)
+    sy0 = max(0, -y0)
+    dx0 = max(0, x0)
+    dy0 = max(0, y0)
+    cw = min(pw - sx0, fw - dx0)
+    ch = min(ph - sy0, fh - dy0)
+    if cw <= 0 or ch <= 0:
+        return frame
+
+    out = frame.copy()
+    sub_rgba = active_rgba[sy0 : sy0 + ch, sx0 : sx0 + cw]
+    sub_bgr = sub_rgba[..., [2, 1, 0]].astype(np.uint16)
+    alpha_u16 = sub_rgba[..., 3:4].astype(np.uint16)
+    if alpha_gain < 0.999:
+        alpha_u16 = ((alpha_u16 * np.uint16(int(round(alpha_gain * 256.0)))) >> np.uint16(8)).astype(np.uint16)
+    roi = out[dy0 : dy0 + ch, dx0 : dx0 + cw].astype(np.uint16)
+    out[dy0 : dy0 + ch, dx0 : dx0 + cw] = ((sub_bgr * alpha_u16 + roi * (255 - alpha_u16) + 127) // 255).astype(
+        np.uint8
+    )
+    return out
+
+
 class EpisodeAssembler:
     """Stitches multi-act raw video clips into a 1080P @ 60FPS H.264 master with -14 LUFS audio."""
 
@@ -325,6 +586,10 @@ class EpisodeAssembler:
             for a in data["acts"]
         ]
         srt_raw = data.get("subtitle_srt_path")
+        raw_banner = data.get("hook_banner_text")
+        hook_banner_text = str(raw_banner).strip() if raw_banner is not None and str(raw_banner).strip() else None
+        raw_banner_sec = data.get("hook_banner_sec")
+        hook_banner_sec = float(raw_banner_sec) if raw_banner_sec is not None else 1.6
         return EpisodeSpec(
             acts=acts,
             audio_path=_resolve(data["audio_path"]),
@@ -334,6 +599,8 @@ class EpisodeAssembler:
             width=int(data.get("width") or 1920),
             height=int(data.get("height") or 1080),
             loudnorm_target_i=float(data.get("loudnorm_target_i") or -14.0),
+            hook_banner_text=hook_banner_text,
+            hook_banner_sec=hook_banner_sec,
         )
 
     @classmethod
@@ -357,6 +624,15 @@ class EpisodeAssembler:
             n_in, src_fps = probe_video_frame_info(act.video_path)
             n_out = int(round((n_in - 1) * (spec.target_fps / src_fps))) + 1
             act_infos.append((act, n_in, src_fps, n_out))
+
+        banner_rgba: Optional[np.ndarray] = None
+        banner_top_y = max(8, int(round(52.0 * (spec.height / 1080.0))))
+        if spec.hook_banner_text and spec.hook_banner_text.strip() and spec.hook_banner_sec > 0.0:
+            banner_rgba = render_hook_banner_rgba(
+                spec.hook_banner_text,
+                frame_width=spec.width,
+                frame_height=spec.height,
+            )
 
         spec.output_mp4_path.parent.mkdir(parents=True, exist_ok=True)
         vf_parts: List[str] = []
@@ -477,6 +753,14 @@ class EpisodeAssembler:
                             cur = apply_transition_flash(cur, next_trans, 0.62 * (1.0 - dist_end / 4.0))
                     if act.transition_in != "none" and local_i < 5:
                         cur = apply_transition_flash(cur, act.transition_in, 0.62 * (1.0 - local_i / 5.0))
+                    if banner_rgba is not None and (out_idx / spec.target_fps) < spec.hook_banner_sec:
+                        cur = apply_hook_banner_overlay(
+                            cur,
+                            banner_rgba,
+                            t_sec=out_idx / spec.target_fps,
+                            hook_banner_sec=spec.hook_banner_sec,
+                            top_y=banner_top_y,
+                        )
                     proc.stdin.write(cur.tobytes())
                     out_idx += 1
 
@@ -494,6 +778,7 @@ class EpisodeAssembler:
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
+            del banner_rgba
             del dis
             gc.collect()
 

@@ -37,6 +37,7 @@
     * 图生视频 / 文生视频 / 多参考视频：一律使用旗舰 **`kling-video-v4_0`**（`1080p` Pro）或 **`kling-video-v3_0_omni`**（`1080p`/`4k`）；
     * 动作控制（`motion_control`）：一律使用 **`kling-video-v3_0`**（`1080p` Pro）。
   * **严禁降级使用旧代或阉割快模**：禁止调用 `v2_5`、`v2_6`、`v2_1`、`v3_0_turbo`、`v4_0_flash`、`720p` 低清档，以及 `flash`/`flash_lite` 轻量推理模型；所有提示词必须纯视觉描写外观与动作，严禁写入受商业版权保护的游戏/动漫 IP 专有名词，优先使用开源或 PCL / CC 授权角色（如「DeepSeek 蓝色大肥鱼」「弱音ハク」等）。
+  * **异步离线提交与回收规范（严禁 `--poll` 阻塞驻留）**：所有可灵 CLI 生图/生视频调用一律去掉 `--poll` 参数，采用 `KLING_NONINTERACTIVE=1 ./vendor/kling_cli/node_modules/.bin/kling ... -q` 秒级提交拿到 `generationId` 后立即退出进程释放本地内存（交由云端离线渲染）；等待期间使用 `schedule` 单次定时器零消耗休眠（严禁跑 shell `sleep` 或长时 `--poll`），唤醒后通过 `KLING_NONINTERACTIVE=1 ./vendor/kling_cli/node_modules/.bin/kling query_tasks <generationId> -q` 秒拉结果。
 * **已知不可用资源**：火山方舟（VolcEngine Ark）`ARK_API_KEY` 当前已过期（`InvalidSubscription`），请勿在无新订阅时强行调用 Seedream / Seedance。
 * **音画版权与 AIGC 合规**：必须使用 `Noto Sans CJK SC` 开源字体，严禁未授权克隆声优原声；优先通过 `core/bgm_hunter.py`（`cli.py fetch-bgm`）提取 B 站热梗伴奏/二创混音片段并在【借物表 (Credits)】中完整注明原曲、二创 UP 主及 BVID 与 `GB 45438-2025` AIGC 合规声明，禁止用单薄纯正弦波电子蜂鸣充当娱乐热舞 BGM。
 
