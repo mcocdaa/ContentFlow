@@ -614,3 +614,80 @@ def test_cover_designer_transparent_hero_scores_perfect_20(tmp_path: Path) -> No
     assert dim.score == 20.0
     assert dim.details.get("cover_split_hierarchy_ok") is True
     assert dim.issues == []
+
+
+def test_etiquette_no_at_shareholder_and_dar_mismatch_guard(tmp_path: Path) -> None:
+    """Verifies anti-spam @-mention etiquette guard and DAR vs resolution mismatch blocker."""
+    gate = VideoQualityGate(root_dir=CONTENTFLOW_ROOT)
+
+    # 1. DAR mismatch blocker on stretched stream metadata
+    stretched_probe = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "h264",
+                "pix_fmt": "yuv420p",
+                "width": 1080,
+                "height": 1920,
+                "avg_frame_rate": "60/1",
+                "bit_rate": "5000000",
+                "color_space": "bt709",
+                "sample_aspect_ratio": "1:1",
+                "display_aspect_ratio": "16:9",
+            }
+        ]
+    }
+    dummy_vid = tmp_path / "dummy.mp4"
+    dummy_vid.write_bytes(b"0000")
+    blockers: list[str] = []
+    tech_dim = gate._eval_technical(dummy_vid, stretched_probe, blockers)
+    assert any("Display aspect ratio mismatch" in b for b in blockers)
+    assert any("画面将发生拉伸" in iss for iss in tech_dim.issues)
+
+    # 2. Pinned comment / shareholder @-mention etiquette penalty vs clean plain-text credits
+    proj_spam = tmp_path / "090_spam_at"
+    (proj_spam / "delivery").mkdir(parents=True)
+    md_base = (
+        "# Release\n"
+        "* **主选分区**：科技 -> 人工智能\n"
+        "* **视频标题 (建议3选1)**：\n"
+        "  1. 【测试整活】拒绝重复群发通知，实打实把热门做起来！\n"
+        "* **标签**：\n"
+        "  AI, 测试, 整活, 60帧, 开源\n"
+        "* **简介**：\n"
+        "  📋 【借物表 (Credits)】角色原型：CAFFEIN；开源字体：Noto Sans CJK SC（GB 45438-2025）\n"
+        "* **置顶评论**：\n"
+        '  "感谢 @白的黑板 支持！"\n'
+    )
+    (proj_spam / "delivery" / "bilibili.md").write_text(md_base, encoding="utf-8")
+    comp_spam = gate._eval_compliance(proj_spam, [])
+    assert comp_spam.score == 16.0
+    assert any("礼仪规范警告" in iss for iss in comp_spam.issues)
+
+    (proj_spam / "delivery" / "bilibili.md").write_text(md_base.replace("@白的黑板", "「白的黑板」"), encoding="utf-8")
+    comp_clean = gate._eval_compliance(proj_spam, [])
+    assert comp_clean.score == 20.0
+    assert not any("礼仪规范警告" in iss for iss in comp_clean.issues)
+
+    # 3. Creative novelty guard catches repeated archetype/setting against creative_ledger.json
+    import json
+
+    ledger_eps = json.loads((CONTENTFLOW_ROOT / "library" / "creative_ledger.json").read_text(encoding="utf-8"))[
+        "episodes"
+    ]
+    latest_ep = ledger_eps[-1]
+    (proj_spam / "brief.json").write_text(
+        json.dumps(
+            {
+                "creative_spec": {
+                    "archetype": latest_ep["archetype"],
+                    "setting": latest_ep["setting"],
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    comp_repeat = gate._eval_compliance(proj_spam, [])
+    assert comp_repeat.score == 16.0
+    assert any("创意雷同警告" in iss for iss in comp_repeat.issues)

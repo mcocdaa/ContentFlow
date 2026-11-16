@@ -1,0 +1,67 @@
+{
+  "episodes": [
+    {
+      "project_id": "007_deepseek_dafeiyu_phone_number",
+      "archetype": "kling_idol_stage_dance",
+      "setting": "深海玻璃水族馆聚光灯舞台",
+      "meme_source": "DeepSeek 蓝色大肥鱼 × TAHITI Phone Number",
+      "date": "2026-11-07"
+    },
+    {
+      "project_id": "005_transformer_noshiro_tutorial",
+      "archetype": "split_screen_figure_hologram_lecture",
+      "setting": "极简居家全息白板教室",
+      "meme_source": "3D能代 Transformer 硬核科普",
+      "date": "2026-11-07"
+    },
+    {
+      "project_id": "004_ai_api_tutorial_2b",
+      "archetype": "split_screen_figure_hologram_lecture",
+      "setting": "赛博全息教室 (2B + Pod042)",
+      "meme_source": "大模型 API 401/404 排障科普",
+      "date": "2026-11-09"
+    },
+    {
+      "project_id": "002_yowane_cicd",
+      "archetype": "split_screen_figure_hologram_lecture",
+      "setting": "赛博机房全息白板",
+      "meme_source": "弱音 CI/CD 避坑科普",
+      "date": "2026-11-14"
+    },
+    {
+      "project_id": "003_ai_managing_ai",
+      "archetype": "split_screen_figure_hologram_lecture",
+      "setting": "蓝色科技白板室 (2B)",
+      "meme_source": "AI 管理 AI 防删库科普",
+      "date": "2026-11-16"
+    },
+    {
+      "project_id": "009_rem_aeflow_gui_agent",
+      "archetype": "split_screen_figure_hologram_lecture",
+      "setting": "蓝色科技白板室 (蕾姆 + 弱音)",
+      "meme_source": "GUI 智能体虚拟视口科普",
+      "date": "2026-11-17"
+    },
+    {
+      "project_id": "008_ai_agent_day2_takeover_diary",
+      "archetype": "cctv_server_room_slacking_dance",
+      "setting": "深夜GPU算力机房监控走廊",
+      "meme_source": "伪监控抓拍摸鱼 × Telepathy宅舞",
+      "date": "2026-11-16"
+    },
+    {
+      "project_id": "010_dafeiyu_sifeng_yuai_meme",
+      "archetype": "xianxia_parody_to_rave_drop_reversal",
+      "setting": "古风暴雨飞檐夜→赛博激光DJ蹦迪台",
+      "meme_source": "司凤吐血战损版雨爱 × 抖音星奇摇",
+      "date": "2026-11-16"
+    },
+    {
+      "project_id": "011_yowane_answer_me_street_dance",
+      "archetype": "answer_me_office_rage_to_street_dance",
+      "setting": "现代深夜写字楼工位→雨夜霓虹十字路口",
+      "meme_source": "回答我Look in my eyes × 到点下班街头潮舞",
+      "date": "2026-11-18"
+    }
+  ]
+}

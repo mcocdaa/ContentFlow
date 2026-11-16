@@ -804,6 +804,9 @@ def cmd_design_cover(args):
         else:
             tags_list = [str(t).strip() for t in raw_tags if str(t).strip()]
 
+    raw_style = getattr(args, "style", "auto")
+    eff_style = None if raw_style == "auto" else raw_style
+
     base_img = getattr(args, "base_image", None)
     out_path = getattr(args, "output", None)
     if base_img:
@@ -817,6 +820,7 @@ def cmd_design_cover(args):
             hook_line3=getattr(args, "hook_line3", None) or "60帧纯享热舞！",
             badge_text=getattr(args, "badge", None) or "AI接管账号实录",
             bottom_tags=tags_list,
+            cover_style=eff_style or "tech_split",
         )
     else:
         res = designer.design_project_cover(
@@ -827,6 +831,7 @@ def cmd_design_cover(args):
             badge_text=getattr(args, "badge", None),
             bottom_tags=tags_list,
             output_path=out_path,
+            cover_style=eff_style,
         )
 
     print(f"[+] Bilibili 16:9 High-CTR Cover rendered for '{proj_dir.name}':")
@@ -834,6 +839,54 @@ def cmd_design_cover(args):
     print(f"    - 16:9 Cover JPG:  {res.output_path} ({res.width}x{res.height})")
     print(f"    - 4:3 Safe Crop:   {res.output_4x3_path} (1440x1080)")
     print(f"    - Hook Lines:      {' | '.join(res.hook_lines)}")
+    return 0
+
+
+def cmd_benchmark(args):
+    """Benchmarks a project's cover & pacing against viral Bilibili peers."""
+    from core.competitor_benchmark import CompetitorBenchmarkEngine
+
+    engine = CompetitorBenchmarkEngine(root_dir=CONTENTFLOW_ROOT)
+    report = engine.compare_project_against_benchmarks(
+        project=args.project,
+        competitor_video_path=Path(args.competitor_video) if getattr(args, "competitor_video", None) else None,
+        competitor_cover_path=Path(args.competitor_cover) if getattr(args, "competitor_cover", None) else None,
+        fetch_online=bool(getattr(args, "online", False)),
+        save_report=not bool(getattr(args, "no_save", False)),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"\n=== ContentFlow Competitor Benchmark: {report['project_id']} ===")
+    if report["cover_metrics"]:
+        cm = report["cover_metrics"]
+        print(
+            f"  • Cover:  brightness={cm['mean_brightness']} | sat={cm['saturation']} | "
+            f"dark(<45)={cm['dark_area_ratio']:.1%}"
+        )
+    if report["video_metrics"]:
+        vm = report["video_metrics"]
+        print(
+            f"  • Video:  dur={vm['duration_sec']}s | cuts={int(vm['scene_cuts'])} "
+            f"({vm['cuts_per_10s']} cuts/10s) | luma={vm['mean_brightness']}±{vm['brightness_std']}"
+        )
+    for gap in report["gaps"]:
+        print(f"  [{gap['severity']} GAP - {gap['area']}] {gap['detail']}")
+    if not report["gaps"]:
+        print("  ✅ No cover brightness or pacing gaps detected against viral baselines.")
+    if report.get("report_path"):
+        print(f"  • Saved Report: {report['report_path']}")
+    print()
+    return 0
+
+
+def cmd_assemble_episode(args):
+    """Assembles a multi-act 60FPS episode from an EpisodeSpec JSON manifest."""
+    from core.episode_assembler import EpisodeAssembler
+
+    res = EpisodeAssembler.assemble_from_json(Path(args.spec))
+    print(json.dumps(res, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1043,7 +1096,28 @@ def main():
     p_dc.add_argument("--base-image", default=None, help="Optional explicit base image path")
     p_dc.add_argument("--output", default=None, help="Optional explicit output cover path")
     p_dc.add_argument("--font", default=None, help="Optional path to open-source CJK bold font")
+    p_dc.add_argument(
+        "--style",
+        default="auto",
+        choices=["auto", "tech_split", "vivid_scene"],
+        help="Cover visual style (default: auto selects vivid_scene for dance/meme projects)",
+    )
     p_dc.set_defaults(func=cmd_design_cover)
+
+    # benchmark
+    p_bm = subparsers.add_parser("benchmark", help="Benchmark a project's cover & pacing against viral Bilibili peers")
+    p_bm.add_argument("--project", required=True, help="Project ID or name (e.g. 010 or 011)")
+    p_bm.add_argument("--competitor-video", default=None, help="Optional local competitor MP4 path for head-to-head")
+    p_bm.add_argument("--competitor-cover", default=None, help="Optional local competitor cover JPG path")
+    p_bm.add_argument("--online", action="store_true", help="Fetch live Bilibili partition rankings")
+    p_bm.add_argument("--no-save", action="store_true", help="Do not write JSON report to library/benchmarks/")
+    p_bm.add_argument("--json", action="store_true", help="Output structured JSON report to stdout")
+    p_bm.set_defaults(func=cmd_benchmark)
+
+    # assemble-episode
+    p_ae = subparsers.add_parser("assemble-episode", help="Assemble a multi-act 60FPS MP4 from an EpisodeSpec JSON")
+    p_ae.add_argument("--spec", required=True, help="Path to EpisodeSpec JSON file")
+    p_ae.set_defaults(func=cmd_assemble_episode)
 
     args = parser.parse_args()
     return args.func(args)

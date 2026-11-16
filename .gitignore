@@ -45,6 +45,7 @@ vendor/kling_cli/
 projects/*/delivery/staged_*/
 library/analytics/bilibili_*.json
 library/analytics/bilibili_*.md
+library/benchmarks/
 
 # OS & tool caches
 Thumbs.db

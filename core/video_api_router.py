@@ -790,15 +790,13 @@ class VideoApiRouter:
                 reference_video_path=reference_video_path,
             )
 
-        skill_wrapper = (
-            Path(__file__).resolve().parent.parent
-            / ".agents"
-            / "skills"
-            / "byted-ark-seedance-skill"
-            / "scripts"
-            / "seedance.js"
+        skill_dir = (
+            Path(__file__).resolve().parent.parent / ".agents" / "skills" / "byted-ark-seedance-skill" / "scripts"
         )
-        if not skill_wrapper.exists():
+        skill_wrapper = skill_dir / "seedance-wrapper.js"
+        legacy_script = skill_dir / "seedance.js"
+        script_path = skill_wrapper if skill_wrapper.exists() else legacy_script
+        if not script_path.exists():
             logger.warning("byted-ark-seedance-skill script not found; falling back to _dispatch_seedance_v3.")
             return self._dispatch_seedance_v3(
                 image_path=image_path,
@@ -811,46 +809,93 @@ class VideoApiRouter:
             )
 
         last_error = None
-        download_dir = str(output_path.parent) if output_path else "seedance_raw"
+        download_dir = Path(output_path).parent if output_path else Path("seedance_raw")
+        download_dir.mkdir(parents=True, exist_ok=True)
+        use_v5_wrapper = script_path.name == "seedance-wrapper.js"
 
         for model in SEEDANCE_SKILL_CANDIDATE_MODELS:
-            logger.info(f"Attempting Seedance skill generation with model: {model}")
-            cmd = [
-                "node",
-                str(skill_wrapper),
-                "run",
-                "--model",
-                model,
-                "--prompt",
-                prompt,
-                "--image-file",
-                str(image_path),
-                "--duration",
-                str(duration),
-                "--resolution",
-                resolution,
-                "--ratio",
-                ratio,
-                "--download-dir",
-                download_dir,
-                "--wait",
-            ]
             if reference_video_path is not None:
-                cmd.extend(["--video-file", str(reference_video_path)])
+                is_remote_ref = str(reference_video_path).startswith(("http://", "https://"))
+                if model == "doubao-seedance-1.5-pro":
+                    continue
+                if use_v5_wrapper and model == "doubao-seedance-2.5" and not is_remote_ref:
+                    continue
+
+            logger.info(f"Attempting Seedance skill generation with model: {model} via {script_path.name}")
+            if use_v5_wrapper:
+                cmd = [
+                    "node",
+                    str(script_path),
+                    "create",
+                    "--model",
+                    model,
+                    "--prompt",
+                    prompt,
+                    "--image-file",
+                    str(image_path),
+                    "--duration",
+                    str(duration),
+                    "--resolution",
+                    resolution,
+                    "--ratio",
+                    ratio,
+                    "--watermark",
+                    "false",
+                    "--wait",
+                    "true",
+                ]
+                if reference_video_path is not None:
+                    ref_flag = (
+                        "--video-url"
+                        if str(reference_video_path).startswith(("http://", "https://"))
+                        else "--video-file"
+                    )
+                    cmd.extend(["--image-role", "reference", ref_flag, str(reference_video_path)])
+            else:
+                cmd = [
+                    "node",
+                    str(script_path),
+                    "run",
+                    "--model",
+                    model,
+                    "--prompt",
+                    prompt,
+                    "--image-file",
+                    str(image_path),
+                    "--duration",
+                    str(duration),
+                    "--resolution",
+                    resolution,
+                    "--ratio",
+                    ratio,
+                    "--download-dir",
+                    str(download_dir),
+                    "--wait",
+                ]
+                if reference_video_path is not None:
+                    cmd.extend(["--video-file", str(reference_video_path)])
 
             env = os.environ.copy()
+            env["ARK_SEEDANCE_SAVE_PATH"] = str(download_dir.resolve())
             if self.ark_api_key and "ARK_API_KEY" not in env:
                 env["ARK_API_KEY"] = self.ark_api_key
 
             res = subprocess.run(cmd, capture_output=True, text=True, env=env)
             if res.returncode == 0:
                 logger.info(f"Seedance skill task succeeded with model {model}")
-                video_candidates = list(Path(download_dir).glob("*.mp4"))
+                video_candidates = sorted(
+                    download_dir.rglob("*.mp4"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
                 if video_candidates:
-                    if output_path and Path(video_candidates[0]) != Path(output_path):
-                        shutil.copy2(video_candidates[0], output_path)
-                    return Path(output_path) if output_path else video_candidates[0]
-                return Path(output_path) if output_path else Path(download_dir) / "output.mp4"
+                    newest = video_candidates[0]
+                    if output_path and newest.resolve() != Path(output_path).resolve():
+                        shutil.copy2(newest, output_path)
+                    return Path(output_path) if output_path else newest
+                last_error = "Seedance wrapper exited 0 but no .mp4 file was downloaded"
+                logger.warning(last_error)
+                continue
 
             last_error = res.stderr or res.stdout
             if "UnsupportedModel" in last_error:

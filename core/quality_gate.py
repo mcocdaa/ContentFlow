@@ -306,6 +306,18 @@ class VideoQualityGate:
             )
             dim.issues.append(f"像素宽高比非正方形 (SAR={sar})，会导致播放画面拉伸变形")
 
+        if dar and ":" in dar and width > 0 and height > 0:
+            try:
+                dar_w_s, dar_h_s = dar.split(":", 1)
+                dar_w, dar_h = float(dar_w_s), float(dar_h_s)
+                if dar_h > 0 and abs((dar_w / dar_h) - (width / float(height))) > 0.03:
+                    blockers.append(
+                        f"Display aspect ratio mismatch (DAR={dar}, size={width}x{height}): video will appear stretched!"
+                    )
+                    dim.issues.append(f"显示宽高比与像素分辨率不匹配 (DAR={dar}, {width}x{height})，画面将发生拉伸")
+            except ValueError:
+                pass
+
         dim.details = {
             "width": width,
             "height": height,
@@ -912,6 +924,45 @@ class VideoQualityGate:
         elif not font_violation and not voice_violation:
             dim.score += 3.0
             dim.issues.append("建议显式补充 GB 45438-2025《人工智能生成合成内容标识办法》AIGC 声明")
+
+        # 5. Anti-spam etiquette guard: never bulk @-mention shareholders/viewers in pinned comments or shoutouts
+        shareholder_lines = "\n".join(
+            ln for ln in md_text.splitlines() if ("赛博股东" in ln or "股东致谢" in ln or "特别感谢" in ln)
+        )
+        m_pinned = re.search(r"\*\*置顶评论\*\*[：:]\s*\n?(.*?)(?:\n##\s|\Z)", md_text, re.S)
+        pinned_body = m_pinned.group(1) if m_pinned else ""
+        pinned_non_credits = re.split(r"(?:📋|【借物表)", pinned_body, maxsplit=1)[0]
+        etiquette_scope = f"{shareholder_lines}\n{pinned_non_credits}"
+        if re.search(r"@[\w\u4e00-\u9fff_-]+", etiquette_scope):
+            dim.score = max(0.0, dim.score - 4.0)
+            dim.issues.append("礼仪规范警告：置顶评论与赛博股东致谢严禁使用 @用户名 群发打扰观众，请改用纯文本署名")
+
+        # 6. Creative novelty guard: prevent repeating recent archetypes/settings across new episodes
+        creative_spec: Dict[str, Any] = {}
+        if brief_json.exists():
+            try:
+                creative_spec = (json.loads(brief_text).get("creative_spec")) or {}
+            except Exception:
+                creative_spec = {}
+        if isinstance(creative_spec, dict) and creative_spec.get("archetype"):
+            ledger_file = self.root_dir / "library" / "creative_ledger.json"
+            if ledger_file.exists():
+                try:
+                    ledger_eps = json.loads(ledger_file.read_text(encoding="utf-8")).get("episodes") or []
+                except Exception:
+                    ledger_eps = []
+                recent_others = [ep for ep in ledger_eps if ep.get("project_id") != proj_dir.name][-3:]
+                cur_arch = str(creative_spec.get("archetype") or "").strip()
+                cur_set = str(creative_spec.get("setting") or "").strip()
+                if any(
+                    (cur_arch and cur_arch == str(ep.get("archetype") or "").strip())
+                    or (cur_set and cur_set == str(ep.get("setting") or "").strip())
+                    for ep in recent_others
+                ):
+                    dim.score = max(0.0, dim.score - 4.0)
+                    dim.issues.append(
+                        "创意雷同警告：严禁走老路复用近期相同题材或场景，必须结合外部热梗重新策划全新场景与反差玩法！"
+                    )
 
         srt_texts = [
             p.read_text(encoding="utf-8", errors="ignore")

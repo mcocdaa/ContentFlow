@@ -7,11 +7,12 @@ Bilibili viral covers with 4:3 center safe-zone (x: 240..1680) typography,
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageStat
 
 from config.settings import DEFAULT_FONTS
 
@@ -514,6 +515,167 @@ class CoverDesigner:
         rgb_sharp = base.convert("RGB").filter(ImageFilter.UnsharpMask(radius=1.5, percent=150, threshold=1))
         return rgb_sharp.convert("RGBA")
 
+    def _compose_vivid_scene_16x9(
+        self,
+        src: Image.Image,
+        hook_lines: List[str],
+        badge_text: str,
+        bottom_tags: List[str],
+        hero_crop_params: Optional[Tuple[float, float, float]] = None,
+        transparent_hero_path: Optional[Union[str, Path]] = None,
+        hero_alpha_crop_top_ratio: float = 0.68,
+    ) -> Image.Image:
+        """Bright vivid-scene viral cover layout tuned to stand out in Bilibili's light feed."""
+        hero_file = Path(transparent_hero_path) if transparent_hero_path else None
+        use_transparent_hero = bool(hero_file is not None and hero_file.exists())
+
+        bg = src.convert("RGB").resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+        bg = bg.filter(ImageFilter.GaussianBlur(radius=10 if use_transparent_hero else 4))
+
+        # Lift dark stages so feed thumbnails stay vivid and free of pitch-black dead space
+        mean_luma = ImageStat.Stat(bg.convert("L")).mean[0]
+        gain = min(1.90, max(1.05, 132.0 / max(mean_luma, 38.0)))
+        bg = ImageEnhance.Brightness(bg).enhance(gain)
+        bg = ImageEnhance.Color(bg).enhance(1.32)
+        bg_floor = Image.new("RGB", (TARGET_WIDTH, TARGET_HEIGHT), (28, 22, 50))
+        bg = ImageChops.screen(bg, bg_floor)
+        base = bg.convert("RGBA")
+
+        # Vibrant stage color blooms + gentle translucent left readability scrim (no grid lines)
+        glow = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow)
+        glow_draw.ellipse([140, -60, 980, 740], fill=(255, 120, 210, 62))
+        glow_draw.ellipse([260, 460, 980, 1080], fill=(255, 195, 70, 44))
+        glow_draw.ellipse([990, 50, 1780, 1020], fill=(0, 235, 255, 108))
+        glow = glow.filter(ImageFilter.GaussianBlur(radius=68))
+        base.alpha_composite(glow)
+
+        scrim = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+        s_draw = ImageDraw.Draw(scrim)
+        for x in range(1080):
+            alpha = int(round(86.0 * (1.0 - x / 1080.0)))
+            s_draw.line([(x, 0), (x, TARGET_HEIGHT)], fill=(12, 18, 42, alpha))
+        base.alpha_composite(scrim)
+
+        # Place bright high-contrast right character portrait
+        if use_transparent_hero and hero_file is not None:
+            with Image.open(hero_file) as raw_hero:
+                hero_rgba = raw_hero.convert("RGBA")
+                bbox = hero_rgba.getbbox()
+                if bbox is not None:
+                    ax0, ay0, ax1, ay1 = bbox
+                    cut_bottom = ay0 + max(64, int(round((ay1 - ay0) * hero_alpha_crop_top_ratio)))
+                    hero_rgba = hero_rgba.crop((ax0, ay0, ax1, min(ay1, cut_bottom)))
+
+                hw, hh = hero_rgba.size
+                scale = min(1048.0 / float(max(1, hh)), 840.0 / float(max(1, hw)))
+                scaled_w = max(32, int(round(hw * scale)))
+                scaled_h = max(32, int(round(hh * scale)))
+                hero_scaled = hero_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
+
+            r_ch, g_ch, b_ch, a_ch = hero_scaled.split()
+            hero_rgb = Image.merge("RGB", (r_ch, g_ch, b_ch))
+            hero_rgb = ImageEnhance.Brightness(hero_rgb).enhance(1.08)
+            hero_rgb = ImageEnhance.Contrast(hero_rgb).enhance(1.06)
+            hero_rgb = hero_rgb.filter(ImageFilter.UnsharpMask(radius=1.4, percent=145, threshold=2))
+            hr, hg, hb = hero_rgb.split()
+
+            paste_y = max(18, TARGET_HEIGHT - scaled_h)
+            if hero_alpha_crop_top_ratio < 0.96 and paste_y + scaled_h < TARGET_HEIGHT:
+                fade_px = min(36, scaled_h // 4)
+                if fade_px > 0:
+                    fade_mask = Image.new("L", (scaled_w, scaled_h), 255)
+                    f_draw = ImageDraw.Draw(fade_mask)
+                    for fy in range(scaled_h - fade_px, scaled_h):
+                        factor = max(0.0, (scaled_h - 1 - fy) / float(fade_px))
+                        f_draw.line([(0, fy), (scaled_w, fy)], fill=int(255 * factor))
+                    a_ch = ImageChops.multiply(a_ch, fade_mask)
+
+            if scaled_w <= 735:
+                paste_x = max(950, min(SAFE_ZONE_X_MAX - scaled_w, 1350 - scaled_w // 2))
+            else:
+                paste_x = max(965, min(TARGET_WIDTH - scaled_w - 20, 1380 - scaled_w // 2))
+
+            # Crisp rim silhouette glow behind cutout so figure stands out vividly
+            rim_mask = a_ch.filter(ImageFilter.GaussianBlur(radius=16))
+            rim_patch = Image.new("RGBA", (scaled_w, scaled_h), (190, 248, 255, 220))
+            rim_patch.putalpha(rim_mask)
+            rim_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+            rim_layer.paste(rim_patch, (paste_x, paste_y))
+            base.alpha_composite(rim_layer)
+
+            hero_final = Image.merge("RGBA", (hr, hg, hb, a_ch))
+            hero_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+            hero_layer.paste(hero_final, (paste_x, paste_y))
+            base.alpha_composite(hero_layer)
+        else:
+            sw, sh = src.size
+            cy0_r, cy1_r, center_x_r = hero_crop_params if hero_crop_params is not None else (0.04, 0.78, 0.50)
+            char_target_w = 960
+            cy0 = max(0, int(sh * cy0_r))
+            cy1 = min(sh, int(sh * cy1_r))
+            crop_h = max(64, cy1 - cy0)
+            crop_w = int(round(crop_h * (char_target_w / float(TARGET_HEIGHT))))
+            cx0 = max(0, int(round(center_x_r * sw - 0.5 * crop_w)))
+            cx1 = min(sw, cx0 + crop_w)
+            if cx1 - cx0 < crop_w:
+                cx0 = max(0, cx1 - crop_w)
+
+            char_crop_raw = src.convert("RGB").crop((cx0, cy0, max(cx0 + 32, cx1), max(cy0 + 32, cy1)))
+            char_resized = char_crop_raw.resize((char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+            char_resized = ImageEnhance.Brightness(char_resized).enhance(1.10)
+            char_resized = ImageEnhance.Contrast(char_resized).enhance(1.06)
+            char_rgba = char_resized.convert("RGBA")
+
+            mask = Image.new("L", (char_target_w, TARGET_HEIGHT), 255)
+            m_draw = ImageDraw.Draw(mask)
+            for fx in range(110):
+                m_draw.line([(fx, 0), (fx, TARGET_HEIGHT)], fill=int(255 * (fx / 110.0) ** 1.3))
+            char_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
+            char_layer.paste(char_rgba, (960, 0), mask=mask)
+            base.alpha_composite(char_layer)
+
+        # Crisp thick-stroked typography strictly in left 4:3 safe zone (x: 255..955)
+        text_x = 255
+        max_text_w = 955 - text_x
+
+        if badge_text:
+            self._draw_capsule_badge(
+                base,
+                text_x,
+                120,
+                badge_text,
+                bg_color=(242, 42, 108, 250),
+                border_color=(255, 224, 60, 255),
+            )
+
+        colors = [self.COLOR_GOLD, self.COLOR_WHITE, self.COLOR_CYAN]
+        start_sizes = [104, 96, 92]
+        active_lines = [ln for ln in hook_lines[:3] if ln]
+        cur_y = 245
+        draw = ImageDraw.Draw(base)
+        for idx, line in enumerate(active_lines):
+            color = colors[idx % len(colors)]
+            target_sz = start_sizes[idx % len(start_sizes)]
+            font = self._fit_font_to_width(draw, line, max_width=max_text_w, start_size=target_sz, min_size=52)
+            bbox = self._draw_stroked_text(
+                base,
+                (text_x, cur_y),
+                line,
+                font=font,
+                fill=color,
+                stroke_width=10,
+                shadow_offset=(5, 7),
+            )
+            line_h = bbox[3] - bbox[1]
+            cur_y += max(line_h + 34, 145)
+
+        if bottom_tags:
+            self._draw_bottom_tags(base, text_x, 865, bottom_tags)
+
+        rgb_sharp = base.convert("RGB").filter(ImageFilter.UnsharpMask(radius=1.5, percent=150, threshold=1))
+        return rgb_sharp.convert("RGBA")
+
     def design_cover(
         self,
         base_image_path: Union[str, Path],
@@ -529,6 +691,7 @@ class CoverDesigner:
         hero_crop_params: Optional[Tuple[float, float, float]] = None,
         transparent_hero_path: Optional[Union[str, Path]] = None,
         hero_alpha_crop_top_ratio: float = 0.68,
+        cover_style: str = "tech_split",
     ) -> CoverDesignResult:
         """Renders a 1920x1080 (16:9) cover and optional 1440x1080 (4:3) safe crop."""
         src_path = Path(base_image_path)
@@ -543,7 +706,18 @@ class CoverDesigner:
         hook_lines = [ln.strip() for ln in (hook_line1, hook_line2, hook_line3) if ln and ln.strip()]
         tags = bottom_tags if bottom_tags is not None else ["2K重绘", "60FPS满帧"]
 
-        if orig_h > orig_w:
+        if cover_style == "vivid_scene" and orig_w >= orig_h:
+            layout_mode = "vivid_scene_16x9"
+            composed = self._compose_vivid_scene_16x9(
+                src=src,
+                hook_lines=hook_lines,
+                badge_text=badge_text,
+                bottom_tags=tags,
+                hero_crop_params=hero_crop_params,
+                transparent_hero_path=transparent_hero_path,
+                hero_alpha_crop_top_ratio=hero_alpha_crop_top_ratio,
+            )
+        elif orig_h > orig_w:
             layout_mode = "portrait_to_16x9"
             composed = self._compose_portrait_to_16x9(
                 src=src,
@@ -600,6 +774,7 @@ class CoverDesigner:
         badge_text: Optional[str] = None,
         bottom_tags: Optional[List[str]] = None,
         output_path: Optional[Union[str, Path]] = None,
+        cover_style: Optional[str] = None,
     ) -> CoverDesignResult:
         """Auto-detects project base image and delivery cover path and renders a 16:9 viral cover."""
         pdir = Path(project_dir)
@@ -661,11 +836,50 @@ class CoverDesigner:
         transparent_hero: Optional[Path] = None
         hero_top_ratio = 0.68
         if "008" in pid or "diary" in pid or "takeover" in pid:
-            h1 = hook_line1 or "把账号交给AI第5天"
-            h2 = hook_line2 or "连夜爬完百万爆款"
-            h3 = hook_line3 if hook_line3 is not None else "搭好全自动产线！"
-            badge = badge_text or "AI接管账号·第5期"
-            tags = bottom_tags or ["60FPS满帧", "赛博股东招募"]
+            h1 = hook_line1 or "以为服务器繁忙？"
+            h2 = hook_line2 or "监控拍到大肥鱼"
+            h3 = hook_line3 if hook_line3 is not None else "半夜机房偷跳舞！"
+            badge = badge_text or "机房监控抓拍整活"
+            tags = bottom_tags or ["60FPS真热舞", "纤细原比例"]
+            slender_16x9 = assets_dir / "dafeiyu_server_room_slender_16x9.jpg"
+            if slender_16x9.exists():
+                base_img = slender_16x9
+                hero_crop = (0.04, 0.78, 0.50)
+            cut_008 = pdir / "output" / "cutouts" / "dafeiyu_server_slender_cutout.png"
+            transparent_hero = cut_008 if cut_008.exists() else None
+            hero_top_ratio = 0.72
+        elif "010" in pid or "sifeng" in pid or "yuai" in pid:
+            h1 = hook_line1 or "大肥鱼司凤战损"
+            h2 = hook_line2 or "上一秒暴雨吐蓝血"
+            h3 = hook_line3 if hook_line3 is not None else "下一秒邦吧蹦迪！"
+            badge = badge_text or "股东催更交作业"
+            tags = bottom_tags or ["60FPS反转整活", "星奇摇狂飙"]
+            rave_bg = assets_dir / "dafeiyu_act2_rave_club_16x9.jpg"
+            rain_bg = assets_dir / "dafeiyu_act1_sifeng_rain_16x9.jpg"
+            if rave_bg.exists():
+                base_img = rave_bg
+            elif rain_bg.exists():
+                base_img = rain_bg
+            hero_crop = (0.04, 0.78, 0.52)
+            cut_010 = pdir / "output" / "cutouts" / "dafeiyu_sifeng_hero_cutout.png"
+            transparent_hero = cut_010 if cut_010.exists() else None
+            hero_top_ratio = 0.90
+        elif "011" in pid or "answer_me" in pid or "street_dance" in pid:
+            h1 = hook_line1 or "回答我！为什么改八遍"
+            h2 = hook_line2 or "弱音到点秒速下班"
+            h3 = hook_line3 if hook_line3 is not None else "街头丝滑卡点狂摇！"
+            badge = badge_text or "打工人发疯整活"
+            tags = bottom_tags or ["60FPS街头潮舞", "LookInMyEyes"]
+            street_bg = assets_dir / "yowane_act2_street_neon_16x9.jpg"
+            office_bg = assets_dir / "yowane_act1_office_rage_16x9.jpg"
+            if street_bg.exists():
+                base_img = street_bg
+            elif office_bg.exists():
+                base_img = office_bg
+            hero_crop = (0.04, 0.78, 0.50)
+            cut_011 = pdir / "output" / "cutouts" / "yowane_office_rage_cutout.png"
+            transparent_hero = cut_011 if cut_011.exists() else None
+            hero_top_ratio = 0.90
         elif "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"
@@ -757,6 +971,21 @@ class CoverDesigner:
             badge = badge_text or "ContentFlow出品"
             tags = bottom_tags or ["2K超清渲染", "硬核干货"]
 
+        resolved_style = cover_style
+        if resolved_style is None:
+            is_ent_id = any(k in pid for k in ("008", "010", "011", "sifeng", "yuai", "answer_me", "street_dance"))
+            brief_cat = ""
+            brief_file = pdir / "brief.json"
+            if brief_file.exists():
+                try:
+                    brief_cat = str(json.loads(brief_file.read_text(encoding="utf-8")).get("category") or "")
+                except Exception:
+                    brief_cat = ""
+            if is_ent_id or brief_cat in {"宅舞", "舞蹈", "鬼畜", "整活", "搞笑"}:
+                resolved_style = "vivid_scene"
+            else:
+                resolved_style = "tech_split"
+
         return self.design_cover(
             base_image_path=base_img,
             output_path=target_cover,
@@ -769,4 +998,5 @@ class CoverDesigner:
             hero_crop_params=hero_crop,
             transparent_hero_path=transparent_hero,
             hero_alpha_crop_top_ratio=hero_top_ratio,
+            cover_style=resolved_style,
         )

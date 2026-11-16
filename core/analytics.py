@@ -360,60 +360,77 @@ class BilibiliAnalytics:
         }
 
     @staticmethod
-    def build_autonomous_track_strategy() -> List[Dict[str, Any]]:
-        """Synthesizes high-conversion Bilibili content tracks for autonomous studio iteration."""
+    def build_autonomous_track_strategy(
+        archives: Optional[List[Dict[str, Any]]] = None,
+        radar: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Synthesizes data-driven track diagnostics without hardcoding repetitive episode topics."""
+        arc_list = archives or []
+        radar_map = radar or {}
+
+        ent_views, ent_likes, lec_views, lec_likes = 0, 0, 0, 0
+        for a in arc_list:
+            stat = a.get("stat") or {}
+            v = int(stat.get("view") or 0)
+            lk = int(stat.get("like") or 0)
+            tid = int(a.get("tid") or 0)
+            if tid in (20, 25, 119, 129, 1):
+                ent_views += v
+                ent_likes += lk
+            else:
+                lec_views += v
+                lec_likes += lk
+
+        ent_rate = (ent_likes / float(ent_views)) if ent_views > 0 else 0.0
+        lec_rate = (lec_likes / float(lec_views)) if lec_views > 0 else 0.0
+
+        def _top_radar_sample(key: str) -> str:
+            items = radar_map.get(key) or []
+            if not items:
+                return "请运行 cli.py benchmark --online 获取实时榜首爆款"
+            top = items[0]
+            return f"榜首参照「{str(top.get('title') or '')[:24]}」({top.get('bvid', '')}, 播放 {int(top.get('view') or 0):,})"
+
         return [
             {
-                "track_id": "track_1_ai_self_operating_meta",
-                "name": "【整活/元叙事】我的 Gemini 接管了我的 B站账号自己发视频赚流量",
-                "target_tid": 231,
-                "target_partition": "科技 -> 计算机技术 / 人工智能",
+                "track_id": "track_1_viral_meme_reversal_dance",
+                "name": "【主攻高留存赛道】热梗反差剧情 × 60FPS 跨形象热舞整活（每期独立新创）",
+                "target_tid": 20,
+                "target_partition": "舞蹈 -> 宅舞",
                 "viral_hook": (
-                    "号主只负责扫码授权 B站 + 可灵会员，AI Agent 自己上网查 DeepSeek 鲸鱼娘设定、"
-                    "自己重绘 2K 深海舞台、自己算帧率卡点、自己发视频并盯盘播放量！"
+                    f"实测数据：娱乐向累计 {ent_views} 播放 / 点赞转化 {ent_rate:.1%}。"
+                    f"每期必须先经 cli.py benchmark --online 拆解当下榜首（如 {_top_radar_sample('dance')}），"
+                    "再结合 creative_ledger.json 防重，独立构思全新热梗反转 + Beat Punch-In 多景别卡点 + vivid_scene 高明度封面。"
                 ),
-                "title_templates": [
-                    "当我把B站账号和可灵会员交给AI：它连夜自己肝出了这条DeepSeek鲸鱼娘热舞？！",
-                    "大家好，我是号主的AI：他让我自己找赛道把流量搞起来，这是我发的第一条视频",
-                ],
                 "why_it_works": (
-                    "兼具『AI Agent 真实自主干活』的猎奇感与『高颜值二次元成片』的视觉留存，"
-                    "极易引发评论区玩梗互动（弹幕/评论率翻倍），触发 B站跨区推流。"
+                    "B站娱乐冷启动高度依赖前 0.5 秒明艳封面点击与前 3 秒强反差动作抓手；"
+                    "严禁复用旧模板或静态站桩，必须每期保持题材新鲜度与高密度节奏切换。"
                 ),
             },
             {
-                "track_id": "track_2_deepseek_dafeiyu_idol_dance",
-                "name": "【顶流AI娘×洗脑神曲】DeepSeek 鲸鱼娘（蓝色大肥鱼）18s 满屏舞台热舞",
-                "target_tid": 25,
-                "target_partition": "动画 -> MMD·3D",
+                "track_id": "track_2_agent_meta_and_viewer_cocreation",
+                "name": "【互动共创赛道】AI 自主实验整活 × 评论区点单兑现剧场",
+                "target_tid": 119,
+                "target_partition": "鬼畜 / 整活 -> 宅舞跨界",
                 "viral_hook": (
-                    "100% 还原 B站正统『蓝色大肥鱼』设定（蓝渐变卷发+呆毛+下垂鲸鱼头鳍+喷水鲸鱼围裙+大鲸鱼尾巴），"
-                    "搭配《Phone Number》洗脑副歌与 🤙 Call Me 手势杀，18秒黄金完播时长。"
+                    f"结合实时鬼畜热榜趋势（{_top_radar_sample('kichiku')}）与高赞评论点单，"
+                    "以 12-20 秒高能剧情反转兑现观众脑洞；点单交作业仅在原评论下单点礼貌回复一次，绝不在简介/置顶群发艾特。"
                 ),
-                "title_templates": [
-                    "【DeepSeek娘】当我的AI自己学会了整活：先给你们摇一段18秒蓝色大肥鱼Phone Number！",
-                    "【DeepSeek鲸鱼娘】蓝色大肥鱼跳 Phone Number！深海全息舞台 60帧丝滑卡点",
-                ],
                 "why_it_works": (
-                    "15-20秒竖屏高密度卡点视频完播率极高（常超 50%），同时命中 DeepSeek 技术热词与二次元 MMD 核心受众。"
+                    "高质量单点宠粉与社会情绪热梗共鸣可显著拉升完播率与互动率，打破纯工具账号冷启动壁垒。"
                 ),
             },
             {
-                "track_id": "track_3_figure_hard_tech_tutorial",
-                "name": "【二次元手办×硬核科普】3D 虚拟偶像学姐 120秒讲透 AI 核心架构",
+                "track_id": "track_3_visual_storytelling_tech_upgrade",
+                "name": "【长尾升级赛道】动态情景剧化硬核拆解（告别静态白板 PPT）",
                 "target_tid": 231,
                 "target_partition": "科技 -> 计算机技术",
                 "viral_hook": (
-                    "高颜值 3D 手办角色（能代/大肥鱼）+ 全息毛玻璃白板公式拆解，"
-                    "把枯燥的 Transformer / QKV / Agent 原理变成赏心悦目的视觉大片。"
+                    f"实测警示：传统静态白板科普累计 {lec_views} 播放（点赞率 {lec_rate:.1%}），3秒划走率偏高。"
+                    f"后续仅在配合真机运行画面、动态案例实拍或对比基准（{_top_radar_sample('tech')}）时立项，并同步升级生动视觉叙事。"
                 ),
-                "title_templates": [
-                    "【硬核科普】能代学姐用全息白板 2分钟带你彻底看懂 Transformer 自注意力机制！",
-                    "当二次元手办开始讲大模型底层源码：收藏率 20% 的硬核视觉课",
-                ],
                 "why_it_works": (
-                    "B站科技区与知识区对『高收藏率』视频给流极其慷慨，1个收藏权重约等于4个赞，"
-                    "适合作为账号长尾涨粉与技术口碑基石。"
+                    "避免在冷启动阶段陷入高跳出率同质化课件流水线，将工程干货包装为高信息密度的动态视觉作品。"
                 ),
             },
         ]
@@ -444,7 +461,7 @@ class BilibiliAnalytics:
                         "crash_rate_pct": crash,
                         "peer_p50_pct": crash_p50,
                         "reason": f"3-5s 划走率 {crash:.1f}% 显著高于同类中位数 {crash_p50:.1f}%",
-                        "action": "移除「大家好」开场白，前1秒用无白板景深特写钩子+瞬态开场音效，并全片混入侧链闪避 cyber-lofi BGM",
+                        "action": "移除公式化开场白，前1秒切入高动势近景钩子，并用 EpisodeAssembler 启用鼓点近景切镜与侧链混音",
                     }
                 )
 
@@ -457,7 +474,7 @@ class BilibiliAnalytics:
                         "title": title,
                         "tm_stars": tm_stars,
                         "reason": f"B站官方封面标题评分 {tm_stars:g} 星 (< 3.5 星)",
-                        "action": "右侧换用胸腰以上高精度人物大特写并强化 4:3 安全区纯黑描边大字对比度",
+                        "action": "运行 cli.py benchmark 检查封面暗部占比并切换 vivid_scene 高明度实景封面",
                     }
                 )
 
@@ -474,8 +491,8 @@ class BilibiliAnalytics:
                             "bvid": bvid,
                             "requester": uname,
                             "message": msg,
-                            "reason": f"评论区观众 @{uname} 点菜需求：「{msg[:40]}」",
-                            "action": "加入下一期《赛博股东点菜/AI整活企划》排期并置顶回应",
+                            "reason": f"评论区观众「{uname}」点菜需求：「{msg[:40]}」",
+                            "action": "独立策划全新一集兑现点单，发布后仅在该条原评论下单点礼貌回复一次（严禁群发艾特）",
                         }
                     )
 
@@ -487,7 +504,10 @@ class BilibiliAnalytics:
         account = self.fetch_account_stats()
         archives_data = self.fetch_creator_archives()
         radar = self.fetch_trending_radar(limit=5)
-        tracks = self.build_autonomous_track_strategy()
+        tracks = self.build_autonomous_track_strategy(
+            archives=archives_data["archives"],
+            radar=radar,
+        )
         directives = self.build_optimization_directives(
             archives_data["archives"],
             account_uname=str(account.get("uname") or ""),
@@ -550,7 +570,7 @@ class BilibiliAnalytics:
                     )
                 for cm in (a.get("recent_comments") or [])[:5]:
                     prefix = "    ↳ [Sub-reply]" if cm.get("is_sub") else "    • [Comment]"
-                    lines.append(f"{prefix} @{cm.get('uname')}: {cm.get('message')[:80]}")
+                    lines.append(f"{prefix} 「{cm.get('uname')}」: {cm.get('message')[:80]}")
 
         lines.extend(["", "## 2. Autonomous Viral Track Matrix"])
         for t in report.get("recommended_tracks") or []:

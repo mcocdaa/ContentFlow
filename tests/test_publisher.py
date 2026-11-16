@@ -583,11 +583,13 @@ def test_discover_metadata_compliance_footer_and_real_projects(tmp_path: Path) -
     expected_tids = {
         "007": 25,
         "005": 231,
-        "008": 231,
+        "008": 20,
         "004": 231,
         "002": 231,
         "003": 231,
         "009": 231,
+        "010": 20,
+        "011": 20,
     }
     for pid, exp_tid in expected_tids.items():
         pdir = mp_real.resolve_project_dir(pid)
@@ -596,6 +598,7 @@ def test_discover_metadata_compliance_footer_and_real_projects(tmp_path: Path) -
         assert "【借物表" in meta["description"]
         assert "【AIGC" in meta["description"]
         assert len(meta["pinned_comment"]) > 10
+        assert "@" not in meta["pinned_comment"]
 
 
 def test_upload_video_upos_ssl_error_falls_back_to_next_cdn(tmp_path: Path) -> None:

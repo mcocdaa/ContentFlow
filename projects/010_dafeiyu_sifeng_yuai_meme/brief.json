@@ -1,0 +1,31 @@
+{
+  "project_id": "010_dafeiyu_sifeng_yuai_meme",
+  "name": "大肥鱼·司凤吐血战损版《雨爱》邦吧邦吧蹦迪整活",
+  "tagline": "上一秒古风暴雨吐赛博蓝血，下一秒零帧起手邦吧邦吧跳星奇摇！",
+  "category": "宅舞",
+  "creative_spec": {
+    "archetype": "xianxia_parody_to_rave_drop_reversal",
+    "setting": "古风暴雨飞檐夜→赛博激光DJ蹦迪台",
+    "meme_source": "司凤吐血战损版雨爱 × 抖音星奇摇"
+  },
+  "description": "兑现股东「白的黑板」点单！把古风仙侠《琉璃》司凤战损吐血名场面与B站/抖音魔性洗脑梗“司凤版雨爱（邦吧邦吧）× 星奇摇”跨界融合：前5秒暴雨古风屋檐吐赛博蓝色Token，5秒后闪电变装夜店DJ台狂飙1080P 60FPS星奇摇！",
+  "target_audience": [
+    "B站二次元鬼畜与整活区观众",
+    "抖音/B站星奇摇与热梗冲浪党",
+    "DeepSeek蓝色大肥鱼粉丝与股东"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K)",
+    "Kling 2.6 I2V + Kling 3.0 Motion Control (1080p)",
+    "OpenCV DIS Optical Flow 60FPS",
+    "LocalNeuralTTS (Kokoro-82M) + 138BPM Electro Drop",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/大肥鱼司凤战损版雨爱邦吧蹦迪_final.mp4",
+    "cover": "delivery/大肥鱼司凤战损版雨爱邦吧蹦迪_cover.jpg",
+    "cover_16x9": "delivery/大肥鱼司凤战损版雨爱邦吧蹦迪_cover.jpg",
+    "cover_4x3": "delivery/大肥鱼司凤战损版雨爱邦吧蹦迪_cover_4x3.jpg",
+    "subtitle_srt": "delivery/大肥鱼司凤战损版雨爱邦吧蹦迪_subtitle.srt"
+  }
+}

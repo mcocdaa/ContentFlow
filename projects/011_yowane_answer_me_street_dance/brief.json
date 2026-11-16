@@ -1,0 +1,31 @@
+{
+  "project_id": "011_yowane_answer_me_street_dance",
+  "name": "社畜弱音·回答我Look in my eyes！六点半准时下班街头潮舞",
+  "tagline": "前一秒工位拍桌质问改八遍需求，下一秒18:30准点打卡变装街头狂摇！",
+  "category": "宅舞",
+  "creative_spec": {
+    "archetype": "answer_me_office_rage_to_street_dance",
+    "setting": "现代深夜写字楼工位→雨夜霓虹十字路口",
+    "meme_source": "回答我Look in my eyes × 到点下班街头潮舞"
+  },
+  "description": "紧跟全网打工人顶流热梗“回答我！Look in my eyes！Tell me why！”× 18:30到点准时下班街头狂摇反转：前5秒现代写字楼程序员弱音拍桌怒问为什么改八遍需求还不加内存，18:30铃声一响秒切机能潮服冲上雨夜霓虹十字路口狂飙1080P 60FPS街头热舞！",
+  "target_audience": [
+    "B站二次元鬼畜整活与打工人共鸣观众",
+    "抖音/B站热梗冲浪与街头潮舞观众",
+    "弱音ハク(Yowane Haku)同人爱好者与赛博股东"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K)",
+    "Kling 2.6 I2V + Kling 3.0 Motion Control (1080p)",
+    "OpenCV DIS Optical Flow 60FPS",
+    "LocalNeuralTTS (Kokoro-82M) + 130BPM Drift-Phonk",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/社畜弱音回答我下班街头潮舞_final.mp4",
+    "cover": "delivery/社畜弱音回答我下班街头潮舞_cover.jpg",
+    "cover_16x9": "delivery/社畜弱音回答我下班街头潮舞_cover.jpg",
+    "cover_4x3": "delivery/社畜弱音回答我下班街头潮舞_cover_4x3.jpg",
+    "subtitle_srt": "delivery/社畜弱音回答我下班街头潮舞_subtitle.srt"
+  }
+}

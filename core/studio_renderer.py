@@ -711,7 +711,7 @@ def render_decoupled_60fps_episode(
     bg_path: Path = DEFAULT_STUDIO_BG,
     chassis_path: Path = DEFAULT_CHASSIS_PNG,
     darken_bg: float = 0.90,
-    shareholder_pill_text: str = "★ 赛博股东致谢榜：@白的黑板 · @小咩先生",
+    shareholder_pill_text: str = "",
     closeup_hook_sec: float = 1.05,
     hip_guard_y: float = 640.0,
     enable_bgm: bool = True,
