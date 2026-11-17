@@ -843,17 +843,40 @@ def cmd_design_cover(args):
 
 
 def cmd_benchmark(args):
-    """Benchmarks a project's cover & pacing against viral Bilibili peers."""
+    """Benchmarks a project's cover & pacing against viral Bilibili peers or runs cohort attribution."""
     from core.competitor_benchmark import CompetitorBenchmarkEngine
 
     engine = CompetitorBenchmarkEngine(root_dir=CONTENTFLOW_ROOT)
+    want_attr = bool(getattr(args, "attribution", False))
+    analytics_json = getattr(args, "analytics_json", None)
+    proj_arg = getattr(args, "project", None)
+
+    if not proj_arg and not want_attr:
+        print("[-] Provide --project <id> or --attribution.")
+        return 1
+
+    if want_attr and not proj_arg:
+        attr_report = engine.analyze_telemetry_attribution(
+            analytics_json_path=Path(analytics_json) if analytics_json else None
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(attr_report, ensure_ascii=False, indent=2))
+        else:
+            print(attr_report["markdown_summary"])
+        return 0
+
+    assert proj_arg is not None
     report = engine.compare_project_against_benchmarks(
-        project=args.project,
+        project=proj_arg,
         competitor_video_path=Path(args.competitor_video) if getattr(args, "competitor_video", None) else None,
         competitor_cover_path=Path(args.competitor_cover) if getattr(args, "competitor_cover", None) else None,
         fetch_online=bool(getattr(args, "online", False)),
         save_report=not bool(getattr(args, "no_save", False)),
     )
+    if want_attr:
+        report["telemetry_attribution"] = engine.analyze_telemetry_attribution(
+            analytics_json_path=Path(analytics_json) if analytics_json else None
+        )
     if getattr(args, "json", False):
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
@@ -877,6 +900,9 @@ def cmd_benchmark(args):
         print("  ✅ No cover brightness or pacing gaps detected against viral baselines.")
     if report.get("report_path"):
         print(f"  • Saved Report: {report['report_path']}")
+    if want_attr and "telemetry_attribution" in report:
+        print()
+        print(report["telemetry_attribution"]["markdown_summary"])
     print()
     return 0
 
@@ -1132,10 +1158,20 @@ def main():
 
     # benchmark
     p_bm = subparsers.add_parser("benchmark", help="Benchmark a project's cover & pacing against viral Bilibili peers")
-    p_bm.add_argument("--project", required=True, help="Project ID or name (e.g. 010 or 011)")
+    p_bm.add_argument("--project", default=None, help="Project ID or name (required unless --attribution is set)")
     p_bm.add_argument("--competitor-video", default=None, help="Optional local competitor MP4 path for head-to-head")
     p_bm.add_argument("--competitor-cover", default=None, help="Optional local competitor cover JPG path")
     p_bm.add_argument("--online", action="store_true", help="Fetch live Bilibili partition rankings")
+    p_bm.add_argument(
+        "--attribution",
+        action="store_true",
+        help="Analyze post-publish Bilibili telemetry cohort attribution (vivid entertainment vs legacy whiteboard)",
+    )
+    p_bm.add_argument(
+        "--analytics-json",
+        default=None,
+        help="Optional path to redacted Bilibili analytics JSON snapshot",
+    )
     p_bm.add_argument("--no-save", action="store_true", help="Do not write JSON report to library/benchmarks/")
     p_bm.add_argument("--json", action="store_true", help="Output structured JSON report to stdout")
     p_bm.set_defaults(func=cmd_benchmark)

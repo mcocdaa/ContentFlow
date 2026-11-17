@@ -592,6 +592,8 @@ def test_discover_metadata_compliance_footer_and_real_projects(tmp_path: Path) -
         "011": 20,
         "012": 20,
         "013": 20,
+        "014": 20,
+        "015": 20,
     }
     for pid, exp_tid in expected_tids.items():
         pdir = mp_real.resolve_project_dir(pid)

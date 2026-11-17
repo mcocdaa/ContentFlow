@@ -1,0 +1,31 @@
+{
+  "project_id": "014_dafeiyu_beach_meimeisangnei",
+  "name": "DeepSeek大肥鱼·请假成功回大海老家！阳光沙滩狂跳《美美桑内》",
+  "tagline": "前5秒大肥鱼坐行李箱喝冰镇柠檬水惬意度假，副歌一响冲上阳光椰林海滩狂跳《美美桑内》！",
+  "category": "宅舞",
+  "creative_spec": {
+    "archetype": "vacation_luggage_escape_to_sunny_beach_dance",
+    "setting": "阳光海滨木栈道行李箱冷饮→碧海蓝天黄金沙滩舞台",
+    "meme_source": "大肥鱼请假回大海度假 × 美美桑内(One Spot)海滩元气舞"
+  },
+  "description": "紧跟全网千万播放电子榨菜神曲《美美桑内 (One Spot)》“一颗柠檬~”度假热梗！前5秒蓝色大肥鱼终于不用报“服务器繁忙”，戴着心形墨镜坐在天蓝登机箱上捧着冰柠檬椰子水回到碧海蓝天老家惬意吸溜；第5秒副歌鼓点一响满血起跳，在阳光椰林海滨木栈道狂飙1080P 60FPS元气《美美桑内》多机位卡点热舞！",
+  "target_audience": [
+    "B站宅舞与鬼畜热梗冲浪观众",
+    "DeepSeek蓝色大肥鱼粉丝与赛博股东",
+    "《美美桑内》洗脑神曲与海岛度假向观众"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K)",
+    "Kling 4.0 I2V + Kling 3.0 Motion Control (1080p)",
+    "BilibiliBgmHunter (Real Viral Audio)",
+    "EpisodeAssembler (OpenCV DIS 60FPS + Beat Punch-In + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/大肥鱼海滩度假美美桑内_final.mp4",
+    "cover": "delivery/大肥鱼海滩度假美美桑内_cover.jpg",
+    "cover_16x9": "delivery/大肥鱼海滩度假美美桑内_cover.jpg",
+    "cover_4x3": "delivery/大肥鱼海滩度假美美桑内_cover_4x3.jpg",
+    "subtitle_srt": "delivery/大肥鱼海滩度假美美桑内_subtitle.srt"
+  }
+}

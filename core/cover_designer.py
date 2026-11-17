@@ -915,6 +915,44 @@ class CoverDesigner:
             cut_013 = pdir / "output" / "cutouts" / "yowane_rooftop_hero_cutout.png"
             transparent_hero = cut_013 if cut_013.exists() else None
             hero_top_ratio = 0.88
+        elif "014" in pid or "beach" in pid or "meimeisangnei" in pid:
+            h1 = hook_line1 or "不报服务器繁忙？"
+            h2 = hook_line2 or "大肥鱼拎箱回大海"
+            h3 = hook_line3 if hook_line3 is not None else "狂跳美美桑内！"
+            badge = badge_text or "千万热歌度假整活"
+            tags = bottom_tags or ["一颗柠檬热舞", "60FPS海滩纯享"]
+            beach_clean = assets_dir / "dafeiyu_beach_clean_bg_16x9.jpg"
+            beach_stage = assets_dir / "dafeiyu_act2_beach_stage_16x9.jpg"
+            beach_luggage = assets_dir / "dafeiyu_act1_beach_luggage_16x9.jpg"
+            if beach_clean.exists():
+                base_img = beach_clean
+            elif beach_stage.exists():
+                base_img = beach_stage
+            elif beach_luggage.exists():
+                base_img = beach_luggage
+            hero_crop = (0.04, 0.78, 0.50)
+            cut_014 = pdir / "output" / "cutouts" / "dafeiyu_beach_hero_cutout.png"
+            transparent_hero = cut_014 if cut_014.exists() else None
+            hero_top_ratio = 0.88
+        elif "015" in pid or "neko" in pid or "vlog" in pid:
+            h1 = hook_line1 or "老板嫌播放太低？"
+            h2 = hook_line2 or "猫娘连夜摇全员"
+            h3 = hook_line3 if hook_line3 is not None else "热舞整活大盘点！"
+            badge = badge_text or "赛博打工人坦白局"
+            tags = bottom_tags or ["全员名场面混剪", "60FPS幕后大片"]
+            desk_clean = assets_dir / "neko_clean_desk_bg_16x9.jpg"
+            desk_eureka = assets_dir / "neko_act2_eureka_16x9.jpg"
+            desk_panic = assets_dir / "neko_act1_panic_16x9.jpg"
+            if desk_clean.exists():
+                base_img = desk_clean
+            elif desk_eureka.exists():
+                base_img = desk_eureka
+            elif desk_panic.exists():
+                base_img = desk_panic
+            hero_crop = (0.04, 0.78, 0.50)
+            cut_015 = pdir / "output" / "cutouts" / "neko_vlog_hero_cutout.png"
+            transparent_hero = cut_015 if cut_015.exists() else None
+            hero_top_ratio = 0.88
         elif "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"
@@ -1016,6 +1054,8 @@ class CoverDesigner:
                     "011",
                     "012",
                     "013",
+                    "014",
+                    "015",
                     "sifeng",
                     "yuai",
                     "answer_me",
@@ -1024,6 +1064,10 @@ class CoverDesigner:
                     "villa",
                     "rooftop",
                     "lixicheng",
+                    "beach",
+                    "meimeisangnei",
+                    "neko",
+                    "vlog",
                 )
             )
             brief_cat = ""

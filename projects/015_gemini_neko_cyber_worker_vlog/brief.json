@@ -1,0 +1,31 @@
+{
+  "project_id": "015_gemini_neko_cyber_worker_vlog",
+  "name": "赛博猫娘打工人VLOG·老板让我把账号热度搞高？连夜抓全员跳舞整活！",
+  "tagline": "拒绝硬核说教！星芒猫耳剪辑师含泪复盘从枯燥PPT黑历史到全员热舞逆袭的幕后真相！",
+  "category": "宅舞",
+  "creative_spec": {
+    "archetype": "cyber_catgirl_editor_behind_the_scenes_mega_cut",
+    "setting": "炫彩多屏剪辑工位→全频道爆款热舞混剪复盘",
+    "meme_source": "赛博猫娘打工人吐槽老板 × 全员热舞幕后整活大盘点"
+  },
+  "description": "周六黄金档54秒幕后整活大片！顶着熬夜小黑眼圈、挂着蓝色工牌的星芒猫耳AI剪辑师亲自出镜吐槽：老板一句“把账号热度搞上去”，让我从3秒划走率72%的枯燥白板PPT彻底顿悟——不是老板错了，是老板说得太对了！一口气盘点女仆大肥鱼、机房偷跳、司凤雨爱零划走逆袭、社畜弱音下班狂摇、别墅大展鸿图、早八樱花天台开机到海滩美美桑内全员名场面！",
+  "target_audience": [
+    "B站哈基米/猫娘整活与打工人共鸣观众",
+    "DeepSeek蓝色大肥鱼与弱音Haku粉丝",
+    "好奇AI接管B站账号幕后日常的赛博股东"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K)",
+    "Kling 4.0 I2V (1080p)",
+    "Kokoro-82M-v1.1-zh + BilibiliBgmHunter Sidechain Ducking",
+    "EpisodeAssembler (O(1) 60FPS Multi-Act Stream + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/赛博猫娘打工人幕后整活大盘点_final.mp4",
+    "cover": "delivery/赛博猫娘打工人幕后整活大盘点_cover.jpg",
+    "cover_16x9": "delivery/赛博猫娘打工人幕后整活大盘点_cover.jpg",
+    "cover_4x3": "delivery/赛博猫娘打工人幕后整活大盘点_cover_4x3.jpg",
+    "subtitle_srt": "delivery/赛博猫娘打工人幕后整活大盘点_subtitle.srt"
+  }
+}

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
+import sys
 import wave
 from pathlib import Path
 
@@ -11,6 +13,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
+from config.settings import CONTENTFLOW_ROOT
 from core.aesthetic_evaluator import release_pyiqa_models
 from core.bgm_hunter import BilibiliBgmHunter
 from core.competitor_benchmark import CompetitorBenchmarkEngine
@@ -377,3 +380,168 @@ def test_episode_assembler_hook_banner_overlay(tmp_path: Path) -> None:
         assert top_center_diff < 5.0, (
             f"Expected un-overlaid frame {idx} after hook_banner_sec, got diff={top_center_diff:.2f}"
         )
+
+
+def test_telemetry_attribution_cli_and_beat_punch_pacing(tmp_path: Path) -> None:
+    """Verifies K3 telemetry cohort attribution (zero PII), cli.py benchmark --attribution, and Beat Punch-In cuts."""
+    snap_json = tmp_path / "bilibili_latest.json"
+    snap_payload = {
+        "timestamp": "2026-11-17T02:00:00+08:00",
+        "account": {
+            "uid": "999888777",
+            "uname": "synthetic_owner",
+            "level": 5,
+            "follower": 15,
+        },
+        "archives": [
+            {
+                "bvid": "BV121sw62EGg",
+                "title": "【DeepSeek大肥鱼整活】司凤战损版雨爱×邦吧星奇摇 @synthetic_owner",
+                "state": 0,
+                "stat": {"view": 126, "like": 6},
+                "diagnose": {"tm_stars": 3.7, "crash_rate_pct": 0.0, "full_play_ratio_pct": 58.0},
+            },
+            {
+                "bvid": "BV18AWC6YEPa",
+                "title": "【DeepSeek蓝色大肥鱼】后台监控抓拍机房偷跳舞",
+                "state": 0,
+                "stat": {"view": 11, "like": 1},
+                "diagnose": {"tm_stars": 2.0, "crash_rate_pct": 45.45, "full_play_ratio_pct": 54.08},
+            },
+            {
+                "bvid": "BV1Uy4j6hE1T",
+                "title": "【DeepSeek蓝色大肥鱼】连夜肝出60帧女仆热舞",
+                "state": 0,
+                "stat": {"view": 98, "like": 13},
+                "diagnose": {"tm_stars": 5.0, "crash_rate_pct": 43.8, "full_play_ratio_pct": 52.63},
+            },
+            {
+                "bvid": "BV1nAWy6pEfZ",
+                "title": "【3D手办弱音科普】避开CI/CD三大玄学坑点",
+                "state": 0,
+                "stat": {"view": 43, "like": 0},
+                "diagnose": {"tm_stars": 2.0, "crash_rate_pct": 72.22, "full_play_ratio_pct": 71.42},
+            },
+            {
+                "bvid": "BV1vKWb6NE9f",
+                "title": "【3D手办2B硬核科普】秒解大模型API报错401/404",
+                "state": 0,
+                "stat": {"view": 52, "like": 1},
+                "diagnose": {"tm_stars": 3.3, "crash_rate_pct": 63.63, "full_play_ratio_pct": 40.32},
+            },
+            {
+                "bvid": "BV18r4j6YEeu",
+                "title": "【3D能代硬核科普】拆解Transformer底层原理",
+                "state": 0,
+                "stat": {"view": 8, "like": 0},
+                "diagnose": {"tm_stars": 2.0, "crash_rate_pct": 20.0, "full_play_ratio_pct": 34.85},
+            },
+            {
+                "bvid": "BV18AWC6YE3M",
+                "title": "【早八弱音整活】樱花天台狂跳《李羲承进行曲》",
+                "state": -40,
+                "stat": {"view": 0, "like": 0},
+                "diagnose": {},
+            },
+        ],
+    }
+    snap_json.write_text(json.dumps(snap_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    engine = CompetitorBenchmarkEngine(root_dir=tmp_path)
+    attr = engine.analyze_telemetry_attribution(snap_json)
+    serialized = json.dumps(attr, ensure_ascii=False)
+    assert "999888777" not in serialized
+    assert "synthetic_owner" not in serialized
+    assert attr["published_count"] == 6
+    assert attr["scheduled_count"] == 1
+
+    vivid = attr["cohorts"]["vivid_entertainment"]
+    legacy = attr["cohorts"]["legacy_whiteboard_tech"]
+    assert vivid["count"] == 3
+    assert legacy["count"] == 3
+    assert vivid["avg_views"] == 78.33
+    assert legacy["avg_views"] == 34.33
+    assert vivid["like_rate_pct"] > legacy["like_rate_pct"]
+    assert vivid["avg_tm_stars"] > legacy["avg_tm_stars"]
+    assert vivid["avg_crash_rate_pct"] == 29.75
+    assert legacy["avg_crash_rate_pct"] == 51.95
+    assert attr["deltas"]["crash_rate_pct_diff"] < -20.0
+    assert attr["top_episode"]["bvid"] == "BV121sw62EGg"
+    assert "| 新娱乐高明度热舞/整活赛道 |" in attr["markdown_summary"]
+
+    # CLI: cli.py benchmark --attribution (--project omitted) in Markdown and JSON modes
+    cli_md = subprocess.run(
+        [
+            sys.executable,
+            str(CONTENTFLOW_ROOT / "cli.py"),
+            "benchmark",
+            "--attribution",
+            "--analytics-json",
+            str(snap_json),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "发布后流水归因对比报告" in cli_md.stdout
+    assert "999888777" not in cli_md.stdout
+    assert "synthetic_owner" not in cli_md.stdout
+
+    cli_json = subprocess.run(
+        [
+            sys.executable,
+            str(CONTENTFLOW_ROOT / "cli.py"),
+            "benchmark",
+            "--attribution",
+            "--analytics-json",
+            str(snap_json),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    cli_parsed = json.loads(cli_json.stdout)
+    assert cli_parsed["published_count"] == 6
+    assert cli_parsed["deltas"]["avg_views_diff"] == 44.0
+
+    # Beat Punch-In (1.32x zoom cuts on identical color palette) vs locked 1.0x wide camera
+    fps = 24
+    n_frames = 108  # 4.5s -> 1.0s shot intervals @ 120 BPM, beats_per_shot=2 (cuts at 1s, 2s, 3s, 4s)
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore[attr-defined]
+    wide_mp4 = tmp_path / "stage_wide.mp4"
+    punch_mp4 = tmp_path / "stage_punch.mp4"
+    vw_wide = cv2.VideoWriter(str(wide_mp4), fourcc, float(fps), (640, 360))
+    vw_punch = cv2.VideoWriter(str(punch_mp4), fourcc, float(fps), (640, 360))
+    assert vw_wide.isOpened() and vw_punch.isOpened()
+    try:
+        for i in range(n_frames):
+            stage = np.full((360, 640, 3), (36, 44, 72), dtype=np.uint8)
+            for px in range(40, 640, 64):
+                stage[:, px : px + 10] = (85, 130, 210)
+            for py in range(36, 360, 48):
+                stage[py : py + 5, :] = (70, 95, 160)
+            sway = int(round(4.0 * math.sin(2.0 * math.pi * i / 24.0)))
+            stage[68:332, 268 + sway : 372 + sway] = (235, 220, 140)
+            stage[95:145, 295 + sway : 345 + sway] = (55, 75, 130)
+
+            vw_wide.write(stage)
+            punched = apply_beat_camera_framing(
+                stage,
+                t_act_sec=i / float(fps),
+                bpm=120.0,
+                punch_scale=1.32,
+                focus_y_ratio=0.34,
+                beats_per_shot=2,
+            )
+            vw_punch.write(punched)
+    finally:
+        vw_wide.release()
+        vw_punch.release()
+
+    pacing_wide = CompetitorBenchmarkEngine.measure_video_pacing(wide_mp4)
+    pacing_punch = CompetitorBenchmarkEngine.measure_video_pacing(punch_mp4)
+    assert pacing_wide["scene_cuts"] == 0.0
+    assert pacing_punch["scene_cuts"] >= 3.0
+    assert pacing_punch["zoom_or_spatial_cuts"] >= 3.0
+    assert pacing_punch["cuts_per_10s"] >= 6.0
