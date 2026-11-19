@@ -942,6 +942,33 @@ def cmd_fetch_bgm(args):
     return 0
 
 
+def cmd_audio_router_status(args: argparse.Namespace) -> int:
+    """Displays sanitized configuration & fallback readiness for external speech & music providers."""
+    from core.audio_router import AudioGenerationRouter
+
+    router = AudioGenerationRouter()
+    status = router.get_status()
+
+    if getattr(args, "json", False):
+        print(json.dumps(status, ensure_ascii=False, indent=2))
+        return 0
+
+    print("\n=== ContentFlow Audio Generation Router Status ===")
+    for track_name, title in (("speech", "Expressive Speech (TTS)"), ("music", "Background Music (BGM)")):
+        track = status[track_name]
+        fb_note = " (fallback)" if track["using_fallback"] else ""
+        print(f"\n[{title}] Active: {track['active_provider']}{fb_note}")
+        print(f"  Priority: {' -> '.join(track['priority'])}")
+        for pname in track["priority"]:
+            info = track["providers"][pname]
+            state = "READY" if info["available"] else "UNCONFIGURED"
+            model_str = f" | model={info['active_model']}" if info.get("active_model") else ""
+            env_list = ", ".join(info["required_env"]) if info["required_env"] else "none (built-in)"
+            print(f"    • {pname:<22} [{state:<12}] env={env_list}{model_str}")
+    print()
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="ContentFlow: Universal Multi-Modal Content & Video Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1191,6 +1218,14 @@ def main():
     p_bgm.add_argument("--duration", type=float, default=None, help="Duration in seconds")
     p_bgm.add_argument("--output", default=None, help="Output 48kHz stereo WAV path")
     p_bgm.set_defaults(func=cmd_fetch_bgm)
+
+    # audio-router-status
+    p_ar = subparsers.add_parser(
+        "audio-router-status",
+        help="Show sanitized status of external speech & music providers and zero-key fallbacks",
+    )
+    p_ar.add_argument("--json", action="store_true", help="Output structured JSON status to stdout")
+    p_ar.set_defaults(func=cmd_audio_router_status)
 
     args = parser.parse_args()
     return args.func(args)

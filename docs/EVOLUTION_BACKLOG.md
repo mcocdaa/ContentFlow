@@ -54,5 +54,6 @@
   * **线上实测归因结果（`2026-11-19 18:50 CST` 快照，已发布 `9` 篇 + 定时待发 `2` 篇，零 PII）**：
     * **新娱乐高明度热舞/整活赛道（`n=6`）** vs **旧静态白板硬核科普赛道（`n=3`）**：平均播放 **`71.33` vs `35.00`**（**`+36.33` / `2.04x`**）、点赞率 **`6.31%` vs `0.95%`**（**`+5.36%`**）、平均封标星级 **`2.87★` vs `2.43★`**（**`+0.44★`**）、平均 3 秒划走率 **`34.49%` vs `51.51%`**（**`-17.02%`**）、平均完播率 **`51.89%` vs `47.17%`**（**`+4.72%`**；其中已沉淀数据的 `010/011/012` 完播率达 **`82.87% ~ 88.33%`**）。
     * **头部标杆**：`BV121sw62EGg`（`010`，`128` 播放 / `4.69%` 点赞率 / `3.7★` / `82.87%` 完播）与 `BV198sw6oEHN`（`011`，`120` 播放 / `5.00%` 点赞率 / `4.5★` / `87.50%` 完播）。
-* `[ ] K4 — 外部真音乐（MiniMax Music / Suno）与情绪语音（MiniMax Speech / Fish-Audio）路由器插件位`
-  * 目标：在用户补充相应 API Key 后，即插即用地替换本地平直念白与正弦波伴奏（`config/settings.py` 与 `.env.example` 已预留 `MINIMAX_API_KEY`）。
+* ✅ **K4 — 外部真音乐（MiniMax Music / Suno）与情绪语音（MiniMax Speech / Fish-Audio）路由器插件位**
+  * 已落地 `core/audio_router.py`（`AudioGenerationRouter`、`SpeechRequest`/`SpeechResult`、`MusicRequest`/`MusicResult`、`ProviderStatus`），支持语音路由优先级 `minimax_speech -> fish_audio -> local_kokoro`（惰性加载 `LocalNeuralTTS` 且 `finally` 必调 `tts.close()`）与音乐路由优先级 `minimax_music -> suno -> bilibili_bgm_hunter`（惰性加载 `BilibiliBgmHunter`），零 Key 或上游 HTTP 异常时自动平滑降级，`get_status()` 与错误日志严格脱敏零密钥泄露；
+  * 已同步更新 `config/settings.py`、`.env.example`、`cli.py audio-router-status [--json]` 与 `tests/test_audio_router.py`（9 项全 Mock 离线单测，零 PyTorch/网络依赖）；全仓串行门禁通过（`ruff format --check .` / `ruff check .` / `mypy core cli.py` / `pytest -q` **`60 passed`**）。
