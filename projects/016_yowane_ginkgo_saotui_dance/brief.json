@@ -1,0 +1,31 @@
+{
+  "project_id": "016_yowane_ginkgo_saotui_dance",
+  "name": "弱音ハク·周日让你扫银杏落叶？白毛一脚踢飞扫帚狂跳60帧《扫腿舞》！",
+  "tagline": "让你扫银杏落叶，没让你跳《扫腿舞》啊？！周日傍晚白毛社畜扔掉扫帚，在满地金黄银杏阳光大道60帧狂飙魔性大长腿扫腿舞！",
+  "category": "宅舞",
+  "creative_spec": {
+    "archetype": "autumn_leaf_sweeping_pun_to_saotui_dance_reversal",
+    "setting": "深秋晴空满地金黄银杏阳光大道→金色落叶林荫步行街舞台",
+    "meme_source": "周日扫落叶谐音梗反转 × 全网爆火30Sexy魔性扫腿舞"
+  },
+  "description": "小雪深秋周日黄金档整活大片！前7秒高能谐音反转：白毛红瞳的弱音ハク原本被派到满地金黄银杏叶的阳光大道值班扫落叶，一脸“周日晚上还要加班？”的死鱼眼吐槽，结果《30 Sexy》洗脑鼓点刚响第一秒直接嘴角上扬，顺手帅气甩飞木头扫帚、单手叉腰甩起银白高马尾！第7秒鼓点炸裂直接进入1080P 60FPS全程真踩点多机位《扫腿舞》，金黄银杏树下银白长发配黑丝大长腿丝滑横扫全场，把周一焦虑一脚踢飞！",
+  "target_audience": [
+    "B站宅舞与鬼畜热梗冲浪观众",
+    "弱音Haku与白毛红瞳御姐粉丝",
+    "《扫腿舞 (30 Sexy)》洗脑节奏与周日反焦虑打工人观众"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K Canonical Image-to-Image Lock)",
+    "Kling 4.0 I2V (1080p) + Kling 3.0 Motion Control (1080p)",
+    "BilibiliBgmHunter (Real Viral 30 Sexy 48kHz Audio)",
+    "EpisodeAssembler (O(1) OpenCV DIS 60FPS + Beat Punch-In + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/弱音银杏大道扫腿舞_final.mp4",
+    "cover": "delivery/弱音银杏大道扫腿舞_cover.jpg",
+    "cover_16x9": "delivery/弱音银杏大道扫腿舞_cover.jpg",
+    "cover_4x3": "delivery/弱音银杏大道扫腿舞_cover_4x3.jpg",
+    "subtitle_srt": "delivery/弱音银杏大道扫腿舞_subtitle.srt"
+  }
+}
