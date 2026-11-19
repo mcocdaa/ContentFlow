@@ -15,7 +15,7 @@
 
   📋 【借物表 (Credits) 与开源致谢】
   - 出镜角色与授权致谢：
-    1) 赛博猫娘剪辑师：双子星芒猫耳打工人原创同人二设形象
+    1) Gemini猫猫 (Gemini娘)：形象参考「蓝色大肥鱼档案馆」(fisharchive.cc / EDMOK/blue-fish-archive) NO.004 立绘 &「ZipZipPipe」《大AI和小AI们》同人设定 (CC BY-NC-SA 4.0)，工牌打工人重绘
     2) DeepSeek 蓝色大肥鱼：一创「上善无形」溟月 (CC BY-NC-SA 4.0) / 原作设「ZipZipPipe」(CC BY-NC-SA 4.0)
     3) 弱音ハク (Yowane Haku)：原案设计 CAFFEIN / Crypton Future Media, INC.（遵循 PCL 与 CC BY-NC 3.0 协议）
     4) 早期黑历史闪回客串：2B（SQUARE ENIX / 吉田明彦）与能代（Manjuu / ATDAN，光影构图参考致谢 B站 UP主「小咩先生」）

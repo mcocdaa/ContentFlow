@@ -508,14 +508,27 @@ class BilibiliAnalytics:
             archives=archives_data["archives"],
             radar=radar,
         )
+        raw_account_uname = str(account.get("uname") or "").strip()
         directives = self.build_optimization_directives(
             archives_data["archives"],
-            account_uname=str(account.get("uname") or ""),
+            account_uname=raw_account_uname,
         )
+
+        sanitized_account = dict(account)
+        sanitized_account["uid"] = "<REDACTED>"
+        sanitized_account["uname"] = "<REDACTED>"
+        if sanitized_account.get("mid") is not None:
+            sanitized_account["mid"] = "<REDACTED>"
+
+        if raw_account_uname:
+            for arc in archives_data["archives"]:
+                for cm in arc.get("recent_comments") or []:
+                    if str(cm.get("uname") or "").strip() == raw_account_uname:
+                        cm["uname"] = "<REDACTED>"
 
         report: Dict[str, Any] = {
             "timestamp": now_iso,
-            "account": account,
+            "account": sanitized_account,
             "archives_summary": archives_data["counts"],
             "totals": archives_data["totals"],
             "archives": archives_data["archives"],

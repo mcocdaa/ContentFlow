@@ -438,14 +438,23 @@ def test_bilibili_analytics_report_and_tracks(tmp_path: Path) -> None:
         analytics_dir=tmp_path / "analytics",
     )
     report = analytics.generate_report(save_snapshot=True)
+    assert report["account"]["uid"] == "<REDACTED>"
+    assert report["account"]["uname"] == "<REDACTED>"
     assert report["account"]["follower"] == 13
     assert report["totals"]["view"] == 1500
     assert report["totals"]["coin"] == 85
     assert len(report["archives"]) == 1
     assert report["archives"][0]["bvid"] == "BV1TestDafeiyu01"
     assert len(report["recommended_tracks"]) >= 3
-    assert Path(report["snapshot_json"]).exists()
-    assert Path(report["snapshot_md"]).exists()
+    snapshot_json_path = Path(report["snapshot_json"])
+    snapshot_md_path = Path(report["snapshot_md"])
+    assert snapshot_json_path.exists()
+    assert snapshot_md_path.exists()
+    snapshot_json_text = snapshot_json_path.read_text(encoding="utf-8")
+    snapshot_md_text = snapshot_md_path.read_text(encoding="utf-8")
+    assert "10000001" not in snapshot_json_text
+    assert "demo_creator" not in snapshot_json_text
+    assert "demo_creator" not in snapshot_md_text
 
 
 def test_parse_bilibili_markdown_tid_priority_and_pinned_comment() -> None:
@@ -819,3 +828,73 @@ def test_edit_archive_dtime_timeout_fallback_and_analytics_directives(tmp_path: 
     assert types == {"hook_and_bgm_upgrade", "viewer_request", "cover_hero_contrast_upgrade"}
     req = next(d for d in directives if d["type"] == "viewer_request")
     assert req["requester"] == "白的黑板"
+
+
+def test_bilibili_analytics_redacts_mid_and_self_comments_after_directives(tmp_path: Path, monkeypatch) -> None:
+    """Verifies directives filter creator comments before redaction and snapshots hide uid/mid/uname."""
+    from core.analytics import BilibiliAnalytics
+
+    vault = AuthVault(vault_dir=tmp_path / "vault")
+    analytics = BilibiliAnalytics(vault=vault, cookies={}, analytics_dir=tmp_path / "analytics")
+
+    monkeypatch.setattr(
+        analytics,
+        "fetch_account_stats",
+        lambda: {
+            "uid": "99887766",
+            "mid": 99887766,
+            "uname": "secret_creator_name",
+            "level": 6,
+            "logged_in": True,
+            "follower": 42,
+            "following": 5,
+            "dynamic_count": 3,
+        },
+    )
+    monkeypatch.setattr(
+        analytics,
+        "fetch_creator_archives",
+        lambda: {
+            "counts": {"pubed": 1, "is_pubing": 0, "not_pubed": 0, "total": 1},
+            "totals": {"view": 100, "like": 10, "coin": 2, "favorite": 3, "danmaku": 1, "reply": 2, "share": 0},
+            "archives": [
+                {
+                    "bvid": "BV1RedactionTest",
+                    "aid": 123456,
+                    "title": "测试稿件",
+                    "tid": 20,
+                    "state": 0,
+                    "state_desc": "开放浏览",
+                    "stat": {"view": 100, "like": 10, "coin": 2, "favorite": 3, "danmaku": 1, "reply": 2, "share": 0},
+                    "diagnose": {},
+                    "recent_comments": [
+                        {"rpid": 1, "uname": "secret_creator_name", "message": "下期想看什么整活？", "is_sub": False},
+                        {"rpid": 2, "uname": "热心观众A", "message": "想看下期整活", "is_sub": False},
+                    ],
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(analytics, "fetch_trending_radar", lambda limit=5: {})
+
+    report = analytics.generate_report(save_snapshot=True)
+    assert report["account"]["uid"] == "<REDACTED>"
+    assert report["account"]["mid"] == "<REDACTED>"
+    assert report["account"]["uname"] == "<REDACTED>"
+
+    # Only the non-creator viewer comment should generate a viewer_request directive
+    viewer_reqs = [d for d in report["optimization_directives"] if d["type"] == "viewer_request"]
+    assert len(viewer_reqs) == 1
+    assert viewer_reqs[0]["requester"] == "热心观众A"
+
+    # Creator's own comment uname must be redacted in report and saved snapshots
+    comments = report["archives"][0]["recent_comments"]
+    assert comments[0]["uname"] == "<REDACTED>"
+    assert comments[1]["uname"] == "热心观众A"
+
+    json_text = Path(report["snapshot_json"]).read_text(encoding="utf-8")
+    md_text = Path(report["snapshot_md"]).read_text(encoding="utf-8")
+    assert "99887766" not in json_text
+    assert "secret_creator_name" not in json_text
+    assert "99887766" not in md_text
+    assert "secret_creator_name" not in md_text

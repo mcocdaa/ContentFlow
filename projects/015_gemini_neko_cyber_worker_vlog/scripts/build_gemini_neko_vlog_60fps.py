@@ -153,7 +153,7 @@ def main() -> None:
             raise FileNotFoundError(f"Missing required 015 asset: {req}")
 
     # 1. Cover hero cutout & high-brightness vivid_scene cover
-    segment_character_rgba(HERO_ANCHOR_IMG, CUTOUT_PNG, crop_roi=(0.12, 0.00, 0.92, 1.00))
+    segment_character_rgba(HERO_ANCHOR_IMG, CUTOUT_PNG, crop_roi=(0.0, 0.0, 1.0, 1.0), clean_corner_wm=False)
     CoverDesigner().design_project_cover(PROJ_DIR, output_path=OUT_COVER, cover_style="vivid_scene")
 
     # 2. Trim clean 1080p highlight slices from episodes 002..014

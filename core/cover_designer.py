@@ -596,12 +596,12 @@ class CoverDesigner:
             else:
                 paste_x = max(965, min(TARGET_WIDTH - scaled_w - 20, 1380 - scaled_w // 2))
 
-            # Crisp rim silhouette glow behind cutout so figure stands out vividly
-            rim_mask = a_ch.filter(ImageFilter.GaussianBlur(radius=16))
-            rim_patch = Image.new("RGBA", (scaled_w, scaled_h), (190, 248, 255, 220))
-            rim_patch.putalpha(rim_mask)
-            rim_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (0, 0, 0, 0))
-            rim_layer.paste(rim_patch, (paste_x, paste_y))
+            # Crisp rim silhouette glow behind cutout blurred on full canvas to avoid box-edge cutoffs
+            rim_alpha = Image.new("L", (TARGET_WIDTH, TARGET_HEIGHT), 0)
+            rim_alpha.paste(a_ch, (paste_x, paste_y))
+            rim_alpha = rim_alpha.filter(ImageFilter.GaussianBlur(radius=16))
+            rim_layer = Image.new("RGBA", (TARGET_WIDTH, TARGET_HEIGHT), (190, 248, 255, 220))
+            rim_layer.putalpha(rim_alpha)
             base.alpha_composite(rim_layer)
 
             hero_final = Image.merge("RGBA", (hr, hg, hb, a_ch))
@@ -952,7 +952,7 @@ class CoverDesigner:
             hero_crop = (0.04, 0.78, 0.50)
             cut_015 = pdir / "output" / "cutouts" / "neko_vlog_hero_cutout.png"
             transparent_hero = cut_015 if cut_015.exists() else None
-            hero_top_ratio = 0.88
+            hero_top_ratio = 0.97
         elif "007" in pid or "dafeiyu" in pid:
             h1 = hook_line1 or "把B站账号交给AI"
             h2 = hook_line2 or "连夜肝出大肥鱼"

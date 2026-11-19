@@ -29,6 +29,13 @@
 * ✅ **E4 — 真实爆款伴奏引擎 (`core/bgm_hunter.py`) + O(1) 流式低内存管线 + 可灵 4.0 旗舰升级 + 全线稿件热升级 (`008/010/011/012`)**：
   * 全线热升级 `008`（真《Telepathy》原曲踩点）、`010`（986万爆款《司凤版雨爱》邦吧原声 + 138 BPM 切镜）与定时稿 `011`（真 Phonk + 街头潮舞原声，11/18 18:30）；
   * 采用旗舰 `kling-video-v4_0` + `kling-video-v3_0` + 真《大展鸿图》二创原声交付 `012_dafeiyu_dazhanhongtu_villa`（`98.0 / 100 [S / VIRAL_READY]`，封面明度 `161.89`、暗部 `7.7%`），热替换原旧白板排期 `009`（`BV1hwWC6PEYu`，已过审 `state=-40`，11/17 18:30 发布），并将 `003`（`BV18AWC6YE3M`）延后至 11/19 18:30。
+* ✅ **E5 — `014/015` 排期交付、定型角色参考锁、`CoverDesigner` 满画幅 Rim 辉光修复与遥测自动脱敏**：
+  * **定型角色参考锁**：沉淀官方定型立绘至 `library/characters/gemini_neko/`（`fisharchive.cc` NO.004 Gemini娘），确立主力角色一律通过 `kling image_to_image`（`kling-image-v3_0_omni`）锁定锚点并清理旧版抠图缓存的硬规范。
+  * **`CoverDesigner` 满画幅辉光修复**：修复 `core/cover_designer.py` 中 `rim_alpha` 局部裁剪模糊边缘问题，升级为满画幅 `rim_alpha` 模糊 + `hero_top_ratio=0.97` 构图，消除高明度实景封面描边切边瑕疵。
+  * **遥测 PII 自动脱敏加固**：在 `core/analytics.py`（`BilibiliAnalytics.generate_report`）中先使用原始账号名运行 `build_optimization_directives` 过滤自评论，再将 `account.uid` / `account.uname` / `account.mid` 及评论区 UP 主本人 `uname` 统一脱敏为 `"<REDACTED>"` 后写入 `bilibili_latest.json` 与 `bilibili_growth_report.md`（已补全 `tests/test_publisher.py` 单测并完成线上实测验证）。
+  * **排期交付与线上热替换**：
+    * `014`（`BV117sM6FEVL`，排期 `2026-11-20 18:30 CST`，线上状态 `[通过审核，等待发布]`）；
+    * `015`（`015_gemini_neko_cyber_worker_vlog`，`BV12Fs36uECr`，排期 `2026-11-21 18:30 CST`，线上热替换重制版已过审 `[通过审核，等待发布]`；质检 **`100.0 / 100 [S / VIRAL_READY]`**，封面平均明度 **`160.05`**、暗部 `<45` **`8.0%`**、切镜节奏 **`5.48 cuts/10s`**）。
 
 ---
 
@@ -42,7 +49,10 @@
   * 已由 `core/bgm_hunter.py`（`cli.py fetch-bgm` + `concat_or_duck_segments`）及双侧链闪避/冲击低音合成落地并应用于 `008/010/011/012/013`。
 * ✅ **K2 — 黄金前 2 秒综艺花字与动态贴纸开场钩子**
   * 已在 `core/episode_assembler.py` 落地 `EpisodeSpec.hook_banner_text` / `hook_banner_sec`（流式合成前单次预渲染 `< 1 MiB` `O(1)` 撞色胶囊花字 RGBA 图块 + 前 `0.18s` 弹出缓动，`t >= hook_banner_sec` 零拷贝透传），补充单测 `test_episode_assembler_hook_banner_overlay`（全仓 **`49 passed`** Pytest 100% 通过），并已在 `013` 成片前 `1.6s` 实装验证。
-* `[ ] K3 — 发布后 24h/72h 流水自动归因与对比回顾脚本`
-  * 目标：扩展 `cli.py benchmark`，记录不同期 `vivid_scene` 封面 vs 旧版封面的 `tm_stars`、`crash_rate_pct` 与 `full_play_ratio_pct` 真实变化并自动写入本文件经验区。
+* ✅ **K3 — 发布后 24h/72h 流水自动归因与对比回顾脚本**
+  * 已落地 `cli.py benchmark --attribution`（commit `24d41e6`），自动读取脱敏遥测快照统计不同分群的播放量、点赞率、`tm_stars`、`crash_rate_pct` 与 `full_play_ratio_pct`。
+  * **线上实测归因结果（`2026-11-19 18:50 CST` 快照，已发布 `9` 篇 + 定时待发 `2` 篇，零 PII）**：
+    * **新娱乐高明度热舞/整活赛道（`n=6`）** vs **旧静态白板硬核科普赛道（`n=3`）**：平均播放 **`71.33` vs `35.00`**（**`+36.33` / `2.04x`**）、点赞率 **`6.31%` vs `0.95%`**（**`+5.36%`**）、平均封标星级 **`2.87★` vs `2.43★`**（**`+0.44★`**）、平均 3 秒划走率 **`34.49%` vs `51.51%`**（**`-17.02%`**）、平均完播率 **`51.89%` vs `47.17%`**（**`+4.72%`**；其中已沉淀数据的 `010/011/012` 完播率达 **`82.87% ~ 88.33%`**）。
+    * **头部标杆**：`BV121sw62EGg`（`010`，`128` 播放 / `4.69%` 点赞率 / `3.7★` / `82.87%` 完播）与 `BV198sw6oEHN`（`011`，`120` 播放 / `5.00%` 点赞率 / `4.5★` / `87.50%` 完播）。
 * `[ ] K4 — 外部真音乐（MiniMax Music / Suno）与情绪语音（MiniMax Speech / Fish-Audio）路由器插件位`
   * 目标：在用户补充相应 API Key 后，即插即用地替换本地平直念白与正弦波伴奏（`config/settings.py` 与 `.env.example` 已预留 `MINIMAX_API_KEY`）。
