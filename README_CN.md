@@ -61,19 +61,18 @@ python3 cli.py format-html --input script.txt --output board.html
 python3 cli.py run-all --project my_topic --aspect 16:9 --voice zh-CN-YunxiNeural
 ```
 
-### 3. 跨平台鉴权保险箱、一键发布与智能数据雷达
+### 3. B 站投稿、账号与数据雷达
 
-所有平台登录态（`cookies.json`、`storage_state.json`）及账号实时数据快照均保存在仓库外的 `~/.contentflow/` 私有目录（强制 `0700`/`0600` 权限），确保开源仓库零隐私泄露：
+先离线预览本期 Markdown 会解析出什么分区、标签和简介。定时投稿时，在创作中心选定原生 AI 声明，提交后核对平台保存的北京时间和审核状态。模板与可直接运行的预览命令见[定时投稿与回读](.agents/skills/bilibili-viral-studio/references/scheduled-release.md)。
+
+登录凭据保存在仓库外的 `~/.contentflow/accounts/`，目录权限为 `0700`，凭据文件为 `0600`。投稿回执先移除账号标识和凭据，再存入私有工作区。
 
 ```bash
-# 1. B站终端/PNG 二维码扫码登录（加密保存至 ~/.contentflow/accounts/bilibili/）
-python3 cli.py auth login --platform bilibili
-python3 cli.py auth status --verify
+# 查看二维码登录与投稿选项
+python3 cli.py auth login --help
+python3 cli.py publish --help
 
-# 2. 本地预演（draft）或一键上传至 B站创作中心定时/直发队列（schedule / direct）
-python3 cli.py publish --project 007_deepseek_dafeiyu_phone_number --platforms bilibili --mode schedule --schedule-at "18:30"
-
-# 3. 巡检账号播放/投币/互动数据并扫描 B站全站及垂类实时热门赛道雷达
+# 查看账号互动数据与分区热门榜
 python3 cli.py analytics --radar
 ```
 

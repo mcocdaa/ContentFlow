@@ -61,19 +61,18 @@ To generate full multi-channel copywriting and render the 1080P MP4 video end-to
 python3 cli.py run-all --project my_topic --aspect 16:9 --voice zh-CN-YunxiNeural
 ```
 
-### 3. Social Matrix Auth Vault, Publishing & Autonomous Analytics
+### 3. Bilibili publishing, credentials and analytics
 
-All platform sessions (`cookies.json`, `storage_state.json`) and account analytics snapshots are stored locally in `~/.contentflow/` with strict `0700`/`0600` permissions—never inside the Git repository:
+Preview how the publisher reads the category, tags and description from the episode Markdown. For scheduled AI videos, select the native AI declaration in Creator Center, then check the saved Beijing release time and review status. The guide includes a copy template and an offline preview command. [Scheduled releases and Creator Center verification (Chinese)](.agents/skills/bilibili-viral-studio/references/scheduled-release.md)
+
+Credentials are stored in `~/.contentflow/accounts/` with `0700` directory and `0600` file permissions. Strip account identifiers and credentials before saving submission receipts in the private production workspace.
 
 ```bash
-# 1. Authenticate Bilibili via terminal/PNG QR scan (saved to ~/.contentflow/accounts/bilibili/)
-python3 cli.py auth login --platform bilibili
-python3 cli.py auth status --verify
+# Inspect QR login and publishing options
+python3 cli.py auth login --help
+python3 cli.py publish --help
 
-# 2. Stage locally (draft) or upload to Bilibili Creator Center (schedule / direct)
-python3 cli.py publish --project 007_deepseek_dafeiyu_phone_number --platforms bilibili --mode schedule --schedule-at "18:30"
-
-# 3. Inspect account views, submitted archive metrics, and real-time Bilibili partition radar
+# Inspect account engagement and category rankings
 python3 cli.py analytics --radar
 ```
 

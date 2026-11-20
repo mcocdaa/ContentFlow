@@ -10,7 +10,7 @@
   * 多幕 1080P 60FPS 光流补帧 + 鼓点近景切镜（Beat Punch-In）+ `-14 LUFS` 装配：`./.venv/bin/python cli.py assemble-episode --spec <spec.json>`（底层调用 `core/episode_assembler.py` 的 `O(1)` 两帧滑窗流式管线）
   * B 站 16:9 / 4:3 高 CTR 封面生成：`./.venv/bin/python cli.py design-cover --project <id>`（娱乐/宅舞/鬼畜分类自动启用高明度 `vivid_scene`，科技科普沿用 `tech_split`）
   * 发布前 100 分制硬门槛验收：`./.venv/bin/python cli.py quality-check --project <id> --threshold 90`
-  * 合规投递与置顶评论同步：`cli.py publish` 与 `cli.py sync-pins`
+  * 合规投递与置顶评论同步：`cli.py publish` 与 `cli.py sync-pins`。定时投稿先核对解析后的借物表与原生 AI 声明，再以创作中心的稿件状态、北京时间和线上封面确认排期。[定时投稿与回读](.agents/skills/bilibili-viral-studio/references/scheduled-release.md)
 * **个性每期创新（每集必须全新构思，严禁走老路）**：
   * **立项前先查流水与对标**：先检查 `/home/mcocdaa/.contentflow/accounts/analytics/bilibili_latest.json` 中的播放、3 秒划走率、封标星级（`tm_stars`）与观众评论点单，再运行 `cli.py benchmark --online` 拆解 B 站实时榜单头部爆款的封面明度、景别切换频率与留存钩子。
   * **严禁连续雷同与静态站桩**：立项必须写入 `brief.json` 的 `creative_spec` 并在 `library/creative_ledger.json` 登记；`VideoQualityGate` 会自动拦截近 3 期重复题材或舞台场景。娱乐向成片严禁回退为 `studio_renderer.py` 静态立绘 PPT。
