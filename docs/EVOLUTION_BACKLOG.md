@@ -35,6 +35,13 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 
 母版实际采用三个 `kling-video-v4_0` 1080p 档图生视频镜头。下载的三段源片均为 1916×1080、24 fps，经 DIS 光流装配成 1920×1080、60 fps。全片 1080 帧，相邻显示时间戳间隔 16.666–16.667 毫秒。`freezedetect`（−50 dB、0.30 秒）检出 0 段近静止。最终音频为 −14.01 LUFS、−1.67 dBTP，质量门禁为 100/100。人工复看时曾发现台词指向的食物部位在画里看不清，重做末镜并同步调整配音与字幕后，才对这版母版复测。
 
+### 2026-11-21 · 线上遥测与分群归因复盘（冷启动破圈策略转向）
+
+* **账号与库存快照（`2026-11-21 09:15 CST`，零 PII 脱敏）**：粉丝 **`15`**、累计播放 **`558`**、点赞 **`31`**、收藏 **`3`**、评论 **`18`**；已公开 **`10`** 篇（含新完成置顶同步的 `014` `BV117sM6FEVL`）、定时过审待发 **`3`** 篇（`015` `BV12Fs36uECr` 11/21、`016` `BV1AWsh6sEQF` 11/22、`BV1PyyWzqE38` 11/23，均 `state=-40`，`0` 退回）。
+* **分群归因实测（`cli.py benchmark --attribution`）**：新娱乐高明度热舞/整活赛道（`n=7`）vs 旧静态白板硬核科普赛道（`n=3`）— 平均播放 **`64.29` vs `36.00`**（**`1.79x`** / `+28.29`）、点赞率 **`6.67%` vs `0.93%`**（`+5.74%`）、平均封标星级 **`3.46★` vs `2.43★`**（`+1.03★`）、平均 3 秒划走率 **`29.91%` vs `51.51%`**（`-21.60%`）、平均完播率 **`41.40%` vs `47.17%`**；头部标杆 `011`（`BV198sw6oEHN`，`129` 播放 / `4.6★`）与 `010`（`BV121sw62EGg`，`129` 播放 / `3.7★`）。
+* **冷启动瓶颈观察**：`013`（`BV18AWC6YE3M`）封标达 **`4.9★`**（`tm_pass_rate_pct=97.72%`）但初始推荐曝光极低（`10` 播放 / `2` 点赞 / 完播 `35.71%`）；`014`（`BV117sM6FEVL`）刚转公开处于冷启动初期（`1` 播放 / `1` 点赞，当前诊断 `2.0★`）。单纯 15–20 秒单人短舞缺乏角色羁绊与弹幕讨论议题，难以在 15 粉基数下突破次级推荐池与转粉瓶颈（同类转粉率中位数 `0.09%`）。
+* **下阶段策略转向**：切向 **40–60 秒多 AI 角色群像喜剧短剧**（首推 `017` 大肥鱼 × Gemini娘合租运营系列，强化角色反差、剧情反转与弹幕/评论区投票互动），并同步推进 **双 AI 实时互动直播间（`K7`）** 作为实时留存与切片反哺短视频的引流漏斗。
+
 ---
 
 ## 二、 已完成进化记录（Completed Slices）
@@ -73,3 +80,9 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 * ✅ **K4 — 外部真音乐（MiniMax Music / Suno）与情绪语音（MiniMax Speech / Fish-Audio）路由器插件位**
   * 已落地 `core/audio_router.py`（`AudioGenerationRouter`、`SpeechRequest`/`SpeechResult`、`MusicRequest`/`MusicResult`、`ProviderStatus`），支持语音路由优先级 `minimax_speech -> fish_audio -> local_kokoro`（惰性加载 `LocalNeuralTTS` 且 `finally` 必调 `tts.close()`）与音乐路由优先级 `minimax_music -> suno -> bilibili_bgm_hunter`（惰性加载 `BilibiliBgmHunter`），零 Key 或上游 HTTP 异常时自动平滑降级，`get_status()` 与错误日志严格脱敏零密钥泄露；
   * 已同步更新 `config/settings.py`、`.env.example`、`cli.py audio-router-status [--json]` 与 `tests/test_audio_router.py`（9 项全 Mock 离线单测，零 PyTorch/网络依赖）；全仓串行门禁通过（`ruff format --check .` / `ruff check .` / `mypy core cli.py` / `pytest -q` **`60 passed`**）。
+* ⏳ **K5 — B 站原生 AIGC 声明（`neutral_mark`）投稿/回读校验（`verify_archive_submission`）与投稿回执 PII 自动脱敏（`--dry-run` 安全加固）**
+  * 目标：在 `core/publisher.py` 与 `cli.py` 中默认启用 B 站原生 AIGC 创作声明（`neutral_mark = "作者声明：该视频使用人工智能合成技术"`），落地投稿后只读回验接口 `verify_archive_submission(aid)`（校验 `ai_declaration_verified`、`dtime_cst`、`cover_url_present` 等），并对投稿回执与 `--dry-run` 输出全面执行 PII 自动脱敏。
+* ⏳ **K6 — 多角色高表现力情感配音接入（通过 `core/audio_router.py` 激活 MiniMax Speech / Fish-Audio，打造大肥鱼/Gemini娘/弱音专属声线）**
+  * 目标：基于已落地的 `K4` 路由器，接入 MiniMax Speech / Fish-Audio 情感配音与角色声线配置档（voice profile），让大肥鱼、Gemini娘、弱音ハク在多角色群像短剧与互动中具备高辨识度语气与情绪起伏，同时保留无 Key 时平滑回退本地 TTS。
+* ⏳ **K7 — 双 AI 实时互动直播间 MVP（`core/live_studio/` 弹幕监听 + 双重合规风控 + OBS 透明舞台 + 高光自动打点切片）**
+  * 目标：构建低内存可运行的 `core/live_studio/` 模块，打通 B 站直播间弹幕监听、输入/输出双重合规风控过滤、双 AI 角色轮替接梗与 OBS 透明舞台渲染，并支持直播高光时刻自动打点与一键导出短视频切片反哺投稿漏斗。
