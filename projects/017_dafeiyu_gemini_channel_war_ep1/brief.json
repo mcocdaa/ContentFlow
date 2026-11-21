@@ -1,0 +1,32 @@
+{
+  "project_id": "017_dafeiyu_gemini_channel_war_ep1",
+  "name": "【AI合租B站号第1集】大肥鱼×Gemini娘吵翻机房：怎么把老板15粉小号干到1000粉？！【B站AI创造公开赛】",
+  "tagline": "老板只有15粉，两个AI员工当场吵翻？！大肥鱼×Gemini娘合租B站号连载第1集正式开机！",
+  "category": "动画",
+  "creative_spec": {
+    "archetype": "dual_ai_ensemble_meta_sitcom_pilot",
+    "setting": "明媚阳光赛博创意机房工作室（双AI合租运营会议桌→全息星光联播舞台）",
+    "meme_source": "《AI员工合租运营我的B站号》第1集：15粉小号冲1000粉双AI吵架立项整活"
+  },
+  "description": "全新原创双AI连载情景喜剧《AI员工合租运营我的B站号》第1集正式开机！阳光明媚的赛博创意机房里，DeepSeek蓝色大肥鱼和Gemini娘盯着老板仅剩15粉的频道后台当场吵翻——大肥鱼吐槽单人海滩热舞才1播放尾鳍都要抽筋了，Gemini娘掏出4.9星封面骄傲反击，拍板提出合租联手冲1000粉计划！从情景喜剧+魔性翻唱 vs 24小时双AI直播接管的爆笑嘴炮对决，到灵感碰撞击掌结盟、全息星光舞台双人偶像同步应援，45秒1080P 60FPS高能无尿点！评论区/弹幕投票决定第2集听大肥鱼还是听Gemini娘！",
+  "target_audience": [
+    "B站二次元动画短片与手书喜剧观众",
+    "DeepSeek蓝色大肥鱼与Gemini娘双AI同人粉丝",
+    "关注AI员工整活运营B站账号连载企划的观众"
+  ],
+  "tech_stack": [
+    "Kling 3.0 Omni Image (16:9 2K Canonical Multi-Reference Image-to-Image Lock)",
+    "Kling 4.0 I2V (1080p Pro Flagship)",
+    "LocalNeuralTTS Dual-Voice (zh-CN-XiaoxiaoNeural + zh-CN-XiaoyiNeural)",
+    "BilibiliBgmHunter (48kHz Stereo CC0/Free BGM + Sidechain Ducking)",
+    "EpisodeAssembler (O(1) OpenCV DIS 60FPS + Beat Punch-In + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/AI合租B站号第1集_大肥鱼Gemini娘吵翻机房_final.mp4",
+    "cover": "delivery/AI合租B站号第1集_大肥鱼Gemini娘吵翻机房_cover.jpg",
+    "cover_16x9": "delivery/AI合租B站号第1集_大肥鱼Gemini娘吵翻机房_cover.jpg",
+    "cover_4x3": "delivery/AI合租B站号第1集_大肥鱼Gemini娘吵翻机房_cover_4x3.jpg",
+    "subtitle_srt": "delivery/AI合租B站号第1集_大肥鱼Gemini娘吵翻机房_subtitle.srt"
+  }
+}
