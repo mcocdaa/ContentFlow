@@ -1,12 +1,22 @@
-"""ContentFlow Dual-AI Interactive Livestream MVP (`DeepSeek 蓝色大肥鱼 × Gemini娘`).
+"""ContentFlow Dual-AI Interactive Livestream Studio (`DeepSeek 蓝色大肥鱼 × Gemini娘`).
 
-Lightweight async package built exclusively on stdlib + aiohttp + httpx + pydantic
-(zero PyTorch/GPU overhead) so OBS NVENC livestreaming stays safely within the
-24 GiB RAM / 8 GiB VRAM studio hardware envelope.
+Provides both:
+- OBS Browser Source Stage MVP (`stage_server.py`, `danmaku.py`, `director.py`, `safety.py`)
+- 100% Headless Zero-Mic Autonomous Bilibili Livestream Engine (`bilibili_live_api.py`,
+  `headless_streamer.py`) with dual OS-pipe FFmpeg encoding and strict secret/PII redaction.
 """
 
 from __future__ import annotations
 
+from core.live_studio.bilibili_live_api import (
+    DEFAULT_LIVE_AREA_V2,
+    FACE_AUTH_REQUIRED_CODE,
+    REDACTED_RTMP_TOKEN,
+    BilibiliLiveController,
+    RoomStatus,
+    StartLiveResult,
+    scrub_rtmp_secrets,
+)
 from core.live_studio.danmaku import (
     HEADER_SIZE,
     OP_AUTH,
@@ -33,6 +43,16 @@ from core.live_studio.director import (
     PersonaProfile,
     PersonaTurn,
 )
+from core.live_studio.headless_streamer import (
+    BYTES_PER_VIDEO_FRAME,
+    SAMPLES_PER_VIDEO_FRAME,
+    HeadlessLiveStreamer,
+    HeadlessStageRenderer,
+    SyntheticAudioMixer,
+    detect_video_encoder,
+    resolve_cjk_font_path,
+    synthesize_offline_fallback_pcm,
+)
 from core.live_studio.safety import (
     AI_DISCLOSURE_BANNER,
     REDACTED_TOKEN,
@@ -49,7 +69,10 @@ from core.live_studio.stage_server import (
 
 __all__ = [
     "AI_DISCLOSURE_BANNER",
+    "BYTES_PER_VIDEO_FRAME",
     "CHARACTER_ASSETS",
+    "DEFAULT_LIVE_AREA_V2",
+    "FACE_AUTH_REQUIRED_CODE",
     "HEADER_SIZE",
     "OP_AUTH",
     "OP_AUTH_REPLY",
@@ -57,13 +80,18 @@ __all__ = [
     "OP_HEARTBEAT_REPLY",
     "OP_MESSAGE",
     "PERSONAS",
+    "REDACTED_RTMP_TOKEN",
     "REDACTED_TOKEN",
+    "SAMPLES_PER_VIDEO_FRAME",
     "BilibiliDanmakuClient",
+    "BilibiliLiveController",
     "DanmakuEvent",
     "DecodedPacket",
     "DialogueResponder",
     "DualAILiveDirector",
     "GuardDecision",
+    "HeadlessLiveStreamer",
+    "HeadlessStageRenderer",
     "HighlightMoment",
     "HighlightTracker",
     "LiveComplianceGuard",
@@ -73,10 +101,17 @@ __all__ = [
     "OpenAICompatibleResponder",
     "PersonaProfile",
     "PersonaTurn",
+    "RoomStatus",
     "StageServer",
+    "StartLiveResult",
+    "SyntheticAudioMixer",
     "create_stage_app",
+    "detect_video_encoder",
     "pack_packet",
     "parse_bilibili_command",
     "redact_pii",
+    "resolve_cjk_font_path",
+    "scrub_rtmp_secrets",
+    "synthesize_offline_fallback_pcm",
     "unpack_packets",
 ]
