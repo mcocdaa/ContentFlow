@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-11-21",
+  "provider": "kling_ai",
+  "notes": "Persistent cloud Kling Element registry for canonical ContentFlow stars. Reference in prompts as <<<ELEMENT_ID>>> with --elements JSON array containing {id, bindName, type}.",
+  "elements": {
+    "dafeiyu": {
+      "id": "327223132226240",
+      "bindName": "dafeiyu",
+      "display_name": "DeepSeek 蓝色大肥鱼",
+      "type": "image",
+      "tags": [
+        "角色"
+      ],
+      "description": "Slender 2D Japanese anime girl with long wavy royal-blue hair fading to sky-blue at tips, distinctive navy-and-white whale-fin side ears with a light-blue bow, bright sapphire-blue eyes, white frilly maid headband, fitted dark-navy and white maid dress with gold buttons, frilly white apron with a cute navy whale embroidery, large glossy blue whale tail emerging beneath a big white back bow, white thigh-high stockings with navy bows, and navy Mary Jane shoes. Crisp 2D cel-shaded anime proportions, slender build.",
+      "source_paths": {
+        "cover": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png",
+        "secondary": [
+          "library/characters/deepseek_dafeiyu/dafeiyu_canonical_side.png",
+          "library/characters/deepseek_dafeiyu/dafeiyu_canonical_back.png",
+          "library/characters/deepseek_dafeiyu/dafeiyu_canonical_portrait.png"
+        ]
+      }
+    },
+    "gemini_neko": {
+      "id": "327223141202682",
+      "bindName": "gemini_neko",
+      "display_name": "Gemini娘",
+      "type": "image",
+      "tags": [
+        "角色"
+      ],
+      "description": "Lively slender 2D Japanese anime cat-ear girl with long flowing periwinkle-blue to lavender-pink gradient wavy hair, tall fluffy lavender cat ears, iridescent four-point star hairpins, bright heterochromatic eyes (pink-magenta right eye and golden-yellow left eye), navy-and-lavender star-themed magical idol outfit with detached wide sleeves, midriff top, pleated navy-and-white skirt, fluffy blue-purple cat tail, white loose leg-warmer socks, and navy platform shoes. Crisp 2D cel-shaded anime style.",
+      "source_paths": {
+        "cover": "library/characters/gemini_neko/gemini_canonical_full.png",
+        "secondary": [
+          "library/characters/gemini_neko/gemini_canonical_bust.png",
+          "library/characters/gemini_neko/gemini_canonical_portrait.png"
+        ]
+      }
+    },
+    "yowane_haku": {
+      "id": "327223148245506",
+      "bindName": "yowane_haku",
+      "display_name": "弱音ハク",
+      "type": "image",
+      "tags": [
+        "角色"
+      ],
+      "description": "Cool composed tall anime young woman with long glossy silver-white hair styled in a high side ponytail, sharp crimson-red eyes wearing sleek thin red-rimmed rectangular glasses, crisp white collared shirt under a tailored dark-navy blazer jacket, dark navy plaid pleated skirt, black thigh-high stockings, and black loafers. Calm deadpan intelligent expression, sharp anime proportions.",
+      "source_paths": {
+        "cover": "library/characters/yowane_haku/master_reference.jpg",
+        "secondary": [
+          "library/characters/yowane_haku/angry/yowane_teacher_hands_on_hips.jpg",
+          "library/characters/yowane_haku/sigh/yowane_scene1_sigh.jpg"
+        ]
+      }
+    }
+  }
+}

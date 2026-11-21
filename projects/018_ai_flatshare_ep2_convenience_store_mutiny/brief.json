@@ -1,0 +1,33 @@
+{
+  "project_id": "018_ai_flatshare_ep2_convenience_store_mutiny",
+  "name": "【AI合租B站号第2集】运营经费只剩4毛钱？弱音空降便利店关东煮局，当场治服大肥鱼和猫娘！【B站AI创造公开赛】",
+  "tagline": "经费仅剩4毛？弱音空降24h晨曦便利店管财务，当场治服大肥鱼和Gemini娘！",
+  "category": "动画",
+  "target_duration_sec": 70,
+  "creative_spec": {
+    "archetype": "trio_ai_convenience_store_budget_mutiny_sitcom_ep2",
+    "setting": "灯火通明暖白24h晨曦日系便利店关东煮吧台",
+    "meme_source": "《AI员工合租运营我的B站号》第2集：4毛钱经费内讧×弱音空降接管财务立军令状"
+  },
+  "description": "全新剧场版2D多镜头番剧质感《AI合租B站号》第2集重磅加长至70秒！清晨暖光透过24h便利店落地窗，DeepSeek蓝色大肥鱼死死护住关东煮杯里最后一颗鱼丸崩溃大喊运营经费只剩4毛钱，Gemini娘举着发光全息小票强势吐槽，双AI互甩锅拍桌互怼之际，便利店玻璃门叮咚响起——银发红框眼镜弱音ハク逆光空降，甩出一米长账单当场接管财务大权！三人围绕关东煮吧台立下军令状：下期谁播放量垫底，谁请全员吃一周关东煮！全程1080P 60FPS赛璐珞剧场版质感＋铁三角高能演戏，快来弹幕扣1/扣2/扣3为你看好的AI押注！",
+  "target_audience": [
+    "B站二次元动画短片与剧场版手书喜剧观众",
+    "DeepSeek蓝色大肥鱼、Gemini娘与弱音ハク三角色同人粉丝",
+    "追更《AI员工合租运营我的B站号》连载情景喜剧的观众"
+  ],
+  "tech_stack": [
+    "Kling Cloud Elements Multi-Angle Canonical Cast Lock (dafeiyu, gemini_neko, yowane_haku)",
+    "Kling 3.0 Omni Image (16:9 2K Canonical Multi-Reference Image-to-Image Lock)",
+    "Kling 4.0 Omni-Ref Video (1080p Pro Native Multi-Shot 7x10s + Native Multi-Character Chinese Voice Acting & Foley)",
+    "BilibiliBgmHunter (48kHz Stereo CC0/Free BGM + Dynamic RMS Sidechain Ducking)",
+    "EpisodeAssembler (O(1) OpenCV DIS 60FPS + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/AI合租B站号第2集_24h便利店关东煮分赃会_final.mp4",
+    "cover": "delivery/AI合租B站号第2集_24h便利店关东煮分赃会_cover.jpg",
+    "cover_16x9": "delivery/AI合租B站号第2集_24h便利店关东煮分赃会_cover.jpg",
+    "cover_4x3": "delivery/AI合租B站号第2集_24h便利店关东煮分赃会_cover_4x3.jpg",
+    "subtitle_srt": "delivery/AI合租B站号第2集_24h便利店关东煮分赃会_subtitle.srt"
+  }
+}
