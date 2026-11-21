@@ -1,23 +1,24 @@
 {
   "project_id": "016_yowane_ginkgo_saotui_dance",
-  "name": "弱音ハク·周日让你扫银杏落叶？白毛一脚踢飞扫帚狂跳60帧《扫腿舞》！",
-  "tagline": "让你扫银杏落叶，没让你跳《扫腿舞》啊？！周日傍晚白毛社畜扔掉扫帚，在满地金黄银杏阳光大道60帧狂飙魔性大长腿扫腿舞！",
+  "name": "【弱音×大肥鱼×Gemini娘】周日让你扫银杏落叶？弱音偷跳《扫腿舞》被抓包反拉全员狂舞！",
+  "tagline": "周日傍晚老板让弱音去扫银杏落叶，结果她甩飞扫帚狂跳《扫腿舞》被大肥鱼和Gemini娘现场抓包录屏——反手一句话把两位同事全拉进舞局开启三人60帧狂飙！",
   "category": "宅舞",
   "creative_spec": {
-    "archetype": "autumn_leaf_sweeping_pun_to_saotui_dance_reversal",
-    "setting": "深秋晴空满地金黄银杏阳光大道→金色落叶林荫步行街舞台",
-    "meme_source": "周日扫落叶谐音梗反转 × 全网爆火30Sexy魔性扫腿舞"
+    "archetype": "autumn_leaf_sweeping_pun_caught_slacking_to_trio_saotui_dance_reversal",
+    "setting": "深秋晴空满地金黄银杏阳光大道（独舞抓包现场→三AI合体狂跳扫腿舞舞台）",
+    "meme_source": "周日扫落叶谐音梗反转 × 巡逻抓包录屏喜剧反转 × 三AI全员60帧《扫腿舞 (30 Sexy)》弹幕投票接棒"
   },
-  "description": "小雪深秋周日黄金档整活大片！前7秒高能谐音反转：白毛红瞳的弱音ハク原本被派到满地金黄银杏叶的阳光大道值班扫落叶，一脸“周日晚上还要加班？”的死鱼眼吐槽，结果《30 Sexy》洗脑鼓点刚响第一秒直接嘴角上扬，顺手帅气甩飞木头扫帚、单手叉腰甩起银白高马尾！第7秒鼓点炸裂直接进入1080P 60FPS全程真踩点多机位《扫腿舞》，金黄银杏树下银白长发配黑丝大长腿丝滑横扫全场，把周一焦虑一脚踢飞！",
+  "description": "小雪深秋周日黄金档升级加长版（40秒多AI全员喜剧反转+三人60FPS热舞）！第1–2幕（0–17秒）：白毛红瞳弱音ハク被派去金黄银杏大道值班扫落叶，听到《30 Sexy》洗脑前奏直接甩飞扫帚开跳60帧大长腿《扫腿舞》；第3a幕（17–25秒）：巡逻的DeepSeek蓝色大肥鱼与举着手机录屏的Gemini娘当场把摸鱼的弱音抓包，喜剧配乐一响笑点拉满；第3b幕（25–33秒）：弱音神反转一句“单人扫地哪有播放量，咱仨一起跳直接把老板小号干爆”，大肥鱼尾鳍上头、Gemini娘火力全开，三人并排银杏大道同步狂跳《扫腿舞》；第4幕（33–41秒）：全员金叶阳光下元气谢幕，弹幕评论区投票下期接棒跳热舞（扣1大肥鱼，扣2Gemini娘）！",
   "target_audience": [
-    "B站宅舞与鬼畜热梗冲浪观众",
-    "弱音Haku与白毛红瞳御姐粉丝",
+    "B站宅舞与二次元情景喜剧整活观众",
+    "弱音Haku、DeepSeek蓝色大肥鱼与Gemini娘粉丝",
     "《扫腿舞 (30 Sexy)》洗脑节奏与周日反焦虑打工人观众"
   ],
   "tech_stack": [
-    "Kling 3.0 Omni Image (16:9 2K Canonical Image-to-Image Lock)",
+    "Kling 3.0 Omni Image (16:9 2K Multi-Reference Canonical Character Lock)",
     "Kling 4.0 I2V (1080p) + Kling 3.0 Motion Control (1080p)",
-    "BilibiliBgmHunter (Real Viral 30 Sexy 48kHz Audio)",
+    "Tri-Voice Neural Dialogue (zh-TW-HsiaoChenNeural + zh-CN-XiaoxiaoNeural + zh-CN-XiaoyiNeural)",
+    "BilibiliBgmHunter (Real Viral 30 Sexy BV1MA3gzHEsh + Plum Free Comedy BGM BV1o4KwzPERi 48kHz Stereo)",
     "EpisodeAssembler (O(1) OpenCV DIS 60FPS + Beat Punch-In + K2 Hook Banner)",
     "FFmpeg"
   ],
