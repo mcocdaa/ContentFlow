@@ -84,6 +84,8 @@ BILIBILI_ACTIVITY_MISSIONS: Dict[str, Dict[str, Any]] = {
 
 DEFAULT_CREDITS_FALLBACK = "📋 【借物表 (Credits) 与开源致谢】角色设定、动作数据、配音与算力管线详见项目开源文档，严格遵循相应开源与二创授权协议。"
 DEFAULT_AIGC_COMPLIANCE_FALLBACK = "⚠️ 【AIGC 生成合成内容合规声明】本视频包含 AI 生成合成画面与语音（符合 GB 45438-2025 标识规范），仅供技术科普与非商业交流。"
+BILIBILI_AI_NEUTRAL_MARK = "作者声明：该视频使用人工智能合成技术"
+REDACTED_PLACEHOLDER = "<REDACTED>"
 
 BILIBILI_COVER_UP_URL = "https://member.bilibili.com/x/vu/web/cover/up"
 BILIBILI_PREUPLOAD_URL = "https://member.bilibili.com/preupload"
@@ -132,6 +134,17 @@ def ensure_compliance_and_credits_footer(description: str) -> str:
         sep = "\n\n" if desc else ""
         desc = f"{desc}{sep}" + "\n".join(additions)
     return desc
+
+
+def redact_auth_status(auth_info: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Returns a copy of platform auth status with PII fields redacted to `<REDACTED>` when truthy."""
+    if not isinstance(auth_info, dict):
+        return {}
+    sanitized = dict(auth_info)
+    for key in ("mid", "uid", "uname", "dede_userid"):
+        if key in sanitized and sanitized[key]:
+            sanitized[key] = REDACTED_PLACEHOLDER
+    return sanitized
 
 
 # Minimum Bilibili scheduled publish lead time: 4 hours + 10 min safety buffer
@@ -495,6 +508,8 @@ class BilibiliUploader:
         mission_id: Optional[int] = None,
         topic_id: Optional[int] = None,
         topic_name: Optional[str] = None,
+        ai_declaration: bool = True,
+        neutral_mark: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Submits an uploaded UPOS video to Bilibili Creator Center (`POST /x/vu/web/add/v3`)."""
         if not self.is_authenticated:
@@ -507,6 +522,9 @@ class BilibiliUploader:
         eff_mission_id = mission_id if mission_id is not None else (activity_info or {}).get("mission_id")
         eff_topic_id = topic_id if topic_id is not None else (activity_info or {}).get("topic_id")
         eff_topic_name = topic_name if topic_name is not None else (activity_info or {}).get("topic_name")
+        eff_neutral_mark: Optional[str] = (
+            neutral_mark.strip() if neutral_mark is not None else (BILIBILI_AI_NEUTRAL_MARK if ai_declaration else None)
+        )
 
         payload: Dict[str, Any] = {
             "copyright": copyright_type,
@@ -541,8 +559,12 @@ class BilibiliUploader:
             payload["topic_id"] = int(eff_topic_id)
         if eff_topic_name:
             payload["topic_name"] = str(eff_topic_name)
+        if eff_neutral_mark:
+            payload["neutral_mark"] = eff_neutral_mark
         if dtime is not None:
             payload["dtime"] = int(dtime)
+
+        submitted_neutral_mark: Optional[str] = eff_neutral_mark if eff_neutral_mark else None
 
         resp = self.session.post(
             BILIBILI_ADD_V3_URL,
@@ -576,6 +598,19 @@ class BilibiliUploader:
             )
             resp.raise_for_status()
             res_json = resp.json()
+            if res_json.get("code") == 21001 and "neutral_mark" in fallback_payload:
+                fallback_payload = {k: v for k, v in fallback_payload.items() if k != "neutral_mark"}
+                submitted_neutral_mark = None
+                resp = self.session.post(
+                    BILIBILI_ADD_V3_URL,
+                    params={"t": str(int(time.time() * 1000)), "csrf": self.bili_jct},
+                    json=fallback_payload,
+                    cookies=self.cookies,
+                    headers=self._web_headers(),
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                res_json = resp.json()
         if res_json.get("code") != 0:
             raise RuntimeError(f"Bilibili add/v3 submission error: {res_json}")
 
@@ -594,6 +629,7 @@ class BilibiliUploader:
             "mission_id": eff_mission_id,
             "topic_id": eff_topic_id,
             "topic_name": eff_topic_name,
+            "neutral_mark": submitted_neutral_mark,
         }
         return result
 
@@ -742,6 +778,76 @@ class BilibiliUploader:
         resp.raise_for_status()
         return resp.json()
 
+    def verify_archive_submission(self, aid: int) -> Dict[str, Any]:
+        """Reads back a submitted archive via `get_archive_view` and returns strictly PII-free verification fields."""
+        view_json = self.get_archive_view(aid)
+        code = view_json.get("code")
+        raw_data = view_json.get("data")
+        data: Dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+        raw_arc = data.get("archive")
+        arc: Dict[str, Any] = raw_arc if isinstance(raw_arc, dict) else {}
+
+        raw_stmt = arc.get("creation_statement")
+        if not isinstance(raw_stmt, dict):
+            raw_stmt = data.get("creation_statement")
+        stmt: Dict[str, Any] = raw_stmt if isinstance(raw_stmt, dict) else {}
+
+        creation_statement_id: Optional[int] = None
+        raw_stmt_id = stmt.get("id")
+        if raw_stmt_id is not None and raw_stmt_id != "":
+            try:
+                creation_statement_id = int(raw_stmt_id)
+            except (TypeError, ValueError):
+                creation_statement_id = None
+
+        stmt_content = str(stmt.get("content") or "").strip()
+        neutral_mark = str(arc.get("neutral_mark") or "").strip()
+        ai_declaration_verified = bool(
+            ("人工智能" in neutral_mark) or ("人工智能" in stmt_content) or (creation_statement_id == 101)
+        )
+
+        dtime_val: Optional[int] = None
+        raw_dtime = arc.get("dtime")
+        if raw_dtime is not None and raw_dtime != "":
+            try:
+                dtime_val = int(raw_dtime)
+            except (TypeError, ValueError):
+                dtime_val = None
+
+        dtime_cst: Optional[str] = (
+            dt.datetime.fromtimestamp(dtime_val, tz=dt.timezone(dt.timedelta(hours=8))).strftime(
+                "%Y-%m-%d %H:%M:%S CST"
+            )
+            if dtime_val and dtime_val > 0
+            else None
+        )
+
+        tid_val: Optional[int] = None
+        raw_tid = arc.get("tid")
+        if raw_tid is not None and raw_tid != "":
+            try:
+                tid_val = int(raw_tid)
+            except (TypeError, ValueError):
+                tid_val = None
+
+        desc = str(arc.get("desc") or "")
+        return {
+            "code": code,
+            "aid": int(arc.get("aid") or aid),
+            "bvid": str(arc.get("bvid") or ""),
+            "state": arc.get("state"),
+            "state_desc": str(arc.get("state_desc") or ""),
+            "tid": tid_val,
+            "dtime": dtime_val,
+            "dtime_cst": dtime_cst,
+            "neutral_mark": neutral_mark,
+            "creation_statement_id": creation_statement_id,
+            "ai_declaration_verified": ai_declaration_verified,
+            "cover_url_present": bool(arc.get("cover")),
+            "credits_present": "【借物表" in desc,
+            "aigc_present": "【AIGC" in desc,
+        }
+
     def edit_archive(
         self,
         aid: int,
@@ -756,6 +862,8 @@ class BilibiliUploader:
         topic_id: Optional[int] = None,
         topic_name: Optional[str] = None,
         dtime: Optional[int] = None,
+        ai_declaration: Optional[bool] = None,
+        neutral_mark: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Updates an existing Bilibili archive via Creator Center (`/x/vu/web/edit`)."""
         view_json = self.get_archive_view(aid)
@@ -828,22 +936,51 @@ class BilibiliUploader:
         if topic_name:
             payload["topic_name"] = str(topic_name)
 
+        if neutral_mark is not None:
+            eff_neutral_mark = neutral_mark.strip()
+        elif ai_declaration is True:
+            eff_neutral_mark = BILIBILI_AI_NEUTRAL_MARK
+        elif ai_declaration is False:
+            eff_neutral_mark = ""
+        else:
+            eff_neutral_mark = str(arc.get("neutral_mark") or "").strip()
+
+        if eff_neutral_mark or ai_declaration is False or neutral_mark == "":
+            payload["neutral_mark"] = eff_neutral_mark
+
+        active_payload = payload
         edit_resp = self.session.post(
             BILIBILI_EDIT_ARCHIVE_URL,
             params={"t": str(int(time.time() * 1000)), "csrf": self.bili_jct},
-            json=payload,
+            json=active_payload,
             cookies=self.cookies,
             headers=self._web_headers(),
             timeout=30,
         )
         edit_resp.raise_for_status()
         edit_json = edit_resp.json()
-        if edit_json.get("code") == 21001 and any(k in payload for k in ("mission_id", "topic_id", "topic_name")):
-            fallback_payload = {k: v for k, v in payload.items() if k not in ("mission_id", "topic_id", "topic_name")}
+        if edit_json.get("code") == 21001 and any(
+            k in active_payload for k in ("mission_id", "topic_id", "topic_name")
+        ):
+            active_payload = {
+                k: v for k, v in active_payload.items() if k not in ("mission_id", "topic_id", "topic_name")
+            }
             edit_resp = self.session.post(
                 BILIBILI_EDIT_ARCHIVE_URL,
                 params={"t": str(int(time.time() * 1000)), "csrf": self.bili_jct},
-                json=fallback_payload,
+                json=active_payload,
+                cookies=self.cookies,
+                headers=self._web_headers(),
+                timeout=30,
+            )
+            edit_resp.raise_for_status()
+            edit_json = edit_resp.json()
+        if edit_json.get("code") == 21001 and "neutral_mark" in active_payload:
+            active_payload = {k: v for k, v in active_payload.items() if k != "neutral_mark"}
+            edit_resp = self.session.post(
+                BILIBILI_EDIT_ARCHIVE_URL,
+                params={"t": str(int(time.time() * 1000)), "csrf": self.bili_jct},
+                json=active_payload,
                 cookies=self.cookies,
                 headers=self._web_headers(),
                 timeout=30,
@@ -854,7 +991,7 @@ class BilibiliUploader:
             "aid": int(aid),
             "updated": edit_json.get("code") == 0,
             "edit_response": edit_json,
-            "submitted_payload": payload,
+            "submitted_payload": active_payload,
         }
 
     def upload_to_bilibili_api(
@@ -867,6 +1004,8 @@ class BilibiliUploader:
         description: str = "",
         mode: str = "schedule",
         schedule_at: Optional[str] = None,
+        ai_declaration: bool = True,
+        neutral_mark: Optional[str] = None,
     ) -> Dict[str, Any]:
         """End-to-end Bilibili cover upload + UPOS video upload + add/v3 archive submission."""
         cover_url = self.upload_cover(cover_path)
@@ -885,6 +1024,8 @@ class BilibiliUploader:
             description=description,
             biz_id=upos_info["biz_id"],
             dtime=dtime,
+            ai_declaration=ai_declaration,
+            neutral_mark=neutral_mark,
         )
         return {
             **sub_info,
@@ -1327,25 +1468,36 @@ class MatrixPublisher:
         safety_mode: str,
         execute_upload: bool = False,
         remote_schedule: bool = False,
+        ai_declaration: bool = True,
+        neutral_mark: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Stages biliup studio config & optionally performs real UPOS + add/v3 upload to Bilibili."""
         computed_dtime: Optional[int] = None
         if safety_mode == "schedule" or remote_schedule or manifest.get("schedule_at"):
             computed_dtime = compute_bilibili_dtime(manifest.get("schedule_at"))
 
+        eff_neutral_mark: Optional[str] = (
+            neutral_mark.strip() if neutral_mark is not None else (BILIBILI_AI_NEUTRAL_MARK if ai_declaration else None)
+        )
+        resolved_neutral_mark: Optional[str] = eff_neutral_mark if eff_neutral_mark else None
+
+        streamer_cfg: Dict[str, Any] = {
+            "title": manifest["title"],
+            "tid": manifest["tid"],
+            "tag": ",".join(manifest["tags"]),
+            "desc": manifest["description"],
+            "cover": manifest["cover_path"],
+            "copyright": 1,
+            "dtime": computed_dtime,
+        }
+        if resolved_neutral_mark:
+            streamer_cfg["neutral_mark"] = resolved_neutral_mark
+
         bili_studio_config = {
             "line": "bda2",
             "limit": 3,
             "streamers": {
-                manifest["title"]: {
-                    "title": manifest["title"],
-                    "tid": manifest["tid"],
-                    "tag": ",".join(manifest["tags"]),
-                    "desc": manifest["description"],
-                    "cover": manifest["cover_path"],
-                    "copyright": 1,
-                    "dtime": computed_dtime,
-                }
+                manifest["title"]: streamer_cfg,
             },
         }
         studio_cfg_path = staged_dir / "biliup_studio.json"
@@ -1366,8 +1518,10 @@ class MatrixPublisher:
             "platform": "bilibili",
             "safety_mode": safety_mode,
             "dtime": computed_dtime,
+            "ai_declaration": bool(ai_declaration),
+            "neutral_mark": resolved_neutral_mark,
             "auth_cookies_present": has_cookies,
-            "dede_userid": cookies.get("DedeUserID"),
+            "dede_userid": REDACTED_PLACEHOLDER if cookies.get("DedeUserID") else None,
             "biliup_cli_detected": bool(biliup_bin),
             "studio_config_path": str(studio_cfg_path),
             "creator_center_url": BILIBILI_CREATOR_MANAGER_URL,
@@ -1389,6 +1543,8 @@ class MatrixPublisher:
                 description=manifest["description"],
                 mode=upload_mode,
                 schedule_at=manifest.get("schedule_at"),
+                ai_declaration=ai_declaration,
+                neutral_mark=neutral_mark,
             )
             receipt.update(api_res)
 
@@ -1402,15 +1558,18 @@ class MatrixPublisher:
         schedule_at: Optional[str] = None,
         execute_upload: Optional[bool] = None,
         remote_schedule: bool = False,
+        ai_declaration: bool = True,
+        neutral_mark: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Stages or publishes a project across one or more target platforms and returns Advisor Receipts."""
         if mode not in SAFETY_MODES:
             raise ValueError(f"Invalid publish mode '{mode}'. Choose from: {SAFETY_MODES}")
 
+        eff_remote_schedule = False if execute_upload is False else bool(remote_schedule)
         should_execute_upload = (
             bool(execute_upload)
             if execute_upload is not None
-            else (mode in ("schedule", "direct") or bool(remote_schedule))
+            else (mode in ("schedule", "direct") or eff_remote_schedule)
         )
 
         target_platforms = [p.strip().lower() for p in (platforms or ["bilibili"]) if p.strip()]
@@ -1427,6 +1586,10 @@ class MatrixPublisher:
 
         results_by_platform: Dict[str, Dict[str, Any]] = {}
         now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+        eff_neutral_mark: Optional[str] = (
+            neutral_mark.strip() if neutral_mark is not None else (BILIBILI_AI_NEUTRAL_MARK if ai_declaration else None)
+        )
+        resolved_neutral_mark: Optional[str] = eff_neutral_mark if eff_neutral_mark else None
 
         for platform in target_platforms:
             aspect = "9:16" if platform in ("douyin", "xiaohongshu") else "16:9"
@@ -1441,7 +1604,7 @@ class MatrixPublisher:
             staged_dir = project_dir / "delivery" / f"staged_{platform}"
             staged_dir.mkdir(parents=True, exist_ok=True)
 
-            auth_info = self.vault.get_platform_status(platform, verify_online=False)
+            auth_info = redact_auth_status(self.vault.get_platform_status(platform, verify_online=False))
 
             manifest: Dict[str, Any] = {
                 "project_id": project_id,
@@ -1456,6 +1619,8 @@ class MatrixPublisher:
                 "video_path": str(video_path) if video_path else None,
                 "safety_mode": mode,
                 "schedule_at": schedule_at,
+                "ai_declaration": bool(ai_declaration),
+                "neutral_mark": resolved_neutral_mark if platform == "bilibili" else None,
                 "timestamp": now_iso,
                 "auth_status": auth_info,
             }
@@ -1466,8 +1631,11 @@ class MatrixPublisher:
                     manifest=manifest,
                     safety_mode=mode,
                     execute_upload=should_execute_upload,
-                    remote_schedule=remote_schedule,
+                    remote_schedule=eff_remote_schedule,
+                    ai_declaration=ai_declaration,
+                    neutral_mark=neutral_mark,
                 )
+                manifest["neutral_mark"] = submission_receipt.get("neutral_mark")
             elif platform == "wechat_mp":
                 wechat_html_path = project_dir / "delivery" / "wechat.html"
                 if not wechat_html_path.exists():
@@ -1537,6 +1705,12 @@ class MatrixPublisher:
                 f"- **Auth Logged In**: `{auth_info.get('logged_in')}` (UID: `{auth_info.get('mid')}`)",
                 f"- **Submission Status**: `{submission_receipt.get('status')}`",
             ]
+            if platform == "bilibili":
+                eff_mark_display = submission_receipt.get("neutral_mark") or manifest.get("neutral_mark")
+                receipt_md_lines.append(
+                    f"- **AI Declaration**: `{manifest.get('ai_declaration')}`"
+                    + (f" (`{eff_mark_display}`)" if eff_mark_display else "")
+                )
             if submission_receipt.get("bvid"):
                 receipt_md_lines.append(
                     f"- **Bilibili BVID / AID**: `{submission_receipt.get('bvid')}` (`aid={submission_receipt.get('aid')}`)"

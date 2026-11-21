@@ -572,9 +572,11 @@ def cmd_publish(args):
     publisher = MatrixPublisher(vault=vault, projects_dir=PROJECTS_DIR)
 
     dry_run = bool(getattr(args, "dry_run", False))
-    exec_upload_arg = getattr(args, "execute_upload", False)
-    remote_sched_arg = bool(getattr(args, "remote_schedule", False))
+    exec_upload_arg = bool(getattr(args, "execute_upload", False))
+    remote_sched_arg = False if dry_run else bool(getattr(args, "remote_schedule", False))
     execute_upload = False if dry_run else (True if exec_upload_arg else None)
+    ai_declaration = bool(getattr(args, "ai_declaration", True))
+    neutral_mark = getattr(args, "neutral_mark", None)
 
     try:
         result = publisher.publish_project(
@@ -584,6 +586,8 @@ def cmd_publish(args):
             schedule_at=getattr(args, "schedule_at", None),
             execute_upload=execute_upload,
             remote_schedule=remote_sched_arg,
+            ai_declaration=ai_declaration,
+            neutral_mark=neutral_mark,
         )
     except Exception as exc:
         print(f"[-] Publish failed: {exc}")
@@ -602,6 +606,8 @@ def cmd_publish(args):
         print(f"    - Tags:      {', '.join(manifest['tags'])}")
         print(f"    - Video:     {manifest['video_path']}")
         print(f"    - Cover:     {manifest['cover_path']}")
+        if receipt.get("neutral_mark"):
+            print(f"    - AI Decl:   {receipt.get('neutral_mark')}")
         if receipt.get("bvid"):
             print(f"    - BVID/AID:  {receipt.get('bvid')} (aid={receipt.get('aid')})")
         if receipt.get("dtime_iso"):
@@ -1124,7 +1130,18 @@ def main():
     p_pub.add_argument(
         "--dry-run",
         action="store_true",
-        help="Stage locally without making remote upload API calls",
+        help="Stage locally without making remote upload API calls (overrides --execute-upload and --remote-schedule)",
+    )
+    p_pub.add_argument(
+        "--ai-declaration",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include native Bilibili AI synthesis declaration (neutral_mark) (default: True; pass --no-ai-declaration to omit)",
+    )
+    p_pub.add_argument(
+        "--neutral-mark",
+        default=None,
+        help="Optional custom Bilibili neutral_mark declaration text",
     )
     p_pub.set_defaults(func=cmd_publish)
 

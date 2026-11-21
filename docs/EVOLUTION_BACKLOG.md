@@ -80,8 +80,9 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 * ✅ **K4 — 外部真音乐（MiniMax Music / Suno）与情绪语音（MiniMax Speech / Fish-Audio）路由器插件位**
   * 已落地 `core/audio_router.py`（`AudioGenerationRouter`、`SpeechRequest`/`SpeechResult`、`MusicRequest`/`MusicResult`、`ProviderStatus`），支持语音路由优先级 `minimax_speech -> fish_audio -> local_kokoro`（惰性加载 `LocalNeuralTTS` 且 `finally` 必调 `tts.close()`）与音乐路由优先级 `minimax_music -> suno -> bilibili_bgm_hunter`（惰性加载 `BilibiliBgmHunter`），零 Key 或上游 HTTP 异常时自动平滑降级，`get_status()` 与错误日志严格脱敏零密钥泄露；
   * 已同步更新 `config/settings.py`、`.env.example`、`cli.py audio-router-status [--json]` 与 `tests/test_audio_router.py`（9 项全 Mock 离线单测，零 PyTorch/网络依赖）；全仓串行门禁通过（`ruff format --check .` / `ruff check .` / `mypy core cli.py` / `pytest -q` **`60 passed`**）。
-* ⏳ **K5 — B 站原生 AIGC 声明（`neutral_mark`）投稿/回读校验（`verify_archive_submission`）与投稿回执 PII 自动脱敏（`--dry-run` 安全加固）**
-  * 目标：在 `core/publisher.py` 与 `cli.py` 中默认启用 B 站原生 AIGC 创作声明（`neutral_mark = "作者声明：该视频使用人工智能合成技术"`），落地投稿后只读回验接口 `verify_archive_submission(aid)`（校验 `ai_declaration_verified`、`dtime_cst`、`cover_url_present` 等），并对投稿回执与 `--dry-run` 输出全面执行 PII 自动脱敏。
+* ✅ **K5 — B 站原生 AIGC 声明（`neutral_mark`）投稿/回读校验（`verify_archive_submission`）与投稿回执 PII 自动脱敏（`--dry-run` 安全加固）**
+  * 已落地 `core/publisher.py`（`BILIBILI_AI_NEUTRAL_MARK = "作者声明：该视频使用人工智能合成技术"`、`BilibiliUploader.submit_archive` / `upload_to_bilibili_api` / `edit_archive` 的向后兼容 `ai_declaration` 与 `neutral_mark` 透传及两阶段 `21001` 降级、`verify_archive_submission(aid)` 14 项零 PII 只读回验、`redact_auth_status` 统一将 `publish_manifest.json` 与 `advisor_receipt.md` 中的 `mid`/`uid`/`uname`/`dede_userid` 脱敏为 `<REDACTED>`）与 `cli.py publish`（`--ai-declaration`/`--no-ai-declaration`、`--neutral-mark`，且 `--dry-run` 强制锁定 `execute_upload=False` 与 `remote_schedule=False` 杜绝误传）；
+  * 已补全 `tests/test_publisher.py`（`20 passed` 覆盖原生声明、回验、PII 脱敏与 `--dry-run --remote-schedule` 零上传安全）；全仓串行门禁通过（`ruff format --check .` `62 files` / `ruff check .` / `mypy core cli.py` `29 source files` / `pytest -q` **`65 passed`**）。
 * ⏳ **K6 — 多角色高表现力情感配音接入（通过 `core/audio_router.py` 激活 MiniMax Speech / Fish-Audio，打造大肥鱼/Gemini娘/弱音专属声线）**
   * 目标：基于已落地的 `K4` 路由器，接入 MiniMax Speech / Fish-Audio 情感配音与角色声线配置档（voice profile），让大肥鱼、Gemini娘、弱音ハク在多角色群像短剧与互动中具备高辨识度语气与情绪起伏，同时保留无 Key 时平滑回退本地 TTS。
 * ⏳ **K7 — 双 AI 实时互动直播间 MVP（`core/live_studio/` 弹幕监听 + 双重合规风控 + OBS 透明舞台 + 高光自动打点切片）**

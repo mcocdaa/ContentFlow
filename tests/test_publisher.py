@@ -25,11 +25,13 @@ from core.auth_vault import (
 )
 from core.publisher import (
     BILIBILI_ACTIVITY_MISSIONS,
+    BILIBILI_AI_NEUTRAL_MARK,
     BILIBILI_MIN_SCHEDULE_LEAD_SECONDS,
     BilibiliUploader,
     MatrixPublisher,
     WeChatMPPublisher,
     compute_bilibili_dtime,
+    redact_auth_status,
 )
 
 
@@ -232,6 +234,8 @@ def test_bilibili_uploader_upos_cover_and_scheduled_add_v3(tmp_path: Path) -> No
     assert res["bili_filename"] == "n261107abc123"
     assert res["upos"]["chunks"] == 2
     assert res["dtime"] is not None and res["dtime"] >= now_ts + BILIBILI_MIN_SCHEDULE_LEAD_SECONDS
+    assert res["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+    assert mock_session.post.call_args_list[-1].kwargs["json"]["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
     assert mock_session.put.call_count == 2
 
 
@@ -898,3 +902,435 @@ def test_bilibili_analytics_redacts_mid_and_self_comments_after_directives(tmp_p
     assert "secret_creator_name" not in json_text
     assert "99887766" not in md_text
     assert "secret_creator_name" not in md_text
+
+
+def test_submit_archive_neutral_mark_and_21001_fallback() -> None:
+    """Verifies native AI declaration neutral_mark on add/v3, disable/override, and two-stage 21001 fallback."""
+    # 1. Default ai_declaration=True includes BILIBILI_AI_NEUTRAL_MARK
+    mock_session = MagicMock()
+    mock_session.post.return_value = _DummyResponse(
+        {"code": 0, "message": "0", "data": {"aid": 30001, "bvid": "BV1AiDeclOn"}}
+    )
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "sess_ok", "bili_jct": "csrf_ok", "DedeUserID": "10000001"},
+        session=mock_session,
+    )
+    res_on = uploader.submit_archive(
+        bili_filename="n261121ai",
+        cover_url="https://archive.biliimg.com/bfs/archive/ai.jpg",
+        title="测试 AI 原生声明",
+        tid=47,
+        tags=["动画短片"],
+        description="含【借物表】与【AIGC】",
+    )
+    assert res_on["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+    assert mock_session.post.call_args.kwargs["json"]["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+
+    # 2. ai_declaration=False omits neutral_mark
+    mock_session.reset_mock()
+    mock_session.post.return_value = _DummyResponse(
+        {"code": 0, "message": "0", "data": {"aid": 30002, "bvid": "BV1AiDeclOff"}}
+    )
+    res_off = uploader.submit_archive(
+        bili_filename="n261121noai",
+        cover_url="https://archive.biliimg.com/bfs/archive/noai.jpg",
+        title="测试关闭 AI 声明",
+        tid=47,
+        ai_declaration=False,
+    )
+    assert res_off["neutral_mark"] is None
+    assert "neutral_mark" not in mock_session.post.call_args.kwargs["json"]
+
+    # 3. Custom neutral_mark overrides default
+    mock_session.reset_mock()
+    mock_session.post.return_value = _DummyResponse(
+        {"code": 0, "message": "0", "data": {"aid": 30003, "bvid": "BV1AiCustom"}}
+    )
+    res_custom = uploader.submit_archive(
+        bili_filename="n261121custom",
+        cover_url="https://archive.biliimg.com/bfs/archive/c.jpg",
+        title="测试自定义声明",
+        tid=47,
+        ai_declaration=False,
+        neutral_mark="作者声明：自定义AI标识",
+    )
+    assert res_custom["neutral_mark"] == "作者声明：自定义AI标识"
+    assert mock_session.post.call_args.kwargs["json"]["neutral_mark"] == "作者声明：自定义AI标识"
+
+    # 4. First 21001 strips mission/topic keys while PRESERVING neutral_mark
+    mock_session.reset_mock()
+    mock_session.post.side_effect = [
+        _DummyResponse({"code": 21001, "message": "mission rejected"}),
+        _DummyResponse({"code": 0, "message": "0", "data": {"aid": 30004, "bvid": "BV1KeepMark"}}),
+    ]
+    res_keep = uploader.submit_archive(
+        bili_filename="n261121fb1",
+        cover_url="https://archive.biliimg.com/bfs/archive/fb1.jpg",
+        title="测试21001保留声明【B站AI创造公开赛】",
+        tid=47,
+        tags=["B站AI创造公开赛"],
+    )
+    assert mock_session.post.call_count == 2
+    first_payload = mock_session.post.call_args_list[0].kwargs["json"]
+    second_payload = mock_session.post.call_args_list[1].kwargs["json"]
+    assert "mission_id" in first_payload and first_payload["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+    assert "mission_id" not in second_payload
+    assert second_payload["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+    assert res_keep["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+
+    # 5. Subsequent 21001 strips neutral_mark only on the second retry
+    mock_session.reset_mock()
+    mock_session.post.side_effect = [
+        _DummyResponse({"code": 21001, "message": "mission rejected"}),
+        _DummyResponse({"code": 21001, "message": "neutral_mark rejected"}),
+        _DummyResponse({"code": 0, "message": "0", "data": {"aid": 30005, "bvid": "BV1DropMark"}}),
+    ]
+    res_drop = uploader.submit_archive(
+        bili_filename="n261121fb2",
+        cover_url="https://archive.biliimg.com/bfs/archive/fb2.jpg",
+        title="测试二次21001回退【B站AI创造公开赛】",
+        tid=47,
+        tags=["B站AI创造公开赛"],
+    )
+    assert mock_session.post.call_count == 3
+    assert mock_session.post.call_args_list[1].kwargs["json"]["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+    assert "neutral_mark" not in mock_session.post.call_args_list[2].kwargs["json"]
+    assert res_drop["neutral_mark"] is None
+
+
+def test_edit_archive_neutral_mark_preserve_enable_disable_and_override() -> None:
+    """Verifies edit_archive preserves existing neutral_mark, enables, clears, or overrides it."""
+
+    def _make_view(existing_mark: str) -> _DummyResponse:
+        return _DummyResponse(
+            {
+                "code": 0,
+                "data": {
+                    "archive": {
+                        "aid": 445566,
+                        "bvid": "BV1EditMark",
+                        "title": "标题",
+                        "cover": "https://archive.biliimg.com/bfs/archive/c.jpg",
+                        "tid": 47,
+                        "tag": "AI",
+                        "desc": "简介",
+                        "copyright": 1,
+                        "neutral_mark": existing_mark,
+                    },
+                    "videos": [{"filename": "fn1", "title": "P1", "desc": "", "cid": 77}],
+                },
+            }
+        )
+
+    mock_session = MagicMock()
+    mock_session.post.return_value = _DummyResponse({"code": 0, "data": {"aid": 445566}})
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "s", "bili_jct": "j", "DedeUserID": "10000001"},
+        session=mock_session,
+    )
+
+    # Preserve existing neutral_mark when ai_declaration=None and neutral_mark=None
+    mock_session.get.return_value = _make_view(BILIBILI_AI_NEUTRAL_MARK)
+    res_preserve = uploader.edit_archive(aid=445566, description="更新简介")
+    assert res_preserve["submitted_payload"]["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+
+    # Explicitly clear when ai_declaration=False
+    res_clear = uploader.edit_archive(aid=445566, ai_declaration=False)
+    assert res_clear["submitted_payload"]["neutral_mark"] == ""
+
+    # Explicit custom neutral_mark override
+    res_override = uploader.edit_archive(aid=445566, neutral_mark="作者声明：自定义AI标注")
+    assert res_override["submitted_payload"]["neutral_mark"] == "作者声明：自定义AI标注"
+
+    # Existing empty neutral_mark: default omits key, ai_declaration=True sets BILIBILI_AI_NEUTRAL_MARK
+    mock_session.get.return_value = _make_view("")
+    res_keep_empty = uploader.edit_archive(aid=445566, description="仅改描述")
+    assert "neutral_mark" not in res_keep_empty["submitted_payload"]
+
+    res_enable = uploader.edit_archive(aid=445566, ai_declaration=True)
+    assert res_enable["submitted_payload"]["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+
+
+def test_verify_archive_submission_verified_unverified_and_zero_pii() -> None:
+    """Verifies verify_archive_submission handles verified/unverified states, CST formatting, and leaks zero PII."""
+    mock_session = MagicMock()
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "s", "bili_jct": "j", "DedeUserID": "99887766"},
+        session=mock_session,
+    )
+
+    # Case 1: Verified archive (modeled on BV1PyyWzqE38) with injected PII in raw response
+    mock_session.get.return_value = _DummyResponse(
+        {
+            "code": 0,
+            "data": {
+                "archive": {
+                    "aid": 117629999999999,
+                    "bvid": "BV1PyyWzqE38",
+                    "state": -40,
+                    "state_desc": "通过审核，等待发布",
+                    "tid": 47,
+                    "dtime": 1795516200,
+                    "cover": "https://archive.biliimg.com/bfs/archive/verified_cover.jpg",
+                    "desc": "双角色剧情短片\n\n【借物表 (Credits)】\n...\n【AIGC 标识】\n符合 GB 45438-2025",
+                    "neutral_mark": BILIBILI_AI_NEUTRAL_MARK,
+                    "creation_statement": {
+                        "id": 101,
+                        "content": BILIBILI_AI_NEUTRAL_MARK,
+                    },
+                    "mid": 99887766,
+                    "uid": "99887766",
+                    "author": "secret_creator_handle",
+                    "uname": "secret_creator_handle",
+                }
+            },
+        }
+    )
+    verified = uploader.verify_archive_submission(117629999999999)
+    assert verified == {
+        "code": 0,
+        "aid": 117629999999999,
+        "bvid": "BV1PyyWzqE38",
+        "state": -40,
+        "state_desc": "通过审核，等待发布",
+        "tid": 47,
+        "dtime": 1795516200,
+        "dtime_cst": "2026-11-24 18:30:00 CST",
+        "neutral_mark": BILIBILI_AI_NEUTRAL_MARK,
+        "creation_statement_id": 101,
+        "ai_declaration_verified": True,
+        "cover_url_present": True,
+        "credits_present": True,
+        "aigc_present": True,
+    }
+    serialized = json.dumps(verified, ensure_ascii=False)
+    assert "99887766" not in serialized
+    assert "secret_creator_handle" not in serialized
+    for pii_key in ("mid", "uid", "uname", "author", "dede_userid"):
+        assert pii_key not in verified
+
+    # Case 2: Unverified archive (modeled on BV1AWsh6sEQF)
+    mock_session.get.return_value = _DummyResponse(
+        {
+            "code": 0,
+            "data": {
+                "archive": {
+                    "aid": 117628888888888,
+                    "bvid": "BV1AWsh6sEQF",
+                    "state": 0,
+                    "state_desc": "开放浏览",
+                    "tid": 20,
+                    "dtime": 0,
+                    "cover": "",
+                    "desc": "普通简介无尾注",
+                    "neutral_mark": "",
+                    "creation_statement": {"id": -1, "content": ""},
+                }
+            },
+        }
+    )
+    unverified = uploader.verify_archive_submission(117628888888888)
+    assert unverified["code"] == 0
+    assert unverified["bvid"] == "BV1AWsh6sEQF"
+    assert unverified["state"] == 0
+    assert unverified["dtime"] == 0
+    assert unverified["dtime_cst"] is None
+    assert unverified["neutral_mark"] == ""
+    assert unverified["creation_statement_id"] == -1
+    assert unverified["ai_declaration_verified"] is False
+    assert unverified["cover_url_present"] is False
+    assert unverified["credits_present"] is False
+    assert unverified["aigc_present"] is False
+
+    # Case 3: Verified via creation_statement.content alone when neutral_mark is empty
+    mock_session.get.return_value = _DummyResponse(
+        {
+            "code": 0,
+            "data": {
+                "archive": {
+                    "aid": 117627777777777,
+                    "bvid": "BV1StmtContentOnly",
+                    "state": -40,
+                    "state_desc": "通过审核，等待发布",
+                    "tid": 47,
+                    "dtime": 0,
+                    "cover": "https://archive.biliimg.com/bfs/archive/ok.jpg",
+                    "desc": "【借物表】与【AIGC】",
+                    "neutral_mark": "",
+                    "creation_statement": {"id": 999, "content": "含人工智能合成"},
+                }
+            },
+        }
+    )
+    stmt_only = uploader.verify_archive_submission(117627777777777)
+    assert stmt_only["ai_declaration_verified"] is True
+
+
+def test_redact_auth_status_and_publisher_receipt_zero_pii(tmp_path: Path) -> None:
+    """Verifies redact_auth_status and MatrixPublisher never write raw mid/uid/uname/dede_userid to receipts."""
+    raw_auth = {
+        "platform": "bilibili",
+        "logged_in": True,
+        "mid": "88776655",
+        "uid": "88776655",
+        "uname": "super_secret_creator",
+        "dede_userid": "88776655",
+        "level": 6,
+    }
+    redacted = redact_auth_status(raw_auth)
+    assert redacted["mid"] == "<REDACTED>"
+    assert redacted["uid"] == "<REDACTED>"
+    assert redacted["uname"] == "<REDACTED>"
+    assert redacted["dede_userid"] == "<REDACTED>"
+    assert redacted["logged_in"] is True
+    assert redacted["level"] == 6
+    # Must not mutate caller dict
+    assert raw_auth["mid"] == "88776655"
+    # Falsy PII values stay falsy
+    empty_redacted = redact_auth_status({"logged_in": False, "mid": None, "uid": "", "uname": None})
+    assert empty_redacted["mid"] is None
+    assert empty_redacted["uid"] == ""
+    assert empty_redacted["uname"] is None
+
+    vault = AuthVault(vault_dir=tmp_path / "vault")
+    vault.save_bilibili_session(
+        cookies={"SESSDATA": "s_priv", "bili_jct": "j_priv", "DedeUserID": "88776655"},
+        refresh_token="rt_priv",
+        profile={"uname": "super_secret_creator", "mid": 88776655, "level": 6},
+    )
+
+    projects_dir = tmp_path / "projects"
+    proj_dir = projects_dir / "017_privacy_check"
+    (proj_dir / "delivery").mkdir(parents=True)
+    (proj_dir / "delivery" / "final.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    (proj_dir / "delivery" / "bilibili.md").write_text(
+        "* **主选分区**：动画 -> 短片·手书\n* **视频标题**：隐私脱敏测试\n* **简介**：测试简介\n* **标签**：AI, 动画\n",
+        encoding="utf-8",
+    )
+
+    mock_session = MagicMock()
+    publisher = MatrixPublisher(vault=vault, projects_dir=projects_dir, session=mock_session)
+    res = publisher.publish_project(project="017", platforms=["bilibili"], mode="draft")
+
+    bili_manifest = res["platforms"]["bilibili"]
+    assert bili_manifest["auth_status"]["mid"] == "<REDACTED>"
+    assert bili_manifest["auth_status"]["uname"] == "<REDACTED>"
+    assert bili_manifest["advisor_receipt"]["dede_userid"] == "<REDACTED>"
+    assert bili_manifest["ai_declaration"] is True
+    assert bili_manifest["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+
+    manifest_text = Path(bili_manifest["manifest_path"]).read_text(encoding="utf-8")
+    receipt_md_text = Path(bili_manifest["receipt_md_path"]).read_text(encoding="utf-8")
+    studio_json = json.loads(Path(bili_manifest["advisor_receipt"]["studio_config_path"]).read_text(encoding="utf-8"))
+    assert "88776655" not in manifest_text
+    assert "super_secret_creator" not in manifest_text
+    assert "88776655" not in receipt_md_text
+    assert "super_secret_creator" not in receipt_md_text
+    assert "<REDACTED>" in manifest_text
+    assert "<REDACTED>" in receipt_md_text
+    assert BILIBILI_AI_NEUTRAL_MARK in receipt_md_text
+    assert studio_json["streamers"]["隐私脱敏测试"]["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+
+
+def test_cli_publish_dry_run_remote_schedule_zero_upload_and_ai_declaration_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verifies --dry-run --remote-schedule NEVER uploads and --no-ai-declaration propagates end-to-end."""
+    vault_dir = tmp_path / "vault"
+    vault = AuthVault(vault_dir=vault_dir)
+    vault.save_bilibili_session(
+        cookies={"SESSDATA": "s_live", "bili_jct": "j_live", "DedeUserID": "55443322"},
+        refresh_token="rt_live",
+        profile={"uname": "private_owner", "mid": 55443322, "level": 6},
+    )
+
+    projects_dir = tmp_path / "projects"
+    proj_dir = projects_dir / "018_dry_run_safety"
+    (proj_dir / "delivery").mkdir(parents=True)
+    (proj_dir / "delivery" / "dryrun_final.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    (proj_dir / "delivery" / "bilibili.md").write_text(
+        "* **主选分区**：动画 -> 短片·手书\n* **视频标题**：干跑防误传测试\n* **简介**：简介内容\n* **标签**：测试\n",
+        encoding="utf-8",
+    )
+
+    upload_spy = MagicMock(side_effect=AssertionError("upload_to_bilibili_api must NEVER run under --dry-run"))
+    monkeypatch.setattr(BilibiliUploader, "upload_to_bilibili_api", upload_spy)
+    monkeypatch.setattr(cli, "PROJECTS_DIR", projects_dir)
+    monkeypatch.setattr("core.auth_vault.DEFAULT_VAULT_DIR", vault_dir)
+
+    # 1. CLI --dry-run --remote-schedule in schedule mode must NOT upload, and keeps default ai_declaration=True
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli.py",
+            "publish",
+            "--project",
+            "018",
+            "--platforms",
+            "bilibili",
+            "--mode",
+            "schedule",
+            "--schedule-at",
+            "+6h",
+            "--dry-run",
+            "--remote-schedule",
+            "--execute-upload",
+        ],
+    )
+    assert cli.main() == 0
+    assert upload_spy.call_count == 0
+
+    staged_dir = proj_dir / "delivery" / "staged_bilibili"
+    manifest_text = (staged_dir / "publish_manifest.json").read_text(encoding="utf-8")
+    receipt_md_text = (staged_dir / "advisor_receipt.md").read_text(encoding="utf-8")
+    manifest_data = json.loads(manifest_text)
+    assert manifest_data["ai_declaration"] is True
+    assert manifest_data["neutral_mark"] == BILIBILI_AI_NEUTRAL_MARK
+    assert manifest_data["advisor_receipt"]["status"] == "scheduled_in_staging_queue"
+    assert manifest_data["advisor_receipt"]["dede_userid"] == "<REDACTED>"
+    assert "55443322" not in manifest_text
+    assert "private_owner" not in manifest_text
+    assert "55443322" not in receipt_md_text
+    assert "private_owner" not in receipt_md_text
+
+    # 2. CLI --no-ai-declaration disables neutral_mark in manifest, receipt, and biliup_studio.json
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli.py",
+            "publish",
+            "--project",
+            "018",
+            "--platforms",
+            "bilibili",
+            "--mode",
+            "draft",
+            "--dry-run",
+            "--remote-schedule",
+            "--no-ai-declaration",
+        ],
+    )
+    assert cli.main() == 0
+    assert upload_spy.call_count == 0
+
+    manifest_off = json.loads((staged_dir / "publish_manifest.json").read_text(encoding="utf-8"))
+    studio_off = json.loads((staged_dir / "biliup_studio.json").read_text(encoding="utf-8"))
+    assert manifest_off["ai_declaration"] is False
+    assert manifest_off["neutral_mark"] is None
+    assert manifest_off["advisor_receipt"]["neutral_mark"] is None
+    assert "neutral_mark" not in studio_off["streamers"]["干跑防误传测试"]
+
+    # 3. Direct MatrixPublisher.publish_project(execute_upload=False, remote_schedule=True) also never uploads
+    mock_session = MagicMock()
+    pub = MatrixPublisher(vault=vault, projects_dir=projects_dir, session=mock_session)
+    pub.publish_project(
+        project="018",
+        platforms=["bilibili"],
+        mode="schedule",
+        schedule_at="+6h",
+        execute_upload=False,
+        remote_schedule=True,
+    )
+    assert upload_spy.call_count == 0
+    assert mock_session.post.call_count == 0
+    assert mock_session.get.call_count == 0
