@@ -8,18 +8,87 @@ Uses only stdlib + aiohttp + pydantic and discards raw viewer UIDs for PII safet
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import struct
 import time
+import urllib.parse
 import zlib
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, Final, List, Literal, Optional, Sequence
+from typing import Any, AsyncIterator, Dict, Final, List, Literal, Optional, Sequence, Tuple
 
 import aiohttp
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+_WBI_MIXIN_KEY_ENC_TAB: Final[Tuple[int, ...]] = (
+    46,
+    47,
+    18,
+    2,
+    53,
+    8,
+    23,
+    32,
+    15,
+    50,
+    10,
+    31,
+    58,
+    3,
+    45,
+    35,
+    27,
+    43,
+    5,
+    49,
+    33,
+    9,
+    42,
+    19,
+    29,
+    28,
+    14,
+    39,
+    12,
+    38,
+    41,
+    13,
+    37,
+    48,
+    7,
+    16,
+    24,
+    55,
+    40,
+    61,
+    26,
+    17,
+    0,
+    1,
+    60,
+    51,
+    30,
+    4,
+    22,
+    25,
+    54,
+    21,
+    56,
+    59,
+    6,
+    63,
+    57,
+    62,
+    11,
+    36,
+    20,
+    34,
+    44,
+    52,
+)
 
 HEADER_STRUCT: Final[struct.Struct] = struct.Struct(">IHHII")
 HEADER_SIZE: Final[int] = HEADER_STRUCT.size  # 16 bytes
@@ -244,8 +313,31 @@ def parse_bilibili_command(payload: Dict[str, Any], *, now: Optional[float] = No
     return None
 
 
+def _compute_wbi_params(
+    params: Dict[str, Any],
+    img_url: str,
+    sub_url: str,
+    *,
+    now: Optional[int] = None,
+) -> Dict[str, str]:
+    """Compute Bilibili WBI query signature parameters (`wts` and `w_rid`)."""
+    img_key = img_url.rsplit("/", 1)[-1].split(".")[0]
+    sub_key = sub_url.rsplit("/", 1)[-1].split(".")[0]
+    raw = img_key + sub_key
+    mixin_key = "".join(raw[i] for i in _WBI_MIXIN_KEY_ENC_TAB)[:32]
+
+    raw_params: Dict[str, Any] = dict(params)
+    raw_params["wts"] = int(time.time() if now is None else now)
+    filtered: Dict[str, str] = {
+        str(k): "".join(c for c in str(v) if c not in "!'()*") for k, v in sorted(raw_params.items())
+    }
+    query = urllib.parse.urlencode(filtered)
+    filtered["w_rid"] = hashlib.md5((query + mixin_key).encode("utf-8")).hexdigest()
+    return filtered
+
+
 class BilibiliDanmakuClient:
-    """Async anonymous Bilibili live danmaku client built on `aiohttp.ClientSession.ws_connect`."""
+    """Async Bilibili live danmaku client built on `aiohttp.ClientSession.ws_connect`."""
 
     def __init__(
         self,
@@ -255,6 +347,9 @@ class BilibiliDanmakuClient:
         auth_token: str = "",
         heartbeat_interval: float = 30.0,
         session: Optional[aiohttp.ClientSession] = None,
+        cookies: Optional[Dict[str, str]] = None,
+        uid: Optional[int] = None,
+        buvid: str = "",
     ) -> None:
         if room_id <= 0:
             raise ValueError("room_id must be a positive integer")
@@ -265,21 +360,37 @@ class BilibiliDanmakuClient:
         self.heartbeat_interval = max(1.0, heartbeat_interval)
         self._external_session = session
         self._session: Optional[aiohttp.ClientSession] = session
+        self._cookies: Dict[str, str] = dict(cookies) if cookies else {}
+        if uid is not None:
+            self.uid: int = max(0, int(uid))
+        else:
+            raw_uid = str(self._cookies.get("DedeUserID") or "").strip()
+            try:
+                parsed_uid = int(raw_uid) if raw_uid else 0
+                self.uid = parsed_uid if parsed_uid > 0 else 0
+            except ValueError:
+                self.uid = 0
+        self.buvid: str = (buvid or str(self._cookies.get("buvid3") or "")).strip()
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._closed = False
         self.popularity: int = 0
         self.authenticated: bool = False
 
+    def __repr__(self) -> str:
+        return f"BilibiliDanmakuClient(room_id='<REDACTED>', authenticated={self.authenticated!r})"
+
     def build_auth_packet(self) -> bytes:
-        """Build anonymous guest auth packet (`uid=0`, `protover=2`)."""
+        """Build Bilibili live auth packet (`protover=2`)."""
         payload: Dict[str, Any] = {
-            "uid": 0,
+            "uid": self.uid,
             "roomid": self.real_room_id,
             "protover": PROTO_ZLIB,
             "platform": "web",
             "type": 2,
         }
+        if self.buvid:
+            payload["buvid"] = self.buvid
         if self.auth_token:
             payload["key"] = self.auth_token
         return pack_packet(payload, operation=OP_AUTH, proto_ver=PROTO_HEARTBEAT_INT)
@@ -298,12 +409,17 @@ class BilibiliDanmakuClient:
                     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
                 ),
                 "Origin": "https://live.bilibili.com",
+                "Referer": "https://live.bilibili.com/",
             }
-            self._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
+            self._session = aiohttp.ClientSession(
+                timeout=timeout,
+                headers=headers,
+                cookies=self._cookies or None,
+            )
         return self._session
 
     async def _resolve_connection_info(self) -> tuple[str, str]:
-        """Resolve real room ID and danmaku WebSocket host when no custom `ws_url` was passed."""
+        """Resolve real room ID and WBI-signed danmaku WebSocket host when no custom `ws_url` was passed."""
         if self.ws_url:
             return self.ws_url, self.auth_token
 
@@ -322,12 +438,37 @@ class BilibiliDanmakuClient:
                     if isinstance(real_id, int) and real_id > 0:
                         self.real_room_id = real_id
         except Exception as exc:
-            logger.debug("room_init fallback to raw room_id=%s: %s", self.room_id, exc)
+            logger.debug("room_init fallback for redacted room (%s)", type(exc).__name__)
+
+        if not self.buvid:
+            try:
+                async with session.get("https://api.bilibili.com/x/frontend/finger/spi") as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        b_3 = str((data.get("data") or {}).get("b_3") or "").strip()
+                        if b_3:
+                            self.buvid = b_3
+                            session.cookie_jar.update_cookies({"buvid3": b_3})
+            except Exception as exc:
+                logger.debug("finger/spi buvid3 fallback (%s)", type(exc).__name__)
+
+        danmu_params: Dict[str, str] = {"id": str(self.real_room_id), "type": "0"}
+        try:
+            async with session.get("https://api.bilibili.com/x/web-interface/nav") as resp:
+                if resp.status == 200:
+                    nav_data = await resp.json(content_type=None)
+                    wbi_img = (nav_data.get("data") or {}).get("wbi_img") or {}
+                    img_url = str(wbi_img.get("img_url") or "").strip()
+                    sub_url = str(wbi_img.get("sub_url") or "").strip()
+                    if img_url and sub_url:
+                        danmu_params = _compute_wbi_params(danmu_params, img_url, sub_url)
+        except Exception as exc:
+            logger.debug("nav WBI key fetch fallback (%s)", type(exc).__name__)
 
         try:
             async with session.get(
                 "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo",
-                params={"id": str(self.real_room_id), "type": "0"},
+                params=danmu_params,
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json(content_type=None)
@@ -341,7 +482,7 @@ class BilibiliDanmakuClient:
                         if host:
                             resolved_url = f"wss://{host}:{wss_port}/sub"
         except Exception as exc:
-            logger.debug("getDanmuInfo fallback to default WS endpoint: %s", exc)
+            logger.debug("getDanmuInfo fallback to default WS endpoint (%s)", type(exc).__name__)
 
         return resolved_url, token
 

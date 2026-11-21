@@ -27,6 +27,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from core.live_studio.danmaku import _compute_wbi_params
 from core.live_studio import (
     AI_DISCLOSURE_BANNER,
     HEADER_SIZE,
@@ -191,6 +192,42 @@ def test_bilibili_danmaku_client_ws_handshake_and_events() -> None:
             assert events[1].gift_count == 2
 
     asyncio.run(_run())
+
+
+def test_bilibili_danmaku_client_wbi_signing_and_authenticated_auth_packet() -> None:
+    signed = _compute_wbi_params(
+        {"id": "223344", "type": "0", "note": "a!b'c(d)e*f"},
+        "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png",
+        "https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png",
+        now=1700000000,
+    )
+    assert signed["wts"] == "1700000000"
+    assert signed["note"] == "abcdef"
+    assert len(signed["w_rid"]) == 32
+    assert all(ch in "0123456789abcdef" for ch in signed["w_rid"])
+
+    client = BilibiliDanmakuClient(
+        room_id=223344,
+        cookies={
+            "DedeUserID": "987654",
+            "buvid3": "TEST-BUVID-3",
+            "SESSDATA": "super_secret_cookie",
+        },
+        auth_token="tok_secret_123",
+    )
+    decoded = unpack_packets(client.build_auth_packet())
+    assert len(decoded) == 1
+    payload = decoded[0].json_payload
+    assert payload is not None
+    assert payload["uid"] == 987654
+    assert payload["roomid"] == 223344
+    assert payload["buvid"] == "TEST-BUVID-3"
+    assert payload["key"] == "tok_secret_123"
+    assert payload["protover"] == 2
+
+    safe_repr = repr(client)
+    for secret in ("223344", "987654", "TEST-BUVID-3", "super_secret_cookie", "tok_secret_123"):
+        assert secret not in safe_repr
 
 
 def test_mock_danmaku_source_bounded_events() -> None:

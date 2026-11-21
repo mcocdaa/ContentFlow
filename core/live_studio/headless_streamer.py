@@ -1774,7 +1774,7 @@ class HeadlessLiveStreamer:
         danmaku_source = (
             danmaku_client_factory(room_id)
             if danmaku_client_factory is not None
-            else BilibiliDanmakuClient(room_id=room_id)
+            else BilibiliDanmakuClient(room_id=room_id, cookies=ctrl.vault.load_bilibili_cookies())
         )
         stream_stats: Dict[str, Any] = {
             "frames_written": 0,
