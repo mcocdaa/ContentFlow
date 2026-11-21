@@ -30,8 +30,8 @@ REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent.parent
 STAGE_HTML_PATH: Final[Path] = Path(__file__).resolve().with_name("stage.html")
 
 CHARACTER_ASSETS: Final[Dict[str, str]] = {
-    "dafeiyu": "library/characters/deepseek_dafeiyu/master_reference.jpg",
-    "deepseek_dafeiyu": "library/characters/deepseek_dafeiyu/master_reference.jpg",
+    "dafeiyu": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png",
+    "deepseek_dafeiyu": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png",
     "gemini": "library/characters/gemini_neko/gemini_canonical_full.png",
     "gemini_neko": "library/characters/gemini_neko/gemini_canonical_full.png",
 }

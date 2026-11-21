@@ -70,11 +70,11 @@ BYTES_PER_VIDEO_FRAME: Final[int] = SAMPLES_PER_VIDEO_FRAME * AUDIO_CHANNELS * B
 
 DEFAULT_STUDIO_BG_REL: Final[str] = "projects/017_dafeiyu_gemini_channel_war_ep1/assets/cover_clean_studio_bg_16x9.jpg"
 CHARACTER_CUTOUT_RELS: Final[Dict[SpeakerId, str]] = {
-    "dafeiyu": "projects/008_ai_agent_day2_takeover_diary/output/cutouts/dafeiyu_master_cutout.png",
+    "dafeiyu": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front_cutout.png",
     "gemini": "projects/015_gemini_neko_cyber_worker_vlog/output/cutouts/neko_vlog_hero_cutout.png",
 }
 CHARACTER_CANONICAL_RELS: Final[Dict[SpeakerId, str]] = {
-    "dafeiyu": "library/characters/deepseek_dafeiyu/master_reference.jpg",
+    "dafeiyu": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png",
     "gemini": "library/characters/gemini_neko/gemini_canonical_full.png",
 }
 
@@ -542,7 +542,11 @@ class HeadlessStageRenderer:
                         rgba = rgba.crop(bbox)
                     w, h = rgba.size
                     # Full-body tall cutout -> frame as crisp waist-up VTuber bust matching partner head scale
-                    if h / max(1, w) > 1.45:
+                    ratio = h / max(1, w)
+                    if ratio > 2.0:
+                        rgba = rgba.crop((0, 0, w, int(h * 0.59)))
+                        w, h = rgba.size
+                    elif ratio > 1.45:
                         rgba = rgba.crop((0, 0, w, int(h * 0.66)))
                         w, h = rgba.size
                     target_h = 700 if speaker_id == "dafeiyu" else 620
