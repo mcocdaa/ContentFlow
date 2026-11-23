@@ -53,6 +53,13 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 * **019 旗舰剧场版 2D 交付（`019_cyber_variety_court_server_busy_trial`，`BV1hsyHzrEzW`）**：
   * **全片 `70.12s`（严格 `>= 60s`） · 舒展中位切镜 `4.00s` · `-14.0 LUFS`**：复用云端 3 主角 Element 与可灵 4.0 原生中文演戏配音（7 幕 WAV + 7 张抽帧联系表全人工核听核看零瑕疵）、`O(1)` OpenCV DIS 60FPS 装配与 `vivid_scene` 高明度封面（`dark<45=12.50%`），通过 `cli.py quality-check --threshold 90`（**`94.0 / 100 [S / VIRAL_READY]`**、`0` 阻断）并成功排期 **`2026-11-26 18:30:00 CST`**（`ai_declaration_verified=True`）。
 
+### 2026-11-23 17:00 CST · 发布前巡检与 Kaizen 切片 K6（多角色情感声线路由器）交付
+
+* **17:00 CST 日巡核验（零 PII）**：
+  * **库存与合规回读**：账号粉丝 `15`、累计播放 `695`、点赞 `35`、收藏 `3`、评论 `21`；已公开 `12` 篇置顶全部同步（`already_pinned`），未来 4 天定时排期（`11/23 BV1PyyWzqE38`、`11/24 BV1VaytzcEp9`、`11/25 BV1CqyhzWEhR`、`11/26 BV1hsyHzrEzW`）**`4/4` 均已过审 (`state=-40`) 且原生 AI 声明回读 Verified (`creation_statement_id=101`)**、`0` 退回；评论区无新增高危反馈。
+  * **分群归因（`cli.py benchmark --attribution`）**：新娱乐高明度赛道（`n=9`）平均播放 `65.11` vs 旧静态白板（`n=3`）`36.33`（**`1.79x` / `+28.78`**），点赞率 `5.80% vs 0.92%`（`+4.88%`），封标星级 `3.43★ vs 2.43★`（`+1.00★`）。
+* **Kaizen 切片 K6 完工**：由于排期存货充足（`4 >= 2` 天），认领并完成 `K6` 多角色情感配音配置档与批量对话合成引擎（详见下方 `K6` 记录）。
+
 ---
 
 ## 二、 已完成进化记录（Completed Slices）
@@ -94,8 +101,9 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 * ✅ **K5 — B 站原生 AIGC 声明（`neutral_mark`）投稿/回读校验（`verify_archive_submission`）与投稿回执 PII 自动脱敏（`--dry-run` 安全加固）**
   * 已落地 `core/publisher.py`（`BILIBILI_AI_NEUTRAL_MARK = "作者声明：该视频使用人工智能合成技术"`、`BilibiliUploader.submit_archive` / `upload_to_bilibili_api` / `edit_archive` 的向后兼容 `ai_declaration` 与 `neutral_mark` 透传及两阶段 `21001` 降级、`verify_archive_submission(aid)` 14 项零 PII 只读回验、`redact_auth_status` 统一将 `publish_manifest.json` 与 `advisor_receipt.md` 中的 `mid`/`uid`/`uname`/`dede_userid` 脱敏为 `<REDACTED>`）与 `cli.py publish`（`--ai-declaration`/`--no-ai-declaration`、`--neutral-mark`，且 `--dry-run` 强制锁定 `execute_upload=False` 与 `remote_schedule=False` 杜绝误传）；
   * 已补全 `tests/test_publisher.py`（`20 passed` 覆盖原生声明、回验、PII 脱敏与 `--dry-run --remote-schedule` 零上传安全）；全仓串行门禁通过（`ruff format --check .` `62 files` / `ruff check .` / `mypy core cli.py` `29 source files` / `pytest -q` **`65 passed`**）。
-* ⏳ **K6 — 多角色高表现力情感配音接入（通过 `core/audio_router.py` 激活 MiniMax Speech / Fish-Audio，打造大肥鱼/Gemini娘/弱音专属声线）**
-  * 目标：基于已落地的 `K4` 路由器，接入 MiniMax Speech / Fish-Audio 情感配音与角色声线配置档（voice profile），让大肥鱼、Gemini娘、弱音ハク在多角色群像短剧与互动中具备高辨识度语气与情绪起伏，同时保留无 Key 时平滑回退本地 TTS。
+* ✅ **K6 — 多角色高表现力情感配音接入（通过 `core/audio_router.py` 激活 MiniMax Speech / Fish-Audio，打造大肥鱼/Gemini娘/弱音专属声线）**
+  * 已落地 `CharacterVoiceProfile`（`dafeiyu` / `gemini_neko` / `yowane_haku` 三角色完整配置档与中英别名解析 `resolve_character_profile`）、`EmotionSpec` + `resolve_emotion_spec`（覆盖 `hype`/`deadpan`/`破防`/`吐槽` 等中英直播情绪映射至 MiniMax 合法标签与 Fish-Audio 表现力标签，并强制自然语速包络 `[0.80, 1.18]` 绝无“小黄人”变调）、`DialogueLine`/`DialogueResult` 串行多角色批量合成及零密钥/零 Fish Reference ID 泄露的 `dialogue_manifest.json` 导出；
+  * 已同步扩展 `config/settings.py`（`AUDIO_ROUTER_ENV_VARS` 环境变量映射）、`.env.example`、`cli.py synthesize-speech` 子命令、`cli.py audio-router-status`（展示角色声线表且严格脱敏）及 `tests/test_audio_router.py`（新增 5 项全 Mock 离线单测）；全仓串行门禁通过（`ruff format --check .` `76 files` / `ruff check .` / `mypy` `38 source files` / `pytest -q` **`96 passed in 265.72s`**）。
 * ✅ **K7 — 双 AI 实时互动直播间 MVP（`core/live_studio/` 弹幕监听 + 双重合规风控 + OBS 透明舞台 + 高光自动打点切片）**
   * 已落地纯轻量异步包 `core/live_studio/`（仅依赖标准库 + `aiohttp` + `httpx` + `pydantic`，零 PyTorch / GPU 占用）：`safety.py`（`LiveComplianceGuard` 双向输入/输出风控，拦截 PII/Cookie/UID/手机号/邮箱/开盒、中英 Prompt Injection、NSFW/政治/网暴与 `@` 提及，内置强制 `GB 45438-2025` 标识与角色内兜底台词）、`danmaku.py`（16 字节大端 B 站直播二进制帧编解码与受限 `proto_ver=2` zlib 解压、无 UID `DANMU_MSG`/`SEND_GIFT`/`INTERACT_WORD` 解析、匿名访客 `BilibiliDanmakuClient` 与离线 `MockDanmakuSource`）、`director.py`（`DualAILiveDirector` `gift > danmaku > enter > idle` 优先级抢占、可插拔 `OpenAICompatibleResponder` + 零 Key 喜剧对话库兜底、`HighlightTracker` 脱敏 JSONL 与 60–90 秒 `ffmpeg` 切片清单生成）及 `stage_server.py` + `stage.html`（`1920x1080` 高明度 OBS Browser Source 透明舞台、白名单立绘路由防穿越、纯 `textContent` 防 XSS）；
   * 已配套 `scripts/launch_live_mvp.py`（支持 `--mode mock|live`、`--record-highlights`、`--duration-sec` 与低内存巡检）、`docs/LIVE_PLAN_DUAL_AI.md` 运营手册及 `tests/test_live_studio.py`（`12 passed` 离线+WebSocket 单测）；全仓串行门禁通过（`ruff format --check .` `70 files` / `ruff check .` / `mypy core cli.py scripts/launch_live_mvp.py` `35 source files` / `pytest -q` **`77 passed`**）。

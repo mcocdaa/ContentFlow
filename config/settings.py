@@ -63,17 +63,24 @@ DEFAULT_ASPECT_RATIOS = {
     "square": "1:1",  # Instagram, Feed
 }
 
-# External Audio Generation Router defaults (K4: MiniMax Speech/Music, Fish-Audio, Suno)
+# External Audio Generation Router defaults (K4/K6: MiniMax Speech/Music, Fish-Audio, Suno)
 # Only non-secret env variable names, default endpoints, and default model IDs live here.
 AUDIO_ROUTER_ENV_VARS = {
     "minimax_api_key": "MINIMAX_API_KEY",
     "minimax_group_id": "MINIMAX_GROUP_ID",
     "minimax_base_url": "MINIMAX_BASE_URL",
     "minimax_speech_model": "MINIMAX_SPEECH_MODEL",
+    "minimax_speech_voice": "MINIMAX_SPEECH_VOICE",
     "minimax_music_model": "MINIMAX_MUSIC_MODEL",
+    "minimax_voice_dafeiyu": "MINIMAX_VOICE_DAFEIYU",
+    "minimax_voice_gemini_neko": "MINIMAX_VOICE_GEMINI_NEKO",
+    "minimax_voice_yowane_haku": "MINIMAX_VOICE_YOWANE_HAKU",
     "fish_audio_api_key": "FISH_AUDIO_API_KEY",
     "fish_audio_base_url": "FISH_AUDIO_BASE_URL",
     "fish_audio_reference_id": "FISH_AUDIO_REFERENCE_ID",
+    "fish_audio_ref_dafeiyu": "FISH_AUDIO_REF_DAFEIYU",
+    "fish_audio_ref_gemini_neko": "FISH_AUDIO_REF_GEMINI_NEKO",
+    "fish_audio_ref_yowane_haku": "FISH_AUDIO_REF_YOWANE_HAKU",
     "suno_api_key": "SUNO_API_KEY",
     "suno_base_url": "SUNO_BASE_URL",
 }

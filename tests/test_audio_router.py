@@ -1,4 +1,4 @@
-"""Unit tests for Kaizen Slice K4: Pluggable AudioGenerationRouter & `cli.py audio-router-status`.
+"""Unit tests for Kaizen Slices K4 & K6: Pluggable AudioGenerationRouter, Character Profiles & CLI.
 
 100% offline and mocked: never instantiates real PyTorch/Kokoro models or hits live endpoints.
 """
@@ -16,9 +16,13 @@ import requests
 
 import cli
 from core.audio_router import (
+    CHARACTER_VOICE_PROFILES,
     AudioGenerationRouter,
+    DialogueLine,
     MusicRequest,
     SpeechRequest,
+    resolve_character_profile,
+    resolve_emotion_spec,
 )
 
 
@@ -662,3 +666,364 @@ def test_cli_audio_router_status_json_and_text(
     assert "bilibili_bgm_hunter" in out_text
     for secret in ("sk-cli-minimax-secret-12345", "grp-cli-secret-67890", "suno-cli-secret-abcde"):
         assert secret not in out_text
+
+
+def test_character_voice_profiles_aliases_and_secret_redaction() -> None:
+    # 1. Alias resolution for all 3 studio leads
+    assert set(CHARACTER_VOICE_PROFILES.keys()) == {"dafeiyu", "gemini_neko", "yowane_haku"}
+    assert resolve_character_profile("大肥鱼").character_id == "dafeiyu"
+    assert resolve_character_profile("DeepSeek").character_id == "dafeiyu"
+    assert resolve_character_profile("Gemini娘").character_id == "gemini_neko"
+    assert resolve_character_profile("猫娘").character_id == "gemini_neko"
+    assert resolve_character_profile("弱音").character_id == "yowane_haku"
+    assert resolve_character_profile("YOWANE_HAKU").character_id == "yowane_haku"
+
+    with pytest.raises(ValueError, match="Unknown character voice profile"):
+        resolve_character_profile("nonexistent_vtuber")
+
+    # 2. Emotion mapping across MiniMax valid tags & Fish-Audio expressive tags
+    assert resolve_emotion_spec("hype").minimax_emotion == "happy"
+    assert resolve_emotion_spec("破防").minimax_emotion == "surprised"
+    assert resolve_emotion_spec("破防").fish_emotion == "shocked"
+    assert resolve_emotion_spec("deadpan").minimax_emotion == "calm"
+    assert resolve_emotion_spec("tsundere").fish_emotion == "tsundere"
+    assert resolve_emotion_spec("unknown_custom_vibe").minimax_emotion == "neutral"
+
+    # 3. list_voice_profiles & get_status NEVER leak Fish reference IDs or API keys
+    router = AudioGenerationRouter(
+        env={
+            "MINIMAX_API_KEY": "sk-mm-secret-profile-001",
+            "MINIMAX_VOICE_DAFEIYU": "custom-fish-queen-v2",
+            "FISH_AUDIO_API_KEY": "fish-api-secret-002",
+            "FISH_AUDIO_REFERENCE_ID": "ref-global-secret-777",
+            "FISH_AUDIO_REF_DAFEIYU": "ref-dafeiyu-secret-888",
+            "FISH_AUDIO_REF_GEMINI_NEKO": "ref-gemini-secret-999",
+            "FISH_AUDIO_REF_YOWANE_HAKU": "ref-yowane-secret-000",
+        }
+    )
+    profiles = router.list_voice_profiles()
+    assert len(profiles) == 3
+    by_id = {p["character_id"]: p for p in profiles}
+    assert by_id["dafeiyu"]["minimax_voice_id"] == "custom-fish-queen-v2"
+    assert by_id["dafeiyu"]["minimax_custom_override"] is True
+    assert by_id["dafeiyu"]["fish_reference_configured"] is True
+    assert by_id["gemini_neko"]["minimax_custom_override"] is False
+    assert by_id["gemini_neko"]["fish_reference_configured"] is True
+
+    dumped = json.dumps(router.get_status(), ensure_ascii=False)
+    for forbidden in (
+        "sk-mm-secret-profile-001",
+        "fish-api-secret-002",
+        "ref-global-secret-777",
+        "ref-dafeiyu-secret-888",
+        "ref-gemini-secret-999",
+        "ref-yowane-secret-000",
+    ):
+        assert forbidden not in dumped
+
+
+def test_character_profile_minimax_and_fish_expressive_payloads(tmp_path: Path) -> None:
+    mm_calls: List[Dict[str, Any]] = []
+    fish_calls: List[Dict[str, Any]] = []
+
+    def handler(method: str, url: str, kwargs: Dict[str, Any]) -> _FakeResponse:
+        if "minimax" in url:
+            mm_calls.append(kwargs["json"])
+            return _FakeResponse(
+                status_code=200,
+                json_data={
+                    "base_resp": {"status_code": 0, "status_msg": "success"},
+                    "data": {"audio": b"ID3_MM_CHAR".hex()},
+                    "extra_info": {"audio_sample_rate": 32000},
+                },
+            )
+        if "fish.audio" in url:
+            fish_calls.append(kwargs["json"])
+            return _FakeResponse(
+                status_code=200,
+                content=b"ID3_FISH_CHAR",
+                headers={"Content-Type": "audio/mpeg"},
+            )
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    router = AudioGenerationRouter(
+        env={
+            "MINIMAX_API_KEY": "sk-mm-test",
+            "MINIMAX_VOICE_DAFEIYU": "mm-dafeiyu-custom",
+            "FISH_AUDIO_API_KEY": "fish-test",
+            "FISH_AUDIO_REFERENCE_ID": "ref-global-fallback",
+            "FISH_AUDIO_REF_GEMINI_NEKO": "ref-gemini-exclusive",
+        },
+        session=_FakeSession(handler),  # type: ignore[arg-type]
+    )
+
+    # 1. Dafeiyu uses MINIMAX_VOICE_DAFEIYU, pitch=0, hype -> happy, natural speed <= 1.18
+    res_df = router.synthesize_speech(
+        SpeechRequest(
+            text="服务器才没有偷懒，明明是老板脚本没优化！",
+            output_path=tmp_path / "df_hype.mp3",
+            character="大肥鱼",
+            emotion="hype",
+        )
+    )
+    assert res_df.provider == "minimax_speech"
+    assert res_df.metadata["character"] == "dafeiyu"
+    assert mm_calls[0]["voice_setting"]["voice_id"] == "mm-dafeiyu-custom"
+    assert mm_calls[0]["voice_setting"]["pitch"] == 0
+    assert mm_calls[0]["voice_setting"]["emotion"] == "happy"
+    assert 0.80 <= mm_calls[0]["voice_setting"]["speed"] <= 1.18
+
+    # 2. Gemini Neko with 破防 -> surprised, pitch=+1; Yowane with deadpan -> calm, pitch=-1
+    router.synthesize_speech(
+        SpeechRequest(
+            text="什么？！今天播放卡在12了？",
+            output_path=tmp_path / "gm_shocked.mp3",
+            character="gemini_neko",
+            emotion="破防",
+        )
+    )
+    assert mm_calls[1]["voice_setting"]["voice_id"] == "female-shaonv"
+    assert mm_calls[1]["voice_setting"]["pitch"] == 1
+    assert mm_calls[1]["voice_setting"]["emotion"] == "surprised"
+
+    router.synthesize_speech(
+        SpeechRequest(
+            text="都冷静一点，经费只剩四毛了。",
+            output_path=tmp_path / "yw_deadpan.mp3",
+            character="弱音",
+            emotion="deadpan",
+        )
+    )
+    assert mm_calls[2]["voice_setting"]["voice_id"] == "female-chengshu"
+    assert mm_calls[2]["voice_setting"]["pitch"] == -1
+    assert mm_calls[2]["voice_setting"]["emotion"] == "calm"
+
+    # 3. Explicit request.voice overrides character env/default voice
+    router.synthesize_speech(
+        SpeechRequest(
+            text="临时客串旁白声线。",
+            output_path=tmp_path / "override.mp3",
+            character="dafeiyu",
+            voice="explicit-voice-override",
+            emotion="calm",
+            speed=1.02,
+            pitch=2,
+        )
+    )
+    assert mm_calls[3]["voice_setting"]["voice_id"] == "explicit-voice-override"
+    assert mm_calls[3]["voice_setting"]["pitch"] == 2
+    assert mm_calls[3]["voice_setting"]["speed"] == 1.02
+
+    # 4. Fish-Audio receives per-character FISH_AUDIO_REF_GEMINI_NEKO over global ref
+    res_fish_gm = router.synthesize_speech(
+        SpeechRequest(
+            text="喵呜，4.9星封面才是正义！",
+            output_path=tmp_path / "gm_fish.mp3",
+            character="Gemini娘",
+            provider="fish_audio",
+        )
+    )
+    assert res_fish_gm.provider == "fish_audio"
+    assert fish_calls[0]["reference_id"] == "ref-gemini-exclusive"
+    assert fish_calls[0]["emotion"] == "excited"
+
+    # Yowane falls back to global FISH_AUDIO_REFERENCE_ID when per-character Fish ref is unset
+    router.synthesize_speech(
+        SpeechRequest(
+            text="先把剧本和借物表检查一遍。",
+            output_path=tmp_path / "yw_fish.mp3",
+            character="yowane_haku",
+            emotion="calm",
+            provider="fish_audio",
+        )
+    )
+    assert fish_calls[1]["reference_id"] == "ref-global-fallback"
+    assert fish_calls[1]["emotion"] == "calm"
+
+    # Validation checks
+    with pytest.raises(ValueError, match="Unknown character voice profile"):
+        router.synthesize_speech(SpeechRequest(text="hi", output_path=tmp_path / "bad.mp3", character="ghost"))
+    with pytest.raises(ValueError, match="speed must be > 0"):
+        router.synthesize_speech(SpeechRequest(text="hi", output_path=tmp_path / "bad_s.mp3", speed=0.0))
+
+
+def test_character_profile_local_fallback_edge_voice_and_legacy_stub(tmp_path: Path) -> None:
+    # A. Legacy 3-arg _FakeLocalTTS must work cleanly without TypeError
+    fake_legacy = _FakeLocalTTS()
+    router_legacy = AudioGenerationRouter(env={}, local_tts_factory=lambda: fake_legacy)
+    for char_id, expected_voice in (
+        ("dafeiyu", "zf_018"),
+        ("gemini_neko", "zf_001"),
+        ("yowane_haku", "zf_004"),
+    ):
+        res = router_legacy.synthesize_speech(
+            SpeechRequest(
+                text=f"{char_id} 测试台词",
+                output_path=tmp_path / f"legacy_{char_id}.wav",
+                character=char_id,
+            )
+        )
+        assert res.provider == "local_kokoro"
+        assert res.used_fallback is True
+        assert res.metadata["voice"] == expected_voice
+    assert fake_legacy.close_count == 3
+    assert [c["voice"] for c in fake_legacy.calls] == ["zf_018", "zf_001", "zf_004"]
+
+    # B. edge_voice-aware TTS stub receives each character's edge_tts_voice & closes in finally
+    class _EdgeAwareLocalTTS:
+        sample_rate = 24000
+
+        def __init__(self) -> None:
+            self.calls: List[Dict[str, Any]] = []
+            self.close_count = 0
+
+        def synthesize_text(
+            self,
+            text: str,
+            voice: str = "zf_001",
+            speed: float = 1.03,
+            edge_voice: str = "zh-CN-XiaoxiaoNeural",
+        ) -> List[float]:
+            self.calls.append({"text": text, "voice": voice, "speed": speed, "edge_voice": edge_voice})
+            return [0.0, 0.2, -0.2, 0.0] * 30
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    edge_stub = _EdgeAwareLocalTTS()
+    router_edge = AudioGenerationRouter(env={}, local_tts_factory=lambda: edge_stub)
+    for char_id, expected_edge in (
+        ("大肥鱼", "zh-CN-XiaoxiaoNeural"),
+        ("Gemini娘", "zh-CN-XiaoyiNeural"),
+        ("弱音", "zh-CN-XiaohanNeural"),
+    ):
+        res = router_edge.synthesize_speech(
+            SpeechRequest(
+                text=f"{char_id} 双通道本地声线",
+                output_path=tmp_path / f"edge_{char_id}.wav",
+                character=char_id,
+            )
+        )
+        assert res.metadata["edge_voice"] == expected_edge
+    assert edge_stub.close_count == 3
+    assert [c["edge_voice"] for c in edge_stub.calls] == [
+        "zh-CN-XiaoxiaoNeural",
+        "zh-CN-XiaoyiNeural",
+        "zh-CN-XiaohanNeural",
+    ]
+
+
+def test_synthesize_dialogue_multi_character_batch_and_manifest(tmp_path: Path) -> None:
+    lines = [
+        DialogueLine(character="大肥鱼", text="法官大人，服务器繁忙是因为她在摸鱼！", emotion="angry"),
+        DialogueLine(character="Gemini娘", text="哼，我的4.9星封面才是流量救星喵！", emotion="excited"),
+        DialogueLine(character="弱音", text="行了，都去写第20集剧本吧。", emotion="calm", line_id="closing_verdict"),
+    ]
+
+    # 1. Local fallback batch synthesis
+    fake_tts = _FakeLocalTTS()
+    router_local = AudioGenerationRouter(env={}, local_tts_factory=lambda: fake_tts)
+    out_dir_local = tmp_path / "dialogue_local"
+    dlg_res = router_local.synthesize_dialogue(lines=lines, output_dir=out_dir_local, file_ext="wav")
+    assert dlg_res.providers_used == ["local_kokoro"]
+    assert dlg_res.used_fallback is True
+    assert dlg_res.manifest_path == out_dir_local / "dialogue_manifest.json"
+    assert dlg_res.manifest_path.is_file()
+    assert fake_tts.close_count == 3
+    assert len(dlg_res.lines) == 3
+    assert Path(dlg_res.lines[0]["audio_path"]).name == "01_dafeiyu.wav"
+    assert Path(dlg_res.lines[1]["audio_path"]).name == "02_gemini_neko.wav"
+    assert Path(dlg_res.lines[2]["audio_path"]).name == "closing_verdict.wav"
+    for item in dlg_res.lines:
+        assert Path(item["audio_path"]).is_file()
+        assert 0.80 <= float(item["speed"]) <= 1.18
+
+    manifest_data = json.loads(dlg_res.manifest_path.read_text(encoding="utf-8"))
+    assert len(manifest_data["lines"]) == 3
+    assert manifest_data["lines"][2]["character"] == "yowane_haku"
+
+    # 2. Fish-Audio batch synthesis NEVER writes raw reference_id secret into dialogue_manifest.json
+    def fish_handler(method: str, url: str, kwargs: Dict[str, Any]) -> _FakeResponse:
+        return _FakeResponse(status_code=200, content=b"ID3_FISH_BATCH", headers={"Content-Type": "audio/mpeg"})
+
+    router_fish = AudioGenerationRouter(
+        env={
+            "FISH_AUDIO_API_KEY": "fish-batch-secret-token",
+            "FISH_AUDIO_REF_DAFEIYU": "secret-fish-ref-df-555",
+            "FISH_AUDIO_REF_GEMINI_NEKO": "secret-fish-ref-gm-666",
+            "FISH_AUDIO_REF_YOWANE_HAKU": "secret-fish-ref-yw-777",
+        },
+        session=_FakeSession(fish_handler),  # type: ignore[arg-type]
+    )
+    out_dir_fish = tmp_path / "dialogue_fish"
+    fish_res = router_fish.synthesize_dialogue(lines=lines, output_dir=out_dir_fish, file_ext="mp3")
+    assert fish_res.providers_used == ["fish_audio"]
+    assert fish_res.manifest_path is not None
+    raw_manifest_text = fish_res.manifest_path.read_text(encoding="utf-8")
+    for secret_val in (
+        "fish-batch-secret-token",
+        "secret-fish-ref-df-555",
+        "secret-fish-ref-gm-666",
+        "secret-fish-ref-yw-777",
+    ):
+        assert secret_val not in raw_manifest_text
+    assert all(line["fish_reference_configured"] is True for line in fish_res.lines)
+
+    # Empty lines validation
+    with pytest.raises(ValueError, match="must not be empty"):
+        router_local.synthesize_dialogue(lines=[], output_dir=tmp_path / "empty_dlg")
+
+
+def test_cli_audio_router_profiles_and_synthesize_speech(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+    monkeypatch.delenv("FISH_AUDIO_API_KEY", raising=False)
+    monkeypatch.delenv("SUNO_API_KEY", raising=False)
+    monkeypatch.setenv("FISH_AUDIO_REF_DAFEIYU", "secret-cli-fish-ref-999")
+
+    # 1. audio-router-status includes voice_profiles without leaking secret Fish refs
+    monkeypatch.setattr(sys, "argv", ["cli.py", "audio-router-status", "--json"])
+    assert cli.main() == 0
+    st_json = capsys.readouterr().out
+    st_parsed = json.loads(st_json)
+    assert set(st_parsed["voice_profiles"].keys()) == {"dafeiyu", "gemini_neko", "yowane_haku"}
+    assert st_parsed["voice_profiles"]["dafeiyu"]["fish_reference_configured"] is True
+    assert "secret-cli-fish-ref-999" not in st_json
+
+    monkeypatch.setattr(sys, "argv", ["cli.py", "audio-router-status"])
+    assert cli.main() == 0
+    st_text = capsys.readouterr().out
+    assert "Character Voice Profiles" in st_text
+    assert "yowane_haku" in st_text
+    assert "secret-cli-fish-ref-999" not in st_text
+
+    # 2. synthesize-speech CLI executes offline via monkeypatched local TTS factory
+    fake_tts = _FakeLocalTTS()
+    monkeypatch.setattr(AudioGenerationRouter, "_create_local_tts", lambda self: fake_tts)
+    out_wav = tmp_path / "cli_gemini.wav"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "cli.py",
+            "synthesize-speech",
+            "--character",
+            "gemini_neko",
+            "--emotion",
+            "excited",
+            "--text",
+            "欢迎来到第20期现场！",
+            "--output",
+            str(out_wav),
+            "--json",
+        ],
+    )
+    assert cli.main() == 0
+    synth_out = capsys.readouterr().out
+    synth_json = json.loads(synth_out)
+    assert synth_json["provider"] == "local_kokoro"
+    assert synth_json["metadata"]["character"] == "gemini_neko"
+    assert synth_json["metadata"]["voice"] == "zf_001"
+    assert out_wav.is_file()
+    assert fake_tts.close_count == 1

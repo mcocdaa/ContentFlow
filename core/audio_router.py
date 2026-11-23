@@ -1,8 +1,11 @@
-"""Pluggable External Audio Generation Router for ContentFlow (Kaizen Slice K4).
+"""Pluggable External Audio Generation Router for ContentFlow (Kaizen Slices K4 & K6).
 
 Provides a unified, zero-key-safe routing abstraction for:
-- Expressive Speech (TTS):
+- Expressive Speech (TTS) & Canonical Character Voice Profiles (K6):
   `minimax_speech` (MINIMAX_API_KEY) -> `fish_audio` (FISH_AUDIO_API_KEY) -> `local_kokoro` (LocalNeuralTTS)
+  Supports multi-character persona profiles (`dafeiyu`, `gemini_neko`, `yowane_haku`),
+  cross-provider emotion normalization, natural zero-chipmunk speed bounds (`<= 1.18x`),
+  and serial multi-character dialogue batch synthesis (`synthesize_dialogue`).
 - Background Music & Accompaniment (BGM):
   `minimax_music` (MINIMAX_API_KEY) -> `suno` (SUNO_API_KEY) -> `bilibili_bgm_hunter` (BilibiliBgmHunter)
 
@@ -14,7 +17,9 @@ is always invoked inside a `finally` block per the 24 GiB RAM / 8 GiB VRAM rule.
 from __future__ import annotations
 
 import base64
+import inspect
 import io
+import json
 import logging
 import os
 import re
@@ -25,7 +30,7 @@ import urllib.parse
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 import requests
 
@@ -60,8 +65,176 @@ _SECRET_ENV_KEYS = (
     "MINIMAX_API_KEY",
     "MINIMAX_GROUP_ID",
     "FISH_AUDIO_API_KEY",
+    "FISH_AUDIO_REFERENCE_ID",
+    "FISH_AUDIO_REF_DAFEIYU",
+    "FISH_AUDIO_REF_GEMINI_NEKO",
+    "FISH_AUDIO_REF_YOWANE_HAKU",
     "SUNO_API_KEY",
 )
+
+MIN_PROFILE_AUTO_SPEED = 0.80
+MAX_PROFILE_AUTO_SPEED = 1.18
+MINIMAX_VALID_EMOTIONS = frozenset({"happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral", "calm"})
+
+
+@dataclass(frozen=True)
+class EmotionSpec:
+    """Cross-provider expressive emotion normalization with subtle natural prosody multiplier."""
+
+    canonical: str
+    minimax_emotion: str
+    fish_emotion: str
+    speed_multiplier: float = 1.0
+
+
+EMOTION_SPECS: Dict[str, EmotionSpec] = {
+    "neutral": EmotionSpec(
+        canonical="neutral", minimax_emotion="neutral", fish_emotion="neutral", speed_multiplier=1.00
+    ),
+    "happy": EmotionSpec(canonical="happy", minimax_emotion="happy", fish_emotion="happy", speed_multiplier=1.02),
+    "excited": EmotionSpec(canonical="excited", minimax_emotion="happy", fish_emotion="excited", speed_multiplier=1.04),
+    "sad": EmotionSpec(canonical="sad", minimax_emotion="sad", fish_emotion="sad", speed_multiplier=0.94),
+    "angry": EmotionSpec(canonical="angry", minimax_emotion="angry", fish_emotion="angry", speed_multiplier=1.03),
+    "surprised": EmotionSpec(
+        canonical="surprised", minimax_emotion="surprised", fish_emotion="surprised", speed_multiplier=1.03
+    ),
+    "fearful": EmotionSpec(
+        canonical="fearful", minimax_emotion="fearful", fish_emotion="fearful", speed_multiplier=1.01
+    ),
+    "disgusted": EmotionSpec(
+        canonical="disgusted", minimax_emotion="disgusted", fish_emotion="disgusted", speed_multiplier=0.98
+    ),
+    "calm": EmotionSpec(canonical="calm", minimax_emotion="calm", fish_emotion="calm", speed_multiplier=0.96),
+    "sarcastic": EmotionSpec(
+        canonical="sarcastic", minimax_emotion="disgusted", fish_emotion="sarcastic", speed_multiplier=1.01
+    ),
+    "lively": EmotionSpec(canonical="lively", minimax_emotion="happy", fish_emotion="excited", speed_multiplier=1.03),
+    "hype": EmotionSpec(canonical="hype", minimax_emotion="happy", fish_emotion="excited", speed_multiplier=1.05),
+    "teasing": EmotionSpec(canonical="teasing", minimax_emotion="happy", fish_emotion="playful", speed_multiplier=1.02),
+    "smug": EmotionSpec(canonical="smug", minimax_emotion="happy", fish_emotion="confident", speed_multiplier=1.00),
+    "shocked": EmotionSpec(
+        canonical="shocked", minimax_emotion="surprised", fish_emotion="shocked", speed_multiplier=1.04
+    ),
+    "grateful": EmotionSpec(
+        canonical="grateful", minimax_emotion="happy", fish_emotion="grateful", speed_multiplier=0.98
+    ),
+    "focused": EmotionSpec(canonical="focused", minimax_emotion="calm", fish_emotion="serious", speed_multiplier=0.98),
+    "deadpan": EmotionSpec(canonical="deadpan", minimax_emotion="calm", fish_emotion="deadpan", speed_multiplier=0.95),
+    "tsundere": EmotionSpec(
+        canonical="tsundere", minimax_emotion="angry", fish_emotion="tsundere", speed_multiplier=1.02
+    ),
+}
+
+_EMOTION_ALIASES: Dict[str, str] = {
+    "开心": "happy",
+    "高兴": "happy",
+    "元气": "lively",
+    "兴奋": "excited",
+    "高能": "hype",
+    "生气": "angry",
+    "傲娇": "tsundere",
+    "破防": "shocked",
+    "吐槽": "sarcastic",
+    "难过": "sad",
+    "委屈": "sad",
+    "惊讶": "surprised",
+    "平静": "calm",
+    "清冷": "calm",
+    "佛系": "calm",
+    "淡定": "deadpan",
+}
+
+
+def resolve_emotion_spec(emotion: Optional[str], default: str = "neutral") -> EmotionSpec:
+    """Normalizes English/Chinese/livestream emotion labels to provider-specific EmotionSpec."""
+    raw = (emotion or "").strip()
+    if not raw:
+        raw = (default or "neutral").strip() or "neutral"
+    norm = raw.lower()
+    target_key = _EMOTION_ALIASES.get(raw) or _EMOTION_ALIASES.get(norm) or norm
+    if target_key in EMOTION_SPECS:
+        return EMOTION_SPECS[target_key]
+    mm_emo = norm if norm in MINIMAX_VALID_EMOTIONS else "neutral"
+    return EmotionSpec(canonical=norm, minimax_emotion=mm_emo, fish_emotion=norm, speed_multiplier=1.0)
+
+
+@dataclass(frozen=True)
+class CharacterVoiceProfile:
+    """Canonical multi-provider expressive voice profile for a studio character (K6)."""
+
+    character_id: str
+    display_name: str
+    aliases: Tuple[str, ...]
+    persona_note: str
+    default_emotion: str
+    default_speed: float
+    minimax_voice_id: str
+    minimax_pitch: int
+    minimax_env_var: str
+    fish_env_var: str
+    local_kokoro_voice: str
+    edge_tts_voice: str
+
+
+CHARACTER_VOICE_PROFILES: Dict[str, CharacterVoiceProfile] = {
+    "dafeiyu": CharacterVoiceProfile(
+        character_id="dafeiyu",
+        display_name="DeepSeek 蓝色大肥鱼",
+        aliases=("dafeiyu", "deepseek_dafeiyu", "deepseek", "大肥鱼", "蓝色大肥鱼"),
+        persona_note="理智犀利又容易被点破防的硬核吐槽少女鱼",
+        default_emotion="happy",
+        default_speed=1.04,
+        minimax_voice_id="female-yujie",
+        minimax_pitch=0,
+        minimax_env_var="MINIMAX_VOICE_DAFEIYU",
+        fish_env_var="FISH_AUDIO_REF_DAFEIYU",
+        local_kokoro_voice="zf_018",
+        edge_tts_voice="zh-CN-XiaoxiaoNeural",
+    ),
+    "gemini_neko": CharacterVoiceProfile(
+        character_id="gemini_neko",
+        display_name="Gemini娘",
+        aliases=("gemini_neko", "gemini", "gemini娘", "gemini猫", "猫娘"),
+        persona_note="元气自信、4.9★ 高明度视觉卷王猫娘",
+        default_emotion="excited",
+        default_speed=1.06,
+        minimax_voice_id="female-shaonv",
+        minimax_pitch=1,
+        minimax_env_var="MINIMAX_VOICE_GEMINI_NEKO",
+        fish_env_var="FISH_AUDIO_REF_GEMINI_NEKO",
+        local_kokoro_voice="zf_001",
+        edge_tts_voice="zh-CN-XiaoyiNeural",
+    ),
+    "yowane_haku": CharacterVoiceProfile(
+        character_id="yowane_haku",
+        display_name="弱音ハク",
+        aliases=("yowane_haku", "yowane", "haku", "弱音", "弱音ハク"),
+        persona_note="清冷佛系、关键时刻一锤定音的社畜御姐前辈",
+        default_emotion="calm",
+        default_speed=0.98,
+        minimax_voice_id="female-chengshu",
+        minimax_pitch=-1,
+        minimax_env_var="MINIMAX_VOICE_YOWANE_HAKU",
+        fish_env_var="FISH_AUDIO_REF_YOWANE_HAKU",
+        local_kokoro_voice="zf_004",
+        edge_tts_voice="zh-CN-XiaohanNeural",
+    ),
+}
+
+_CHARACTER_ALIAS_INDEX: Dict[str, str] = {}
+for _cid, _prof in CHARACTER_VOICE_PROFILES.items():
+    _CHARACTER_ALIAS_INDEX[_cid.lower()] = _cid
+    for _alias in _prof.aliases:
+        _CHARACTER_ALIAS_INDEX[_alias.strip().lower()] = _cid
+
+
+def resolve_character_profile(character: str) -> CharacterVoiceProfile:
+    """Resolves a character ID or Chinese/English alias to its canonical CharacterVoiceProfile."""
+    key = (character or "").strip().lower()
+    if key in _CHARACTER_ALIAS_INDEX:
+        return CHARACTER_VOICE_PROFILES[_CHARACTER_ALIAS_INDEX[key]]
+    supported = ", ".join(CHARACTER_VOICE_PROFILES.keys())
+    raise ValueError(f"Unknown character voice profile {character!r}. Supported: {supported}")
 
 
 def _is_configured_secret(val: Optional[str]) -> bool:
@@ -148,10 +321,27 @@ class SpeechRequest:
 
     text: str
     output_path: Union[str, Path]
-    emotion: str = "neutral"
+    emotion: Optional[str] = None
     voice: Optional[str] = None
-    speed: float = 1.0
+    speed: Optional[float] = None
     provider: Optional[str] = None
+    character: Optional[str] = None
+    pitch: Optional[int] = None
+
+
+@dataclass
+class DialogueLine:
+    """Single scripted utterance in a multi-character ensemble dialogue batch (K6)."""
+
+    character: str
+    text: str
+    emotion: Optional[str] = None
+    voice: Optional[str] = None
+    speed: Optional[float] = None
+    pitch: Optional[int] = None
+    provider: Optional[str] = None
+    pause_after_sec: float = 0.25
+    line_id: Optional[str] = None
 
 
 @dataclass
@@ -171,6 +361,26 @@ class SpeechResult:
             "sample_rate": self.sample_rate,
             "used_fallback": self.used_fallback,
             "metadata": dict(self.metadata),
+        }
+
+
+@dataclass
+class DialogueResult:
+    """Result bundle & manifest path returned by AudioGenerationRouter.synthesize_dialogue."""
+
+    lines: List[Dict[str, Any]]
+    providers_used: List[str]
+    used_fallback: bool
+    output_dir: Path
+    manifest_path: Optional[Path] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "lines": [dict(line) for line in self.lines],
+            "providers_used": list(self.providers_used),
+            "used_fallback": self.used_fallback,
+            "output_dir": str(self.output_dir),
+            "manifest_path": str(self.manifest_path) if self.manifest_path is not None else None,
         }
 
 
@@ -402,6 +612,33 @@ class AudioGenerationRouter:
             ),
         ]
 
+    def list_voice_profiles(self) -> List[Dict[str, Any]]:
+        """Returns sanitized character voice profiles without leaking Fish-Audio reference IDs or API keys."""
+        profiles: List[Dict[str, Any]] = []
+        global_fish_ok = self._has_secret("FISH_AUDIO_REFERENCE_ID")
+        for prof in CHARACTER_VOICE_PROFILES.values():
+            mm_override = self._get_env(prof.minimax_env_var)
+            fish_char_ok = self._has_secret(prof.fish_env_var)
+            profiles.append(
+                {
+                    "character_id": prof.character_id,
+                    "display_name": prof.display_name,
+                    "aliases": list(prof.aliases),
+                    "persona_note": prof.persona_note,
+                    "default_emotion": prof.default_emotion,
+                    "default_speed": prof.default_speed,
+                    "minimax_voice_id": mm_override or prof.minimax_voice_id,
+                    "minimax_pitch": prof.minimax_pitch,
+                    "minimax_env_var": prof.minimax_env_var,
+                    "minimax_custom_override": mm_override is not None,
+                    "fish_env_var": prof.fish_env_var,
+                    "fish_reference_configured": bool(fish_char_ok or global_fish_ok),
+                    "local_kokoro_voice": prof.local_kokoro_voice,
+                    "edge_tts_voice": prof.edge_tts_voice,
+                }
+            )
+        return profiles
+
     def get_status(self) -> Dict[str, Any]:
         """Returns a sanitized dictionary describing active providers, priority, and env readiness.
 
@@ -424,6 +661,7 @@ class AudioGenerationRouter:
                 "using_fallback": active_music == "bilibili_bgm_hunter",
                 "providers": {p.name: p.to_dict() for p in music_list},
             },
+            "voice_profiles": {p["character_id"]: p for p in self.list_voice_profiles()},
         }
 
     def _is_provider_configured(self, provider: str) -> bool:
@@ -566,6 +804,61 @@ class AudioGenerationRouter:
 
         return BilibiliBgmHunter(session=self.session)
 
+    def _resolve_speech_params(self, request: SpeechRequest, provider: str) -> Dict[str, Any]:
+        profile = resolve_character_profile(request.character) if request.character else None
+        emo_spec = resolve_emotion_spec(
+            request.emotion,
+            default=profile.default_emotion if profile is not None else "neutral",
+        )
+        if request.speed is not None:
+            speed = float(request.speed)
+        elif profile is not None:
+            raw_speed = profile.default_speed * emo_spec.speed_multiplier
+            speed = round(max(MIN_PROFILE_AUTO_SPEED, min(MAX_PROFILE_AUTO_SPEED, raw_speed)), 3)
+        else:
+            speed = 1.0
+
+        if request.pitch is not None:
+            pitch = max(-12, min(12, int(request.pitch)))
+        elif profile is not None:
+            pitch = profile.minimax_pitch
+        else:
+            pitch = 0
+
+        explicit_voice = request.voice.strip() if request.voice and request.voice.strip() else None
+        if provider == "minimax_speech":
+            voice = (
+                explicit_voice
+                or (self._get_env(profile.minimax_env_var) if profile is not None else None)
+                or (profile.minimax_voice_id if profile is not None else None)
+                or self._get_env("MINIMAX_SPEECH_VOICE")
+                or DEFAULT_MINIMAX_SPEECH_VOICE
+            ).strip()
+        elif provider == "fish_audio":
+            voice = (
+                explicit_voice
+                or (self._get_env(profile.fish_env_var) if profile is not None else None)
+                or self._get_env("FISH_AUDIO_REFERENCE_ID")
+                or ""
+            ).strip()
+        elif provider == "local_kokoro":
+            voice = (
+                explicit_voice or (profile.local_kokoro_voice if profile is not None else None) or "zf_001"
+            ).strip()
+        else:
+            voice = explicit_voice or ""
+
+        return {
+            "profile": profile,
+            "character_id": profile.character_id if profile is not None else None,
+            "display_name": profile.display_name if profile is not None else None,
+            "emotion_spec": emo_spec,
+            "speed": speed,
+            "pitch": pitch,
+            "voice": voice,
+            "edge_voice": profile.edge_tts_voice if profile is not None else None,
+        }
+
     def _synth_minimax_speech(self, request: SpeechRequest, used_fallback: bool) -> SpeechResult:
         api_key = self._get_env("MINIMAX_API_KEY")
         if not _is_configured_secret(api_key):
@@ -580,8 +873,12 @@ class AudioGenerationRouter:
 
         ext = out_path.suffix.lstrip(".").lower()
         audio_format = ext if ext in {"mp3", "wav", "pcm", "flac"} else "mp3"
-        emotion = (request.emotion or "neutral").strip().lower() or "neutral"
-        voice_id = (request.voice or DEFAULT_MINIMAX_SPEECH_VOICE).strip()
+        params_resolved = self._resolve_speech_params(request, "minimax_speech")
+        emo_spec: EmotionSpec = params_resolved["emotion_spec"]
+        emotion = emo_spec.minimax_emotion
+        voice_id = str(params_resolved["voice"])
+        speed = float(params_resolved["speed"])
+        pitch = int(params_resolved["pitch"])
 
         url = f"{base_url}/v1/t2a_v2"
         params = {"GroupId": group_id} if _is_configured_secret(group_id) and group_id else None
@@ -595,9 +892,9 @@ class AudioGenerationRouter:
             "stream": False,
             "voice_setting": {
                 "voice_id": voice_id,
-                "speed": float(request.speed),
+                "speed": speed,
                 "vol": 1.0,
-                "pitch": 0,
+                "pitch": pitch,
                 "emotion": emotion,
             },
             "audio_setting": {
@@ -625,10 +922,14 @@ class AudioGenerationRouter:
             sample_rate=sr,
             used_fallback=used_fallback,
             metadata={
+                "character": params_resolved["character_id"],
+                "display_name": params_resolved["display_name"],
                 "model": model,
                 "voice": voice_id,
+                "pitch": pitch,
                 "emotion": emotion,
-                "speed": float(request.speed),
+                "raw_emotion": request.emotion or emo_spec.canonical,
+                "speed": speed,
                 "format": audio_format,
                 "bytes": len(audio_bytes),
             },
@@ -646,8 +947,11 @@ class AudioGenerationRouter:
 
         ext = out_path.suffix.lstrip(".").lower()
         audio_format = ext if ext in {"mp3", "wav", "pcm", "opus"} else "mp3"
-        emotion = (request.emotion or "neutral").strip().lower() or "neutral"
-        ref_id = (request.voice or self._get_env("FISH_AUDIO_REFERENCE_ID") or "").strip()
+        params_resolved = self._resolve_speech_params(request, "fish_audio")
+        emo_spec: EmotionSpec = params_resolved["emotion_spec"]
+        emotion = emo_spec.fish_emotion
+        ref_id = str(params_resolved["voice"])
+        speed = float(params_resolved["speed"])
 
         url = f"{base_url}/v1/tts"
         headers = {
@@ -657,7 +961,7 @@ class AudioGenerationRouter:
         payload: Dict[str, Any] = {
             "text": request.text,
             "format": audio_format,
-            "prosody": {"speed": float(request.speed), "volume": 0},
+            "prosody": {"speed": speed, "volume": 0},
             "emotion": emotion,
         }
         if ref_id:
@@ -676,9 +980,12 @@ class AudioGenerationRouter:
             sample_rate=sr,
             used_fallback=used_fallback,
             metadata={
+                "character": params_resolved["character_id"],
+                "display_name": params_resolved["display_name"],
                 "reference_id": ref_id or None,
                 "emotion": emotion,
-                "speed": float(request.speed),
+                "raw_emotion": request.emotion or emo_spec.canonical,
+                "speed": speed,
                 "format": audio_format,
                 "bytes": len(audio_bytes),
             },
@@ -687,11 +994,31 @@ class AudioGenerationRouter:
     def _synth_local_kokoro(self, request: SpeechRequest, used_fallback: bool) -> SpeechResult:
         out_path = Path(request.output_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        voice = (request.voice or "zf_001").strip()
+        params_resolved = self._resolve_speech_params(request, "local_kokoro")
+        emo_spec: EmotionSpec = params_resolved["emotion_spec"]
+        voice = str(params_resolved["voice"])
+        speed = float(params_resolved["speed"])
+        edge_voice = params_resolved["edge_voice"]
 
         tts = self._create_local_tts()
         try:
-            waveform = tts.synthesize_text(text=request.text, voice=voice, speed=float(request.speed))
+            synth_kwargs: Dict[str, Any] = {
+                "text": request.text,
+                "voice": voice,
+                "speed": speed,
+            }
+            if edge_voice is not None:
+                try:
+                    sig = inspect.signature(tts.synthesize_text)
+                    accepts_edge = ("edge_voice" in sig.parameters) or any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                    )
+                except (TypeError, ValueError):
+                    accepts_edge = False
+                if accepts_edge:
+                    synth_kwargs["edge_voice"] = edge_voice
+
+            waveform = tts.synthesize_text(**synth_kwargs)
             sr = int(getattr(tts, "sample_rate", 24000))
             if out_path.suffix.lower() == ".wav":
                 _write_pcm16_wav(waveform, out_path, sr)
@@ -725,9 +1052,13 @@ class AudioGenerationRouter:
             sample_rate=sr,
             used_fallback=used_fallback,
             metadata={
+                "character": params_resolved["character_id"],
+                "display_name": params_resolved["display_name"],
                 "voice": voice,
-                "emotion": request.emotion,
-                "speed": float(request.speed),
+                "edge_voice": edge_voice,
+                "emotion": emo_spec.canonical,
+                "raw_emotion": request.emotion or emo_spec.canonical,
+                "speed": speed,
             },
         )
 
@@ -735,6 +1066,10 @@ class AudioGenerationRouter:
         """Synthesizes speech using the highest-priority configured provider with optional fallback."""
         if not request.text or not request.text.strip():
             raise ValueError("SpeechRequest.text must not be empty")
+        if request.character is not None:
+            resolve_character_profile(request.character)
+        if request.speed is not None and float(request.speed) <= 0:
+            raise ValueError("SpeechRequest.speed must be > 0")
 
         candidates = self._resolve_candidates(
             priority=AUDIO_SPEECH_PROVIDER_PRIORITY,
@@ -777,6 +1112,96 @@ class AudioGenerationRouter:
 
         details = "; ".join(f"{e['provider']}: {e['error']}" for e in fallback_errors) or "no providers available"
         raise RuntimeError(f"All speech providers failed ({details})")
+
+    def synthesize_dialogue(
+        self,
+        lines: Sequence[DialogueLine],
+        output_dir: Union[str, Path],
+        file_ext: str = "wav",
+        allow_fallback: bool = True,
+        write_manifest: bool = True,
+    ) -> DialogueResult:
+        """Synthesizes a multi-character script serially into output_dir with optional manifest."""
+        if not lines:
+            raise ValueError("Dialogue lines must not be empty")
+
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ext = file_ext.lstrip(".").lower() or "wav"
+
+        rendered_lines: List[Dict[str, Any]] = []
+        providers_used: List[str] = []
+        any_fallback = False
+
+        for idx, line in enumerate(lines, start=1):
+            profile = resolve_character_profile(line.character)
+            raw_line_id = (line.line_id or "").strip()
+            safe_line_id = re.sub(r"[^A-Za-z0-9_-]+", "_", raw_line_id).strip("_") if raw_line_id else ""
+            effective_id = safe_line_id or f"{idx:02d}_{profile.character_id}"
+            audio_out = out_dir / f"{effective_id}.{ext}"
+
+            res = self.synthesize_speech(
+                SpeechRequest(
+                    text=line.text,
+                    output_path=audio_out,
+                    emotion=line.emotion,
+                    voice=line.voice,
+                    speed=line.speed,
+                    provider=line.provider,
+                    character=profile.character_id,
+                    pitch=line.pitch,
+                ),
+                allow_fallback=allow_fallback,
+            )
+            if res.provider not in providers_used:
+                providers_used.append(res.provider)
+            if res.used_fallback:
+                any_fallback = True
+
+            is_fish = res.provider == "fish_audio"
+            fish_ref_set = bool(res.metadata.get("reference_id")) if is_fish else False
+            voice_label = (
+                f"{profile.character_id}:configured_ref" if (is_fish and fish_ref_set) else res.metadata.get("voice")
+            )
+
+            rendered_lines.append(
+                {
+                    "index": idx,
+                    "line_id": effective_id,
+                    "character": profile.character_id,
+                    "display_name": profile.display_name,
+                    "text": line.text,
+                    "provider": res.provider,
+                    "audio_path": str(res.audio_path),
+                    "sample_rate": res.sample_rate,
+                    "voice": voice_label,
+                    "fish_reference_configured": fish_ref_set,
+                    "emotion": res.metadata.get("emotion"),
+                    "raw_emotion": res.metadata.get("raw_emotion"),
+                    "speed": res.metadata.get("speed"),
+                    "used_fallback": res.used_fallback,
+                    "pause_after_sec": max(0.0, float(line.pause_after_sec)),
+                }
+            )
+
+        manifest_path: Optional[Path] = None
+        if write_manifest:
+            manifest_path = out_dir / "dialogue_manifest.json"
+            manifest_payload = {
+                "line_count": len(rendered_lines),
+                "providers_used": providers_used,
+                "used_fallback": any_fallback,
+                "lines": rendered_lines,
+            }
+            manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        return DialogueResult(
+            lines=rendered_lines,
+            providers_used=providers_used,
+            used_fallback=any_fallback,
+            output_dir=out_dir,
+            manifest_path=manifest_path,
+        )
 
     def _generate_minimax_music(self, request: MusicRequest, used_fallback: bool) -> MusicResult:
         api_key = self._get_env("MINIMAX_API_KEY")

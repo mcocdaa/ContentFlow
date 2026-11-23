@@ -971,7 +971,61 @@ def cmd_audio_router_status(args: argparse.Namespace) -> int:
             model_str = f" | model={info['active_model']}" if info.get("active_model") else ""
             env_list = ", ".join(info["required_env"]) if info["required_env"] else "none (built-in)"
             print(f"    • {pname:<22} [{state:<12}] env={env_list}{model_str}")
+
+    profiles = status.get("voice_profiles") or {}
+    if profiles:
+        print("\n[Character Voice Profiles]")
+        for cid, prof in profiles.items():
+            fish_state = "configured" if prof.get("fish_reference_configured") else "default"
+            mm_tag = f"{prof['minimax_voice_id']} (pitch={prof['minimax_pitch']:+d})"
+            print(
+                f"    • {cid:<12} ({prof['display_name']}) | "
+                f"MiniMax={mm_tag} | FishRef={fish_state} | "
+                f"Local={prof['local_kokoro_voice']} / {prof['edge_tts_voice']} | "
+                f"Default={prof['default_emotion']}@{prof['default_speed']:.2f}x"
+            )
     print()
+    return 0
+
+
+def cmd_synthesize_speech(args: argparse.Namespace) -> int:
+    """Synthesizes an expressive character speech clip via AudioGenerationRouter (K6)."""
+    from core.audio_router import AudioGenerationRouter, SpeechRequest
+
+    router = AudioGenerationRouter()
+    req = SpeechRequest(
+        text=args.text,
+        output_path=args.output,
+        emotion=getattr(args, "emotion", None),
+        voice=getattr(args, "voice", None),
+        speed=getattr(args, "speed", None),
+        provider=getattr(args, "provider", None),
+        character=getattr(args, "character", None),
+        pitch=getattr(args, "pitch", None),
+    )
+    try:
+        res = router.synthesize_speech(req, allow_fallback=not bool(getattr(args, "no_fallback", False)))
+    except Exception as exc:
+        print(f"[-] synthesize-speech failed: {exc}")
+        return 1
+
+    payload = res.to_dict()
+    meta = dict(payload.get("metadata") or {})
+    if "reference_id" in meta:
+        meta["reference_configured"] = bool(meta.pop("reference_id"))
+        payload["metadata"] = meta
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        char_label = meta.get("display_name") or meta.get("character") or "default"
+        print(
+            f"[+] Speech synthesized via '{res.provider}'{' (fallback)' if res.used_fallback else ''}: {res.audio_path}"
+        )
+        print(
+            f"    - Character: {char_label} | Emotion: {meta.get('emotion')} | "
+            f"Speed: {meta.get('speed')}x | Sample Rate: {res.sample_rate}Hz"
+        )
     return 0
 
 
@@ -1239,10 +1293,40 @@ def main():
     # audio-router-status
     p_ar = subparsers.add_parser(
         "audio-router-status",
-        help="Show sanitized status of external speech & music providers and zero-key fallbacks",
+        help="Show sanitized status of external speech & music providers, character profiles, and zero-key fallbacks",
     )
     p_ar.add_argument("--json", action="store_true", help="Output structured JSON status to stdout")
     p_ar.set_defaults(func=cmd_audio_router_status)
+
+    # synthesize-speech
+    p_synth = subparsers.add_parser(
+        "synthesize-speech",
+        help="Synthesize expressive speech for a studio character via AudioGenerationRouter (K6)",
+    )
+    p_synth.add_argument("--text", required=True, help="Speech line text to synthesize")
+    p_synth.add_argument("--output", required=True, help="Output audio file path (.wav or .mp3)")
+    p_synth.add_argument(
+        "--character",
+        default=None,
+        help="Character profile ID or alias (e.g. dafeiyu, gemini_neko, yowane_haku, 大肥鱼, 弱音)",
+    )
+    p_synth.add_argument(
+        "--emotion",
+        default=None,
+        help="Expressive emotion or livestream mood (e.g. happy, excited, calm, 破防, 吐槽)",
+    )
+    p_synth.add_argument("--voice", default=None, help="Explicit voice ID or Fish reference ID override")
+    p_synth.add_argument("--speed", type=float, default=None, help="Explicit speaking speed multiplier")
+    p_synth.add_argument("--pitch", type=int, default=None, help="Explicit MiniMax semitone pitch offset (-12..12)")
+    p_synth.add_argument(
+        "--provider",
+        choices=["minimax_speech", "fish_audio", "local_kokoro"],
+        default=None,
+        help="Optional explicit speech provider override",
+    )
+    p_synth.add_argument("--no-fallback", action="store_true", help="Fail instead of falling back on error")
+    p_synth.add_argument("--json", action="store_true", help="Output sanitized JSON result to stdout")
+    p_synth.set_defaults(func=cmd_synthesize_speech)
 
     args = parser.parse_args()
     return args.func(args)
