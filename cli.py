@@ -981,7 +981,8 @@ def cmd_audio_router_status(args: argparse.Namespace) -> int:
             print(
                 f"    • {cid:<12} ({prof['display_name']}) | "
                 f"MiniMax={mm_tag} | FishRef={fish_state} | "
-                f"Local={prof['local_kokoro_voice']} / {prof['edge_tts_voice']} | "
+                f"Local={prof['local_kokoro_voice']} / {prof['edge_tts_voice']} "
+                f"({prof.get('edge_tts_pitch', '+0Hz')}) | "
                 f"Default={prof['default_emotion']}@{prof['default_speed']:.2f}x"
             )
     print()

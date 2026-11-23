@@ -75,6 +75,24 @@ _SECRET_ENV_KEYS = (
 MIN_PROFILE_AUTO_SPEED = 0.80
 MAX_PROFILE_AUTO_SPEED = 1.18
 MINIMAX_VALID_EMOTIONS = frozenset({"happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral", "calm"})
+VERIFIED_FREE_EDGE_TTS_VOICES: frozenset[str] = frozenset(
+    {
+        "zh-CN-XiaoxiaoNeural",
+        "zh-CN-XiaoyiNeural",
+        "zh-CN-YunjianNeural",
+        "zh-CN-YunxiNeural",
+        "zh-CN-YunxiaNeural",
+        "zh-CN-YunyangNeural",
+        "zh-CN-liaoning-XiaobeiNeural",
+        "zh-CN-shaanxi-XiaoniNeural",
+        "zh-HK-HiuGaaiNeural",
+        "zh-HK-HiuMaanNeural",
+        "zh-HK-WanLungNeural",
+        "zh-TW-HsiaoChenNeural",
+        "zh-TW-HsiaoYuNeural",
+        "zh-TW-YunJheNeural",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -160,7 +178,7 @@ def resolve_emotion_spec(emotion: Optional[str], default: str = "neutral") -> Em
 
 @dataclass(frozen=True)
 class CharacterVoiceProfile:
-    """Canonical multi-provider expressive voice profile for a studio character (K6)."""
+    """Canonical multi-provider expressive voice profile for a studio character (K6 & K9)."""
 
     character_id: str
     display_name: str
@@ -174,6 +192,7 @@ class CharacterVoiceProfile:
     fish_env_var: str
     local_kokoro_voice: str
     edge_tts_voice: str
+    edge_tts_pitch: str = "+0Hz"
 
 
 CHARACTER_VOICE_PROFILES: Dict[str, CharacterVoiceProfile] = {
@@ -190,6 +209,7 @@ CHARACTER_VOICE_PROFILES: Dict[str, CharacterVoiceProfile] = {
         fish_env_var="FISH_AUDIO_REF_DAFEIYU",
         local_kokoro_voice="zf_018",
         edge_tts_voice="zh-CN-XiaoxiaoNeural",
+        edge_tts_pitch="-2Hz",
     ),
     "gemini_neko": CharacterVoiceProfile(
         character_id="gemini_neko",
@@ -204,6 +224,7 @@ CHARACTER_VOICE_PROFILES: Dict[str, CharacterVoiceProfile] = {
         fish_env_var="FISH_AUDIO_REF_GEMINI_NEKO",
         local_kokoro_voice="zf_001",
         edge_tts_voice="zh-CN-XiaoyiNeural",
+        edge_tts_pitch="+4Hz",
     ),
     "yowane_haku": CharacterVoiceProfile(
         character_id="yowane_haku",
@@ -217,7 +238,8 @@ CHARACTER_VOICE_PROFILES: Dict[str, CharacterVoiceProfile] = {
         minimax_env_var="MINIMAX_VOICE_YOWANE_HAKU",
         fish_env_var="FISH_AUDIO_REF_YOWANE_HAKU",
         local_kokoro_voice="zf_004",
-        edge_tts_voice="zh-CN-XiaohanNeural",
+        edge_tts_voice="zh-TW-HsiaoYuNeural",
+        edge_tts_pitch="-4Hz",
     ),
 }
 
@@ -635,6 +657,7 @@ class AudioGenerationRouter:
                     "fish_reference_configured": bool(fish_char_ok or global_fish_ok),
                     "local_kokoro_voice": prof.local_kokoro_voice,
                     "edge_tts_voice": prof.edge_tts_voice,
+                    "edge_tts_pitch": prof.edge_tts_pitch,
                 }
             )
         return profiles
@@ -857,6 +880,7 @@ class AudioGenerationRouter:
             "pitch": pitch,
             "voice": voice,
             "edge_voice": profile.edge_tts_voice if profile is not None else None,
+            "edge_pitch": profile.edge_tts_pitch if profile is not None else None,
         }
 
     def _synth_minimax_speech(self, request: SpeechRequest, used_fallback: bool) -> SpeechResult:
@@ -999,6 +1023,7 @@ class AudioGenerationRouter:
         voice = str(params_resolved["voice"])
         speed = float(params_resolved["speed"])
         edge_voice = params_resolved["edge_voice"]
+        edge_pitch = params_resolved["edge_pitch"]
 
         tts = self._create_local_tts()
         try:
@@ -1007,16 +1032,16 @@ class AudioGenerationRouter:
                 "voice": voice,
                 "speed": speed,
             }
-            if edge_voice is not None:
+            if edge_voice is not None or edge_pitch is not None:
                 try:
                     sig = inspect.signature(tts.synthesize_text)
-                    accepts_edge = ("edge_voice" in sig.parameters) or any(
-                        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-                    )
+                    has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+                    if edge_voice is not None and (has_varkw or "edge_voice" in sig.parameters):
+                        synth_kwargs["edge_voice"] = edge_voice
+                    if edge_pitch is not None and (has_varkw or "edge_pitch" in sig.parameters):
+                        synth_kwargs["edge_pitch"] = edge_pitch
                 except (TypeError, ValueError):
-                    accepts_edge = False
-                if accepts_edge:
-                    synth_kwargs["edge_voice"] = edge_voice
+                    pass
 
             waveform = tts.synthesize_text(**synth_kwargs)
             sr = int(getattr(tts, "sample_rate", 24000))
@@ -1056,6 +1081,7 @@ class AudioGenerationRouter:
                 "display_name": params_resolved["display_name"],
                 "voice": voice,
                 "edge_voice": edge_voice,
+                "edge_pitch": edge_pitch,
                 "emotion": emo_spec.canonical,
                 "raw_emotion": request.emotion or emo_spec.canonical,
                 "speed": speed,

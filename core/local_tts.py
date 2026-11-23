@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -141,14 +142,21 @@ class LocalNeuralTTS:
             combined = combined[i0:i1]
         return combined
 
-    def _synth_edge_tts(self, text: str, edge_voice: str, speed: float) -> np.ndarray:
+    def _synth_edge_tts(
+        self,
+        text: str,
+        edge_voice: str,
+        speed: float,
+        edge_pitch: str = "+0Hz",
+    ) -> np.ndarray:
         import edge_tts
 
         rate_pct = int(round((speed - 1.0) * 100.0))
         rate_str = f"{rate_pct:+d}%"
+        eff_pitch = (edge_pitch or "+0Hz").strip() or "+0Hz"
 
         async def _run(mp3_path: Path) -> None:
-            comm = edge_tts.Communicate(text, voice=edge_voice, rate=rate_str)
+            comm = edge_tts.Communicate(text, voice=edge_voice, rate=rate_str, pitch=eff_pitch)
             await comm.save(str(mp3_path))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -171,13 +179,14 @@ class LocalNeuralTTS:
         voice: str = "zf_001",
         speed: float = 1.03,
         edge_voice: str = "zh-CN-XiaoxiaoNeural",
+        edge_pitch: str = "+0Hz",
     ) -> np.ndarray:
         """Synthesizes a single utterance into a mono float32 numpy waveform at `self.sample_rate`."""
         try:
             return self._synth_kokoro(text, voice=voice, speed=speed)
         except Exception as exc:
-            logger.warning("Kokoro TTS failed (%s); falling back to edge-tts (%s)", exc, edge_voice)
-            return self._synth_edge_tts(text, edge_voice=edge_voice, speed=speed)
+            logger.warning("Kokoro TTS failed (%s); falling back to edge-tts (%s %s)", exc, edge_voice, edge_pitch)
+            return self._synth_edge_tts(text, edge_voice=edge_voice, speed=speed, edge_pitch=edge_pitch)
 
     def close(self) -> None:
         """Releases loaded TTS models and clears cached GPU VRAM."""
@@ -201,6 +210,7 @@ class LocalNeuralTTS:
         pause_sec: float = 0.22,
         tail_pad_sec: float = 0.30,
         edge_voice: str = "zh-CN-XiaoxiaoNeural",
+        edge_pitch: str = "+0Hz",
     ) -> List[Dict[str, Any]]:
         """Synthesizes multi-scene audio MP3 + SRT captions in-process and frees models afterward."""
         output_mp3 = Path(output_mp3)
@@ -219,10 +229,32 @@ class LocalNeuralTTS:
         cue_idx = 1
 
         try:
+            try:
+                sig = inspect.signature(self.synthesize_text)
+                synth_accepts_pitch = ("edge_pitch" in sig.parameters) or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                )
+            except (TypeError, ValueError):
+                synth_accepts_pitch = False
+
             for idx, sc in enumerate(scenes):
                 tts_text = str(sc.get("tts_text") or sc.get("subtitle_text") or "").strip()
                 sub_text = str(sc.get("subtitle_text") or sc.get("tts_text") or "").strip()
-                wav_samples = self.synthesize_text(tts_text, voice=voice, speed=speed, edge_voice=edge_voice)
+                if synth_accepts_pitch:
+                    wav_samples = self.synthesize_text(
+                        tts_text,
+                        voice=voice,
+                        speed=speed,
+                        edge_voice=edge_voice,
+                        edge_pitch=edge_pitch,
+                    )
+                else:
+                    wav_samples = self.synthesize_text(
+                        tts_text,
+                        voice=voice,
+                        speed=speed,
+                        edge_voice=edge_voice,
+                    )
 
                 # Peak-normalize each segment gently so loudness stays uniform across acts
                 peak = float(np.max(np.abs(wav_samples))) if wav_samples.size else 1.0
@@ -309,6 +341,7 @@ class LocalNeuralTTS:
         pause_sec: float = 0.22,
         tail_pad_sec: float = 0.30,
         edge_voice: str = "zh-CN-XiaoxiaoNeural",
+        edge_pitch: str = "+0Hz",
         isolate_process: bool = True,
     ) -> List[Dict[str, Any]]:
         """Synthesizes multi-scene audio MP3 + SRT captions and returns exact scene timestamps."""
@@ -326,6 +359,8 @@ class LocalNeuralTTS:
                 "speed": speed,
                 "pause_sec": pause_sec,
                 "tail_pad_sec": tail_pad_sec,
+                "edge_voice": edge_voice,
+                "edge_pitch": edge_pitch,
                 "sr": self.sample_rate,
             },
             ensure_ascii=False,
@@ -367,6 +402,7 @@ class LocalNeuralTTS:
                             "pause_sec": pause_sec,
                             "tail_pad_sec": tail_pad_sec,
                             "edge_voice": edge_voice,
+                            "edge_pitch": edge_pitch,
                         },
                         ensure_ascii=False,
                     ),
@@ -389,6 +425,7 @@ class LocalNeuralTTS:
                 pause_sec=pause_sec,
                 tail_pad_sec=tail_pad_sec,
                 edge_voice=edge_voice,
+                edge_pitch=edge_pitch,
             )
 
         meta_path.parent.mkdir(parents=True, exist_ok=True)
@@ -419,6 +456,7 @@ def _cli_main() -> None:
         pause_sec=float(req.get("pause_sec", 0.22)),
         tail_pad_sec=float(req.get("tail_pad_sec", 0.30)),
         edge_voice=str(req.get("edge_voice", "zh-CN-XiaoxiaoNeural")),
+        edge_pitch=str(req.get("edge_pitch", "+0Hz")),
     )
     resp_path.write_text(json.dumps(tl, ensure_ascii=False), encoding="utf-8")
 

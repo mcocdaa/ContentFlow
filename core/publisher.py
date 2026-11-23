@@ -31,7 +31,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 from PIL import Image, ImageDraw
@@ -778,9 +778,49 @@ class BilibiliUploader:
         resp.raise_for_status()
         return resp.json()
 
-    def verify_archive_submission(self, aid: int) -> Dict[str, Any]:
-        """Reads back a submitted archive via `get_archive_view` and returns strictly PII-free verification fields."""
-        view_json = self.get_archive_view(aid)
+    def verify_archive_submission(
+        self,
+        aid: int,
+        max_retries: int = 3,
+        retry_backoff_sec: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Reads back a submitted archive via `get_archive_view` with retry on rate-limit/empty payloads."""
+        attempts = max(1, int(max_retries))
+        backoff = max(0.0, float(retry_backoff_sec))
+        view_json: Dict[str, Any] = {"code": -1, "data": {}}
+
+        for attempt in range(1, attempts + 1):
+            try:
+                candidate = self.get_archive_view(aid)
+            except (requests.RequestException, ValueError) as exc:
+                logger.warning(
+                    "verify_archive_submission(aid=%s) attempt %d/%d transient error: %s",
+                    int(aid),
+                    attempt,
+                    attempts,
+                    type(exc).__name__,
+                )
+                candidate = {"code": -1, "data": {}}
+            if isinstance(candidate, dict):
+                view_json = candidate
+            else:
+                view_json = {"code": -1, "data": {}}
+
+            cand_code = view_json.get("code")
+            raw_cand_data = view_json.get("data")
+            cand_data: Dict[str, Any] = raw_cand_data if isinstance(raw_cand_data, dict) else {}
+            raw_cand_arc = cand_data.get("archive")
+            cand_arc: Optional[Dict[str, Any]] = raw_cand_arc if isinstance(raw_cand_arc, dict) else None
+            is_valid = (
+                cand_code == 0
+                and cand_arc is not None
+                and (bool(cand_arc.get("bvid")) or cand_arc.get("state") is not None)
+            )
+            if is_valid:
+                break
+            if attempt < attempts and backoff > 0.0:
+                time.sleep(backoff * attempt)
+
         code = view_json.get("code")
         raw_data = view_json.get("data")
         data: Dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
@@ -847,6 +887,29 @@ class BilibiliUploader:
             "credits_present": "【借物表" in desc,
             "aigc_present": "【AIGC" in desc,
         }
+
+    def verify_archives_batch(
+        self,
+        aids: Sequence[int],
+        pause_sec: float = 0.8,
+        max_retries: int = 3,
+        retry_backoff_sec: float = 1.0,
+    ) -> List[Dict[str, Any]]:
+        """Verifies multiple submitted archives serially with polite inter-request pacing."""
+        pause = max(0.0, float(pause_sec))
+        results: List[Dict[str, Any]] = []
+        aid_list = list(aids)
+        for idx, aid in enumerate(aid_list):
+            if idx > 0 and pause > 0.0:
+                time.sleep(pause)
+            results.append(
+                self.verify_archive_submission(
+                    aid,
+                    max_retries=max_retries,
+                    retry_backoff_sec=retry_backoff_sec,
+                )
+            )
+        return results
 
     def edit_archive(
         self,

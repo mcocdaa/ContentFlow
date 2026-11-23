@@ -60,6 +60,13 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
   * **分群归因（`cli.py benchmark --attribution`）**：新娱乐高明度赛道（`n=9`）平均播放 `65.11` vs 旧静态白板（`n=3`）`36.33`（**`1.79x` / `+28.78`**），点赞率 `5.80% vs 0.92%`（`+4.88%`），封标星级 `3.43★ vs 2.43★`（`+1.00★`）。
 * **Kaizen 切片 K6 完工**：由于排期存货充足（`4 >= 2` 天），认领并完成 `K6` 多角色情感配音配置档与批量对话合成引擎（详见下方 `K6` 记录）。
 
+### 2026-11-23 19:00 CST · 发布后巡检（BV1PyyWzqE38 公开置顶与流水归因）与 Kaizen 切片 K9 交付
+
+* **19:00 CST 日巡核验（零 PII）**：
+  * **库存、置顶与合规回读**：账号粉丝 `15`、累计播放 `695`、点赞 `35`、收藏 `3`、评论 `22`；已公开 `13` 篇（原有 `12` 篇置顶全部 `already_pinned`，今晚 `18:30 CST` 新公开 `BV1PyyWzqE38` 已补发并置顶零 `@` 互动评论 `rpid=321095682417`，原生 AI 声明回读 `Verified` `creation_statement_id=101`）；未来 3 天定时排期（`11/24 017 BV1VaytzcEp9`、`11/25 018 BV1CqyhzWEhR`、`11/26 019 BV1hsyHzrEzW`）**`3/3` 过审 (`state=-40`) 且 AI 声明全部回读 `Verified`**、`0` 退回，无新增紧急观众反馈。
+  * **分群归因（`cli.py benchmark --attribution`）**：新娱乐高明度赛道（`n=10`，含刚转公开的 `BV1PyyWzqE38`）均播 `58.60` vs 旧白板（`n=3`）`36.33`（**`1.61x` / `+22.27`**），点赞率 `5.80% vs 0.92%`（`+4.88%`），封标星级 `3.09★ vs 2.43★`（`+0.66★`），头部标杆 `BV198sw6oEHN`（`131` 播放 / `4.5★`）。
+* **Kaizen 切片 K9 完工**：排期存货充足（`3 >= 2` 天），完成免费声线纠错（弱音 Edge-TTS 合法化与音调参数透传）及 B 站回读抗限流重试机制（详见下方 `K9` 记录）。
+
 ---
 
 ## 二、 已完成进化记录（Completed Slices）
@@ -110,3 +117,7 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 * ✅ **K8 — 100% 无头零麦克风全自动 B 站直播引擎 + 非特权 Docker 沙箱（`core/live_studio/bilibili_live_api.py` + `headless_streamer.py` + `Dockerfile.live`）**
   * 已落地全自动无头直播链路：`core/live_studio/bilibili_live_api.py`（`BilibiliLiveController` 封装 `GetInfo` / `Room/update` / 非致命封面上传 / `startLive` / 幂等 `stopLive`，遇到 `code=60024` 自动生成官方人脸认证二维码 `output/live_face_auth_qr.png` 绝不绕过；`RoomStatus`/`StartLiveResult`/`scrub_rtmp_secrets()` 全链路将 RTMP 推流地址、串流码、`room_id`、`uid` 与 Cookie 脱敏为 `<REDACTED_RTMP_URL>` / `<REDACTED>`）、`core/live_studio/headless_streamer.py`（`HeadlessStageRenderer` 1920x1080@30FPS 定型大肥鱼×Gemini娘透明抠图舞台 + 活跃发言光环 + 音频波形 + `15 / 1,000 粉` 进度条 + 右上角永久 `本直播间由 AI 实时驱动互动 · GB 45438-2025` + 脱敏弹幕墙与高对比字幕；`SyntheticAudioMixer` 100% 合成 `s16le` 48kHz 立体声双角色 `edge-tts` + 离线纯 NumPy 旋律回退 + Lo-Fi 自动闪避 BGM，每视频帧精确对齐 `1600` 样本 = `6400` 字节；`HeadlessLiveStreamer` 单 `ffmpeg` 双 OS 管道直推、自动检测 `h264_nvenc` CBR `4500k` 并回退 `libx264`，全程 `try...finally: stop_live` 与高光切片清单导出）、`scripts/launch_headless_live.py`、`Dockerfile.live`（`python:3.12-slim` + `ffmpeg` + `fonts-noto-cjk` 非 root `UID 10001` 零音频设备镜像）及 `docs/LIVE_PLAN_DUAL_AI.md` 升级；
   * **安全与实测验收**：强制零麦克风审计（`grep -rnE "/dev/snd|alsa|pulse|pyaudio|sounddevice" core/live_studio/ scripts/launch_headless_live.py Dockerfile.live` -> **`0` 命中**）；20 秒无头干跑实测达标（`h264_nvenc` `1920x1080` `30/1fps` `yuv420p` `4594 kbps`，`aac` `48000Hz` 立体声，精确 `20.000s`，`mean_volume=-19.5 dB` / `max_volume=-3.1 dB`，抽帧视觉与高光切片清单均人工核验通过）；补全 `tests/test_headless_live.py`（`11 passed`，含 `K7+K8` 共 `23 passed`），全仓串行门禁通过（`ruff format --check .` `74 files` / `ruff check .` / `mypy core cli.py scripts/launch_live_mvp.py scripts/launch_headless_live.py` `38 source files` / `pytest -q` **`88 passed`**）。
+* ✅ **K9 — 免费声线纠错（弱音 Edge-TTS 合法化与音调参数透传）与 B 站回读抗限流重试机制**
+  * 已在 `core/audio_router.py` 新增 `VERIFIED_FREE_EDGE_TTS_VOICES` 实测免费声线集合与 `CharacterVoiceProfile.edge_tts_pitch`，将 `yowane_haku` 的无效 Azure 专属声线 `"zh-CN-XiaohanNeural"` 修正为已验证免费 `"zh-TW-HsiaoYuNeural"`（`-4Hz`），并为 `dafeiyu`（`-2Hz`）与 `gemini_neko`（`+4Hz`）配置独立音高区分；在 `core/local_tts.py`（`_synth_edge_tts`、`synthesize_text`、`_synthesize_scenes_inprocess`、`synthesize_scenes`、`_cli_main`）与 `cli.py audio-router-status` 全链路向后兼容透传 `edge_pitch`（保留 `inspect.signature` 检测兼容旧版 3/4 参测试替身）；
+  * 已在 `core/publisher.py` 为 `BilibiliUploader.verify_archive_submission` 增加瞬时限流/空响应（`-509`/`JSONDecodeError`/`ConnectionError`）指数退避重试，并新增 `verify_archives_batch` 串行批量节奏控制与脱敏兜底返回；
+  * 已在 `tests/test_audio_router.py` 与 `tests/test_publisher.py` 补齐离线全 Mock 单测；全仓串行门禁通过（`ruff format --check .` `76 files` / `ruff check .` / `mypy core cli.py scripts/launch_live_mvp.py scripts/launch_headless_live.py` `38 source files` / `pytest -q` **`98 passed in 189.48s`**）。

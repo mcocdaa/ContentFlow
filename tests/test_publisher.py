@@ -1334,3 +1334,102 @@ def test_cli_publish_dry_run_remote_schedule_zero_upload_and_ai_declaration_flag
     assert upload_spy.call_count == 0
     assert mock_session.post.call_count == 0
     assert mock_session.get.call_count == 0
+
+
+def test_verify_archive_submission_retries_on_transient_rate_limit_and_batch_pacing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies transient retry backoff and inter-request batch pacing in BilibiliUploader."""
+    sleeps: List[float] = []
+    monkeypatch.setattr("core.publisher.time.sleep", lambda sec: sleeps.append(float(sec)))
+
+    mock_session = MagicMock()
+    uploader = BilibiliUploader(
+        cookies={"SESSDATA": "s_retry", "bili_jct": "j_retry", "DedeUserID": "77665544"},
+        session=mock_session,
+    )
+
+    # Case 1: Transient rate-limit (-509) + empty archive (code=0, no archive) -> succeeds on 3rd attempt
+    mock_session.get.side_effect = [
+        _DummyResponse({"code": -509, "data": {}}),
+        _DummyResponse({"code": 0, "data": {}}),
+        _DummyResponse(
+            {
+                "code": 0,
+                "data": {
+                    "archive": {
+                        "aid": 117664521460304,
+                        "bvid": "BV1hsyHzrEzW",
+                        "state": -40,
+                        "state_desc": "通过审核，等待发布",
+                        "tid": 47,
+                        "dtime": 1795689000,
+                        "cover": "https://archive.biliimg.com/bfs/archive/019.jpg",
+                        "desc": "赛博法庭\n\n【借物表 (Credits)】\n...\n【AIGC 标识】\n符合 GB 45438-2025",
+                        "neutral_mark": BILIBILI_AI_NEUTRAL_MARK,
+                        "creation_statement": {"id": 101, "content": BILIBILI_AI_NEUTRAL_MARK},
+                        "mid": 77665544,
+                        "uname": "secret_user",
+                    }
+                },
+            }
+        ),
+    ]
+    res_retry = uploader.verify_archive_submission(117664521460304, max_retries=3, retry_backoff_sec=0.5)
+    assert sleeps == [0.5, 1.0]
+    assert res_retry["code"] == 0
+    assert res_retry["bvid"] == "BV1hsyHzrEzW"
+    assert res_retry["state"] == -40
+    assert res_retry["ai_declaration_verified"] is True
+    serialized_retry = json.dumps(res_retry, ensure_ascii=False)
+    assert "77665544" not in serialized_retry
+    assert "secret_user" not in serialized_retry
+
+    # Case 2: Repeated ConnectionError -> returns sanitized dict without leaking credentials
+    sleeps.clear()
+    mock_session.get.side_effect = requests.ConnectionError("upstream reset for s_retry")
+    res_fail = uploader.verify_archive_submission(117664521460304, max_retries=2, retry_backoff_sec=0.1)
+    assert sleeps == [0.1]
+    assert res_fail["code"] == -1
+    assert res_fail["state"] is None
+    assert res_fail["ai_declaration_verified"] is False
+    assert "s_retry" not in json.dumps(res_fail, ensure_ascii=False)
+
+    # Case 3: verify_archives_batch paces consecutive requests once and preserves order
+    sleeps.clear()
+    mock_session.get.side_effect = [
+        _DummyResponse(
+            {
+                "code": 0,
+                "data": {
+                    "archive": {
+                        "aid": 1001,
+                        "bvid": "BV1Batch0001",
+                        "state": 0,
+                        "state_desc": "开放浏览",
+                        "tid": 47,
+                        "neutral_mark": BILIBILI_AI_NEUTRAL_MARK,
+                    }
+                },
+            }
+        ),
+        _DummyResponse(
+            {
+                "code": 0,
+                "data": {
+                    "archive": {
+                        "aid": 1002,
+                        "bvid": "BV1Batch0002",
+                        "state": -40,
+                        "state_desc": "通过审核，等待发布",
+                        "tid": 47,
+                        "neutral_mark": BILIBILI_AI_NEUTRAL_MARK,
+                    }
+                },
+            }
+        ),
+    ]
+    batch_res = uploader.verify_archives_batch([1001, 1002], pause_sec=0.5, max_retries=1)
+    assert [r["aid"] for r in batch_res] == [1001, 1002]
+    assert [r["bvid"] for r in batch_res] == ["BV1Batch0001", "BV1Batch0002"]
+    assert sleeps == [0.5]

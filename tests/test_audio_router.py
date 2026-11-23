@@ -17,6 +17,7 @@ import requests
 import cli
 from core.audio_router import (
     CHARACTER_VOICE_PROFILES,
+    VERIFIED_FREE_EDGE_TTS_VOICES,
     AudioGenerationRouter,
     DialogueLine,
     MusicRequest,
@@ -669,8 +670,14 @@ def test_cli_audio_router_status_json_and_text(
 
 
 def test_character_voice_profiles_aliases_and_secret_redaction() -> None:
-    # 1. Alias resolution for all 3 studio leads
+    # 1. Alias resolution & verified free Edge-TTS voices + pitches for all 3 studio leads
     assert set(CHARACTER_VOICE_PROFILES.keys()) == {"dafeiyu", "gemini_neko", "yowane_haku"}
+    for prof in CHARACTER_VOICE_PROFILES.values():
+        assert prof.edge_tts_voice in VERIFIED_FREE_EDGE_TTS_VOICES
+    assert CHARACTER_VOICE_PROFILES["dafeiyu"].edge_tts_pitch == "-2Hz"
+    assert CHARACTER_VOICE_PROFILES["gemini_neko"].edge_tts_pitch == "+4Hz"
+    assert CHARACTER_VOICE_PROFILES["yowane_haku"].edge_tts_voice == "zh-TW-HsiaoYuNeural"
+    assert CHARACTER_VOICE_PROFILES["yowane_haku"].edge_tts_pitch == "-4Hz"
     assert resolve_character_profile("大肥鱼").character_id == "dafeiyu"
     assert resolve_character_profile("DeepSeek").character_id == "dafeiyu"
     assert resolve_character_profile("Gemini娘").character_id == "gemini_neko"
@@ -895,7 +902,7 @@ def test_character_profile_local_fallback_edge_voice_and_legacy_stub(tmp_path: P
     for char_id, expected_edge in (
         ("大肥鱼", "zh-CN-XiaoxiaoNeural"),
         ("Gemini娘", "zh-CN-XiaoyiNeural"),
-        ("弱音", "zh-CN-XiaohanNeural"),
+        ("弱音", "zh-TW-HsiaoYuNeural"),
     ):
         res = router_edge.synthesize_speech(
             SpeechRequest(
@@ -909,7 +916,101 @@ def test_character_profile_local_fallback_edge_voice_and_legacy_stub(tmp_path: P
     assert [c["edge_voice"] for c in edge_stub.calls] == [
         "zh-CN-XiaoxiaoNeural",
         "zh-CN-XiaoyiNeural",
-        "zh-CN-XiaohanNeural",
+        "zh-TW-HsiaoYuNeural",
+    ]
+
+    # C. 5-arg edge_voice + edge_pitch-aware TTS stub receives exact pitch overrides
+    class _EdgePitchAwareLocalTTS:
+        sample_rate = 24000
+
+        def __init__(self) -> None:
+            self.calls: List[Dict[str, Any]] = []
+            self.close_count = 0
+
+        def synthesize_text(
+            self,
+            text: str,
+            voice: str = "zf_001",
+            speed: float = 1.03,
+            edge_voice: str = "zh-CN-XiaoxiaoNeural",
+            edge_pitch: str = "+0Hz",
+        ) -> List[float]:
+            self.calls.append(
+                {
+                    "text": text,
+                    "voice": voice,
+                    "speed": speed,
+                    "edge_voice": edge_voice,
+                    "edge_pitch": edge_pitch,
+                }
+            )
+            return [0.0, 0.2, -0.2, 0.0] * 30
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    pitch_stub = _EdgePitchAwareLocalTTS()
+    router_pitch = AudioGenerationRouter(env={}, local_tts_factory=lambda: pitch_stub)
+    for char_id, expected_pitch in (
+        ("dafeiyu", "-2Hz"),
+        ("gemini_neko", "+4Hz"),
+        ("yowane_haku", "-4Hz"),
+    ):
+        res_p = router_pitch.synthesize_speech(
+            SpeechRequest(
+                text=f"{char_id} 音调绑定测试",
+                output_path=tmp_path / f"pitch_{char_id}.wav",
+                character=char_id,
+            )
+        )
+        assert res_p.metadata["edge_pitch"] == expected_pitch
+    assert pitch_stub.close_count == 3
+    assert [c["edge_pitch"] for c in pitch_stub.calls] == ["-2Hz", "+4Hz", "-4Hz"]
+
+
+def test_local_neural_tts_edge_fallback_passes_pitch(monkeypatch: pytest.MonkeyPatch) -> None:
+    import types
+    from core.local_tts import LocalNeuralTTS
+
+    comm_calls: List[Dict[str, Any]] = []
+
+    class _FakeCommunicate:
+        def __init__(self, text: str, voice: str = "", rate: str = "+0%", pitch: str = "+0Hz") -> None:
+            comm_calls.append({"text": text, "voice": voice, "rate": rate, "pitch": pitch})
+
+        async def save(self, mp3_path: str) -> None:
+            Path(mp3_path).write_bytes(b"ID3_FAKE_EDGE_MP3")
+
+    monkeypatch.setitem(sys.modules, "edge_tts", types.SimpleNamespace(Communicate=_FakeCommunicate))
+
+    def _fake_subprocess_run(cmd: List[str], **_kwargs: Any) -> Any:
+        out_wav = Path(cmd[-1])
+        with wave.open(str(out_wav), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(b"\x00\x10\x00\xf0" * 24)
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("core.local_tts.subprocess.run", _fake_subprocess_run)
+
+    tts = LocalNeuralTTS()
+    monkeypatch.setattr(tts, "_synth_kokoro", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("offline")))
+    samples = tts.synthesize_text(
+        "先冷静把借物表看一遍。",
+        voice="zf_004",
+        speed=0.98,
+        edge_voice="zh-TW-HsiaoYuNeural",
+        edge_pitch="-4Hz",
+    )
+    assert len(samples) == 48
+    assert comm_calls == [
+        {
+            "text": "先冷静把借物表看一遍。",
+            "voice": "zh-TW-HsiaoYuNeural",
+            "rate": "-2%",
+            "pitch": "-4Hz",
+        }
     ]
 
 
