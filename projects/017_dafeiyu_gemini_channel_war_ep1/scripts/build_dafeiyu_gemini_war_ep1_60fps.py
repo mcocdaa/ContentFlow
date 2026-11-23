@@ -84,11 +84,11 @@ def _synth_character_line(
     text: str,
     speaker: str,
 ) -> np.ndarray:
-    """Synthesizes distinctly voiced lines for DeepSeek Dafeiyu vs Gemini Neko."""
+    """Synthesizes distinctly voiced lines for DeepSeek Dafeiyu vs Gemini Neko at natural anime cadence."""
     if speaker == "dafeiyu":
-        edge_voice, kokoro_voice, speed = "zh-CN-XiaoxiaoNeural", "zf_018", 1.16
+        edge_voice, kokoro_voice, speed = "zh-CN-XiaoxiaoNeural", "zf_018", 1.06
     else:
-        edge_voice, kokoro_voice, speed = "zh-CN-XiaoyiNeural", "zf_001", 1.18
+        edge_voice, kokoro_voice, speed = "zh-CN-XiaoyiNeural", "zf_001", 1.08
 
     try:
         wav = tts._synth_edge_tts(text, edge_voice=edge_voice, speed=speed)
@@ -153,44 +153,12 @@ def main() -> None:
     render_cover()
 
     acts: List[ActSpec] = [
-        ActSpec(
-            video_path=ACT1_MP4,
-            transition_in="none",
-            beat_punch_bpm=105.0,
-            punch_scale=1.16,
-            focus_y_ratio=0.36,
-            beats_per_shot=7,
-            punch_start_sec=4.2,
-        ),
+        ActSpec(video_path=ACT1_MP4, transition_in="none", beat_punch_bpm=None),
         ActSpec(video_path=ACT2A_MP4, transition_in="flash_cyan", beat_punch_bpm=None),
         ActSpec(video_path=ACT2B_MP4, transition_in="flash_cyan", beat_punch_bpm=None),
-        ActSpec(
-            video_path=ACT3A_MP4,
-            transition_in="none",
-            beat_punch_bpm=105.0,
-            punch_scale=1.15,
-            focus_y_ratio=0.38,
-            beats_per_shot=5,
-            punch_start_sec=3.0,
-        ),
-        ActSpec(
-            video_path=ACT3B_MP4,
-            transition_in="flash_neon",
-            beat_punch_bpm=124.0,
-            punch_scale=1.20,
-            focus_y_ratio=0.36,
-            beats_per_shot=4,
-            punch_start_sec=1.6,
-        ),
-        ActSpec(
-            video_path=ACT4_MP4,
-            transition_in="flash_cyan",
-            beat_punch_bpm=124.0,
-            punch_scale=1.20,
-            focus_y_ratio=0.36,
-            beats_per_shot=4,
-            punch_start_sec=1.8,
-        ),
+        ActSpec(video_path=ACT3A_MP4, transition_in="none", beat_punch_bpm=None),
+        ActSpec(video_path=ACT3B_MP4, transition_in="flash_neon", beat_punch_bpm=None),
+        ActSpec(video_path=ACT4_MP4, transition_in="flash_cyan", beat_punch_bpm=None),
     ]
 
     act_starts: List[float] = []
@@ -203,78 +171,78 @@ def main() -> None:
         cur_t += d
     total_dur = cur_t
 
-    # Exact dual-character dialogue schedule mapped to each act window
+    # Exact dual-character dialogue schedule mapped to each act window (natural cadence <= 0.95 * max_d, zero pitch shift)
     # Tuple: (speaker, start_sec, max_dur_sec, spoken_text, subtitle_text)
     dialogue_plan: List[Tuple[str, float, float, str, str]] = [
         (
             "dafeiyu",
             act_starts[0] + 0.12,
             act_durs[0] * 0.48,
-            "老板的B站号才十五个粉丝！我海滩单人跳才一播放，再卷尾鳍都要抽筋啦！",
-            "【大肥鱼】老板才15粉！我海滩单人跳才1播放 尾鳍都要抽筋啦！",
+            "老板才十五粉！我海滩跳完才一播放！",
+            "【大肥鱼】老板才15粉！我海滩跳完才1播放！",
         ),
         (
             "gemini",
             act_starts[0] + act_durs[0] * 0.51,
             act_durs[0] * 0.47,
-            "喵哈哈！那是你封面不够闪！本喵四点九星神级封面出手，咱俩合租冲一千粉！",
-            "【Gemini娘】本喵4.9星神级封面出手！咱俩合租直接冲1000粉！",
+            "封面太暗啦！本喵出手，合租冲千粉！",
+            "【Gemini娘】封面太暗啦！本喵出手 合租冲千粉！",
         ),
         (
             "dafeiyu",
             act_starts[1] + 0.14,
             act_durs[1] - 0.24,
-            "靠画饼哪行！拍AI全员情景喜剧，加我灵魂魔性翻唱，包把观众笑到三连！",
-            "【大肥鱼】拍AI全员情景喜剧＋灵魂魔性翻唱 包把股东笑到三连！",
+            "画饼哪行！拍情景喜剧加翻唱，观众绝对三连！",
+            "【大肥鱼】画饼哪行！拍情景喜剧加翻唱 观众绝对三连！",
         ),
         (
             "gemini",
             act_starts[2] + 0.14,
             act_durs[2] - 0.24,
-            "单打独斗早就过时啦喵！直接二十四小时双AI直播接管，弹幕喊啥咱演啥！",
-            "【Gemini娘】直接24小时双AI直播接管！弹幕喊啥咱俩演啥喵！",
+            "过时啦喵！直接双AI直播，弹幕喊啥咱演啥！",
+            "【Gemini娘】过时啦喵！直接双AI直播 弹幕喊啥咱演啥！",
         ),
         (
             "dafeiyu",
             act_starts[3] + 0.15,
             act_durs[3] * 0.46,
-            "等等，情景喜剧连载，再加上双人直播接管？",
-            "【大肥鱼】等等……情景喜剧连载 再加上双人直播接管？",
+            "情景喜剧加双人直播？",
+            "【大肥鱼】等等……情景喜剧加双人直播？",
         ),
         (
             "gemini",
             act_starts[3] + act_durs[3] * 0.50,
             act_durs[3] * 0.47,
-            "小孩子才做选择，合租B站号全都要！击掌成交喵！",
-            "【Gemini娘】合租B站号全都要！这波绝对冲穿1000粉 击掌成交喵！",
+            "小孩子才选，全都要！成交喵！",
+            "【Gemini娘】小孩子才选，全都要！成交喵！",
         ),
         (
             "dafeiyu",
             act_starts[4] + 0.18,
             act_durs[4] * 0.46,
-            "契约成立！AI员工合租B站号，第1集正式开机！",
-            "【大肥鱼】契约成立！《AI员工合租B站号》第1集正式开机！",
+            "契约成立！第一集开机！",
+            "【大肥鱼】契约成立！《AI合租B站号》第1集开机！",
         ),
         (
             "gemini",
             act_starts[4] + act_durs[4] * 0.51,
             act_durs[4] * 0.45,
-            "大肥鱼加Gemini娘双核出道，机房今天彻底燃起来啦喵！",
-            "【Gemini娘】大肥鱼×Gemini娘双核出击 机房今天彻底燃起来喵！",
+            "双核出道，机房燃起来喵！",
+            "【Gemini娘】大肥鱼×Gemini娘双核出道 机房燃起来喵！",
         ),
         (
             "dafeiyu",
             act_starts[5] + 0.25,
             act_durs[5] * 0.44,
-            "各位人类观众，老板能不能从十五粉冲上一千粉，就看你们啦！",
-            "【大肥鱼】各位人类观众 老板能不能冲上1000粉就看你们啦！",
+            "各位观众，冲一千粉就看你们啦！",
+            "【大肥鱼】各位观众 冲1000粉就看你们啦！",
         ),
         (
             "gemini",
             act_starts[5] + act_durs[5] * 0.49,
             act_durs[5] * 0.48,
-            "快在评论区和弹幕投票：第2集听大肥鱼还是听Gemini娘？三连催更喵！",
-            "【Gemini娘】弹幕/评论区投票：第2集听大肥鱼还是Gemini娘？！",
+            "快在弹幕投票，第2集听谁的？速速三连喵！",
+            "【Gemini娘】弹幕/评论投票：第2集听谁的？速速三连喵！",
         ),
     ]
 

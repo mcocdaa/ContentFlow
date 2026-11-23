@@ -270,11 +270,30 @@ class VideoQualityGate:
         except ValueError:
             return 0.0
 
+    @staticmethod
+    def _resolve_required_min_duration_sec(proj_dir: Path) -> float:
+        """Enforces >= 60s minimum duration for Episode 018+ or projects declaring target_duration_sec >= 60."""
+        brief_path = proj_dir / "brief.json"
+        if brief_path.exists():
+            try:
+                brief = json.loads(brief_path.read_text(encoding="utf-8"))
+                if brief.get("min_duration_sec") is not None:
+                    return max(0.0, float(brief["min_duration_sec"]))
+                if brief.get("target_duration_sec") is not None and float(brief["target_duration_sec"]) >= 60.0:
+                    return 60.0
+            except Exception:
+                pass
+        m = re.match(r"^(\d+)_", proj_dir.name)
+        if m and int(m.group(1)) >= 18:
+            return 60.0
+        return 0.0
+
     def _eval_technical(
         self,
         video_path: Optional[Path],
         probe_data: Dict[str, Any],
         blockers: List[str],
+        required_min_duration_sec: float = 0.0,
     ) -> DimensionScore:
         dim = DimensionScore(name="1. 技术流参数 (Technical)", key="technical", score=0.0)
         if not video_path or not video_path.exists():
@@ -319,12 +338,29 @@ class VideoQualityGate:
             except ValueError:
                 pass
 
+        raw_dur = probe_data.get("format", {}).get("duration") or v_stream.get("duration")
+        actual_dur = 0.0
+        if raw_dur is not None:
+            try:
+                actual_dur = float(raw_dur)
+            except (TypeError, ValueError):
+                actual_dur = 0.0
+        if required_min_duration_sec > 0.0 and actual_dur < (required_min_duration_sec - 0.5):
+            blockers.append(
+                f"Video duration {actual_dur:.2f}s is shorter than required minimum {required_min_duration_sec:.1f}s (duration_too_short)"
+            )
+            dim.issues.append(
+                f"成片时长仅 {actual_dur:.2f}s，低于最低硬门槛 {required_min_duration_sec:.1f}s（严禁超短视频）"
+            )
+
         dim.details = {
             "width": width,
             "height": height,
             "codec": codec,
             "pix_fmt": pix_fmt,
             "fps": round(fps, 2),
+            "duration_sec": round(actual_dur, 2),
+            "required_min_duration_sec": round(required_min_duration_sec, 1),
             "video_bitrate_bps": v_bitrate,
             "color_space": color_space,
             "sample_aspect_ratio": sar,
@@ -698,6 +734,43 @@ class VideoQualityGate:
                 dim.score = max(0.0, dim.score - 3.0)
                 dim.issues.extend(aes_rep.issues)
 
+        if duration >= 30.0 and video_path and video_path.exists() and shutil.which("ffmpeg") is not None:
+            try:
+                sc_proc = subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-i",
+                        str(video_path),
+                        "-vf",
+                        "fps=2,select='gt(scene,0.32)',showinfo",
+                        "-f",
+                        "null",
+                        "-",
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=15,
+                )
+                pts: List[float] = []
+                for ln in sc_proc.stderr.splitlines():
+                    if "pts_time:" in ln:
+                        m_pts = re.search(r"pts_time:([0-9]+(?:\.[0-9]+)?)", ln)
+                        if m_pts:
+                            pts.append(float(m_pts.group(1)))
+                dim.details["scene_cut_count"] = len(pts)
+                if len(pts) >= 2:
+                    gaps = sorted(pts[i] - pts[i - 1] for i in range(1, len(pts)))
+                    median_gap = gaps[len(gaps) // 2]
+                    dim.details["median_cut_gap_sec"] = round(median_gap, 2)
+                    if len(pts) >= 8 and median_gap < 1.8:
+                        dim.issues.append(
+                            f"切镜间隔偏密 (median_cut_gap={median_gap:.2f}s < 1.8s)，易引起观感眩晕，建议保持 2.5–4.0s 完整表演呼吸感"
+                        )
+            except Exception:
+                pass
+
         dim.score = round(min(dim.score, 20.0), 1)
         return dim
 
@@ -1007,8 +1080,14 @@ class VideoQualityGate:
         blockers: List[str] = []
         try:
             probe_data = self._probe_media(v_path) if (v_path and v_path.exists()) else {}
+            required_min_dur = self._resolve_required_min_duration_sec(proj_dir)
 
-            d_tech = self._eval_technical(v_path, probe_data, blockers)
+            d_tech = self._eval_technical(
+                v_path,
+                probe_data,
+                blockers,
+                required_min_duration_sec=required_min_dur,
+            )
             d_audio = self._eval_audio(v_path, probe_data, blockers)
             d_visual = self._eval_visual_dynamics(v_path, probe_data, proj_dir=proj_dir)
             d_cover = self._eval_cover_ctr(c_path, blockers)

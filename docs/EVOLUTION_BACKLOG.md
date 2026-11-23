@@ -42,6 +42,17 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 * **冷启动瓶颈观察**：`013`（`BV18AWC6YE3M`）封标达 **`4.9★`**（`tm_pass_rate_pct=97.72%`）但初始推荐曝光极低（`10` 播放 / `2` 点赞 / 完播 `35.71%`）；`014`（`BV117sM6FEVL`）刚转公开处于冷启动初期（`1` 播放 / `1` 点赞，当前诊断 `2.0★`）。单纯 15–20 秒单人短舞缺乏角色羁绊与弹幕讨论议题，难以在 15 粉基数下突破次级推荐池与转粉瓶颈（同类转粉率中位数 `0.09%`）。
 * **下阶段策略转向**：切向 **40–60 秒多 AI 角色群像喜剧短剧**（首推 `017` 大肥鱼 × Gemini娘合租运营系列，强化角色反差、剧情反转与弹幕/评论区投票互动），并同步推进 **双 AI 实时互动直播间（`K7`）** 作为实时留存与切片反哺短视频的引流漏斗。
 
+### 2026-11-23 · 根除「小黄人变调/碎切镜」隐患、抢救 017 排期与交付 019 超 1 分钟赛博法庭长片
+
+* **根因诊断与永久工程修复**：
+  * **零小黄人保音高保护 (`core/bgm_hunter.py`)**：彻底移除 `concat_or_duck_segments` 中直接以 `np.interp` 线性抽样压扁超时配音导致音高飙升的逻辑；新增 `_time_stretch_preserve_pitch`（FFmpeg WSOLA `atempo` 保音高微调），并对超过 `max_tempo_ratio=1.18` 的台词抛出 `ValueError` 硬拦（已补 `test_concat_or_duck_segments_preserves_pitch_no_chipmunk` 校验 440Hz FFT 音高偏移 `<= ±20Hz`）。
+  * **`>= 60.0s` 时长硬门槛与舒展切镜预警 (`core/quality_gate.py`)**：对第 `018+` 期及 `target_duration_sec >= 60` 企划实施 `duration_too_short` 阻断红线，严禁再生产超短视频；在 `_eval_visual_dynamics` 增加 `median_cut_gap_sec < 1.8s` 密切换告警（同步固化至 `AGENTS.md`）。
+* **巡检恢复与 017 抢救实况**：
+  * 恢复因重启中断的日巡：`cli.py sync-pins` 同步置顶 `015`（`BV12Fs36uECr`）与 `016`（`BV1AWsh6sEQF`），为 `015`/`014` 补齐 B 站原生 `neutral_mark` AI 声明（`ai_declaration_verified=True`），重新挂载每日 `17:00 / 19:00 CST` 常驻定时巡检。
+  * **发布前热抢救 `017`（`BV1VaytzcEp9`，原定 `11/24 18:30 CST`）**：下调 `017` 全部 `beat_punch_bpm=None`、调整自然语速至 `1.06/1.08` 并精简 10 句对白使其自然落窗（经 `/tmp/ep017_rescued_sample.wav` 人工听审无变调），重跑门禁 **`100.0 / 100 [S / VIRAL_READY]`** 并完成 `edit_archive` 视频热替换与 `verify_archive_submission` 回读确认。
+* **019 旗舰剧场版 2D 交付（`019_cyber_variety_court_server_busy_trial`，`BV1hsyHzrEzW`）**：
+  * **全片 `70.12s`（严格 `>= 60s`） · 舒展中位切镜 `4.00s` · `-14.0 LUFS`**：复用云端 3 主角 Element 与可灵 4.0 原生中文演戏配音（7 幕 WAV + 7 张抽帧联系表全人工核听核看零瑕疵）、`O(1)` OpenCV DIS 60FPS 装配与 `vivid_scene` 高明度封面（`dark<45=12.50%`），通过 `cli.py quality-check --threshold 90`（**`94.0 / 100 [S / VIRAL_READY]`**、`0` 阻断）并成功排期 **`2026-11-26 18:30:00 CST`**（`ai_declaration_verified=True`）。
+
 ---
 
 ## 二、 已完成进化记录（Completed Slices）

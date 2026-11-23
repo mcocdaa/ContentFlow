@@ -11,6 +11,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 from PIL import Image, ImageDraw
 
 from config.settings import CONTENTFLOW_ROOT
@@ -269,6 +270,59 @@ def test_bgm_hunter_local_extract_and_sidechain_duck_and_punch_start(tmp_path: P
     )
     assert not np.array_equal(at_punch, wide)
     assert (at_punch[..., 0] > 200).sum() > (wide[..., 0] > 200).sum()
+
+
+def test_concat_or_duck_segments_preserves_pitch_no_chipmunk(tmp_path: Path) -> None:
+    """Ensures concat_or_duck_segments uses pitch-preserving atempo (not np.interp) and rejects huge overruns."""
+    sr = 48000
+    bed_wav = tmp_path / "silent_bed.wav"
+    _write_test_wav(bed_wav, dur_sec=2.0, sr=sr)
+
+    # 1.10s 440Hz sine compressed slightly into 1.00s (ratio=1.10 <= 1.18): pitch must stay ~440 Hz
+    t_voc = np.arange(int(1.10 * sr), dtype=np.float32) / float(sr)
+    sine_440 = (0.45 * np.sin(2.0 * math.pi * 440.0 * t_voc)).astype(np.float32)
+    vocal_wav = tmp_path / "voc_440.wav"
+    with wave.open(str(vocal_wav), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        pcm = (np.stack([sine_440, sine_440], axis=1) * 32767.0).astype(np.int16)
+        wf.writeframes(pcm.tobytes())
+
+    master_wav = tmp_path / "pitched_master.wav"
+    BilibiliBgmHunter.concat_or_duck_segments(
+        segments=[{"wav_path": bed_wav, "duration_sec": 1.2, "gain": 0.0}],
+        output_wav=master_wav,
+        vocal_overlays=[{"wav_path": vocal_wav, "start_sec": 0.05, "max_duration_sec": 1.00, "gain": 1.0}],
+        sr=sr,
+    )
+    loaded = BilibiliBgmHunter.load_wav_stereo_f32(master_wav, target_sr=sr)
+    assert loaded.shape == (int(round(1.2 * sr)), 2)
+
+    mid = loaded[int(0.15 * sr) : int(0.85 * sr), 0]
+    freqs = np.fft.rfftfreq(len(mid), d=1.0 / sr)
+    mag = np.abs(np.fft.rfft(mid * np.hanning(len(mid))))
+    peak_hz = float(freqs[int(np.argmax(mag))])
+    assert abs(peak_hz - 440.0) <= 20.0
+
+    # 1.80s vocal into 1.00s window (ratio=1.80 > 1.18) must fail loudly instead of chipmunk-shifting
+    t_long = np.arange(int(1.80 * sr), dtype=np.float32) / float(sr)
+    long_sine = (0.45 * np.sin(2.0 * math.pi * 440.0 * t_long)).astype(np.float32)
+    long_wav = tmp_path / "voc_long.wav"
+    with wave.open(str(long_wav), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        pcm_l = (np.stack([long_sine, long_sine], axis=1) * 32767.0).astype(np.int16)
+        wf.writeframes(pcm_l.tobytes())
+
+    with pytest.raises(ValueError, match="exceeds max_duration_sec"):
+        BilibiliBgmHunter.concat_or_duck_segments(
+            segments=[{"wav_path": bed_wav, "duration_sec": 1.5, "gain": 0.0}],
+            output_wav=tmp_path / "should_fail.wav",
+            vocal_overlays=[{"wav_path": long_wav, "start_sec": 0.05, "max_duration_sec": 1.00}],
+            sr=sr,
+        )
 
 
 def test_episode_assembler_hook_banner_overlay(tmp_path: Path) -> None:

@@ -7,8 +7,10 @@ credit metadata tracking for 借物表 attribution, and multi-act sidechain voca
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -21,6 +23,8 @@ import numpy as np
 import requests
 
 from core.auth_vault import STANDARD_USER_AGENT, AuthVault
+
+logger = logging.getLogger(__name__)
 
 MIXIN_KEY_ENC_TAB = [
     46,
@@ -350,6 +354,73 @@ class BilibiliBgmHunter:
         return arr
 
     @classmethod
+    def _time_stretch_preserve_pitch(cls, v_arr: np.ndarray, target_n: int, sr: int) -> np.ndarray:
+        """Time-compresses a vocal segment to target_n via pitch-preserving FFmpeg WSOLA `atempo`."""
+        target_n = max(1, int(target_n))
+        if v_arr.shape[0] <= target_n:
+            return v_arr
+        ratio = v_arr.shape[0] / float(target_n)
+        if ratio <= 1.005 or shutil.which("ffmpeg") is None:
+            if ratio > 1.005:
+                logger.warning("ffmpeg not found; trimming vocal overlay instead of pitch-shifting")
+            out = v_arr[:target_n].copy()
+            fade_n = min(int(0.015 * sr), target_n // 8)
+            if fade_n > 0:
+                out[-fade_n:] *= np.linspace(1.0, 0.0, fade_n, dtype=np.float32)[:, None]
+            return out
+
+        filters: List[str] = []
+        rem = ratio
+        while rem > 2.0:
+            filters.append("atempo=2.0")
+            rem /= 2.0
+        filters.append(f"atempo={rem:.4f}")
+        af_str = ",".join(filters)
+
+        pcm_in = (np.clip(v_arr, -0.98, 0.98) * 32767.0).astype(np.int16)
+        with tempfile.TemporaryDirectory() as td:
+            in_wav = Path(td) / "vocal_in.wav"
+            out_wav = Path(td) / "vocal_out.wav"
+            with wave.open(str(in_wav), "wb") as wf:
+                wf.setnchannels(2)
+                wf.setsampwidth(2)
+                wf.setframerate(sr)
+                wf.writeframes(pcm_in.tobytes())
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-nostats",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(in_wav),
+                    "-af",
+                    af_str,
+                    "-ac",
+                    "2",
+                    "-ar",
+                    str(sr),
+                    "-c:a",
+                    "pcm_s16le",
+                    str(out_wav),
+                ],
+                check=True,
+            )
+            stretched = cls.load_wav_stereo_f32(out_wav, target_sr=sr)
+
+        if stretched.shape[0] < target_n:
+            pad = np.zeros((target_n - stretched.shape[0], 2), dtype=np.float32)
+            return np.concatenate([stretched, pad], axis=0)
+        if stretched.shape[0] > target_n:
+            trimmed = stretched[:target_n].copy()
+            fade_n = min(int(0.010 * sr), target_n // 8)
+            if fade_n > 0:
+                trimmed[-fade_n:] *= np.linspace(1.0, 0.0, fade_n, dtype=np.float32)[:, None]
+            return trimmed
+        return stretched
+
+    @classmethod
     def concat_or_duck_segments(
         cls,
         segments: List[Dict[str, Any]],
@@ -426,15 +497,23 @@ class BilibiliBgmHunter:
             if max_dur is not None:
                 max_n = max(16, int(round(float(max_dur) * sr)))
                 if v_arr.shape[0] > max_n:
-                    x_old = np.linspace(0.0, 1.0, v_arr.shape[0], dtype=np.float64)
-                    x_new = np.linspace(0.0, 1.0, max_n, dtype=np.float64)
-                    v_arr = np.stack(
-                        [
-                            np.interp(x_new, x_old, v_arr[:, 0]).astype(np.float32),
-                            np.interp(x_new, x_old, v_arr[:, 1]).astype(np.float32),
-                        ],
-                        axis=1,
-                    )
+                    ratio = v_arr.shape[0] / float(max_n)
+                    max_tempo_ratio = float(ov.get("max_tempo_ratio", 1.18))
+                    if ratio > max_tempo_ratio:
+                        if ov.get("truncate_if_exceeds", False):
+                            pre_target_n = max(max_n, int(round(v_arr.shape[0] / max_tempo_ratio)))
+                            v_arr = cls._time_stretch_preserve_pitch(v_arr, pre_target_n, sr)[:max_n].copy()
+                            fade_n = min(int(0.020 * sr), v_arr.shape[0] // 8)
+                            if fade_n > 0:
+                                v_arr[-fade_n:] *= np.linspace(1.0, 0.0, fade_n, dtype=np.float32)[:, None]
+                        else:
+                            raise ValueError(
+                                f"Vocal overlay exceeds max_duration_sec by {ratio:.2f}x "
+                                f"(limit {max_tempo_ratio:.2f}x); shorten spoken text or widen window "
+                                "instead of pitch-shifting audio."
+                            )
+                    else:
+                        v_arr = cls._time_stretch_preserve_pitch(v_arr, max_n, sr)
 
             s_idx = max(0, int(round(float(ov.get("start_sec", 0.0)) * sr)))
             fit_n = min(v_arr.shape[0], n_total - s_idx)

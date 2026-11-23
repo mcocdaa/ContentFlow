@@ -14,7 +14,8 @@
 * **个性每期创新（每集必须全新构思，严禁走老路）**：
   * **立项前先查流水与对标**：先检查 `/home/mcocdaa/.contentflow/accounts/analytics/bilibili_latest.json` 中的播放、3 秒划走率、封标星级（`tm_stars`）与观众评论点单，再运行 `cli.py benchmark --online` 拆解 B 站实时榜单头部爆款的封面明度、景别切换频率与留存钩子。
   * **严禁连续雷同与静态站桩**：立项必须写入 `brief.json` 的 `creative_spec` 并在 `library/creative_ledger.json` 登记；`VideoQualityGate` 会自动拦截近 3 期重复题材或舞台场景。娱乐向成片严禁回退为 `studio_renderer.py` 静态立绘 PPT。
-  * **突破单机位**：长于 8 秒的舞蹈/整活片段优先启用 `EpisodeAssembler` 的 `beat_punch_bpm` 鼓点切镜（全景/近景特写交替），保持每 2–3 秒一次视觉焦点变化。
+  * **突破单机位与舒展镜头节奏铁律**：长于 8 秒的纯热舞镜头可在无原生切镜时适度启用 `EpisodeAssembler` 切镜，保持每 `2.5–4.0` 秒一次视觉焦点变化；剧场版 2D 动画以可灵 4.0 原生多镜头（`prefer_multi_shots=true`，每镜 `3.0–4.0s` 完整表演）为主，默认关闭 `beat_punch_bpm` 强行数码跳切与高频闪白，确保全片切镜间隔中位数 `>= 2.5s`。
+  * **每期新视频时长硬红线 `>= 60.0 秒`（至少 1 分钟）**：自 `018` 期起严禁再生产 15–45 秒的超短视频；所有新企划必须按 `>= 60.0 秒` 设计剧本与分镜，`VideoQualityGate` 将自动拦截 `< 60.0s` 的新期稿件。
 
 ## 2. 三大安全与质量红线
 
@@ -42,6 +43,7 @@
 * **定型角色立绘参考锁与抠图缓存清理铁律**：已定型主力角色（`DeepSeek 蓝色大肥鱼`、`Gemini猫猫 / Gemini娘`、`弱音ハク`）生成关键帧或封面主视觉锚点时，**必须**调用 `kling image_to_image`（`kling-image-v3_0_omni`）显式引用 `library/characters/` 下的定型立绘参考图，**严禁**纯 `text_to_image` 盲抽；每次替换主视觉锚点图后、重跑分割或封面合成前，**必须**先清理旧版抠图缓存再重新抠图，防止复用过期主体轮廓。
 * **已知不可用资源**：火山方舟（VolcEngine Ark）`ARK_API_KEY` 当前已过期（`InvalidSubscription`），请勿在无新订阅时强行调用 Seedream / Seedance。
 * **音画版权与 AIGC 合规**：必须使用 `Noto Sans CJK SC` 开源字体，严禁未授权克隆声优原声；优先通过 `core/bgm_hunter.py`（`cli.py fetch-bgm`）提取 B 站热梗伴奏/二创混音片段并在【借物表 (Credits)】中完整注明原曲、二创 UP 主及 BVID 与 `GB 45438-2025` AIGC 合规声明，禁止用单薄纯正弦波电子蜂鸣充当娱乐热舞 BGM。
+* **零“小黄人”配音铁律**：严禁使用 `np.interp` 等线性插值压缩音频时长导致音高飙升成“小黄人”变调；新片一律优先采用可灵 4.0 原生中文演戏配音（`enable_audio=true`），外置 TTS 必须严格控制字数使自然语速落入窗口（仅允许保音高 WSOLA `atempo <= 1.18x` 微调）并调用 `read_file` 人工试听抽检 `.wav`。
 
 ## 4. 持续微进化协议（Kaizen Continuous Improvement）
 

@@ -691,3 +691,28 @@ def test_etiquette_no_at_shareholder_and_dar_mismatch_guard(tmp_path: Path) -> N
     comp_repeat = gate._eval_compliance(proj_spam, [])
     assert comp_repeat.score == 16.0
     assert any("创意雷同警告" in iss for iss in comp_repeat.issues)
+
+
+def test_quality_gate_blocks_under_60s_for_episode_018_plus(tmp_path: Path) -> None:
+    """Verifies Episode 018+ (e.g. 019_*) with duration < 60s triggers the duration_too_short hard blocker."""
+    from core.aesthetic_evaluator import release_pyiqa_models
+
+    proj = tmp_path / "019_short_clip_test"
+    (proj / "delivery").mkdir(parents=True)
+    vid = _ensure_test_video(proj / "delivery" / "019_final.mp4", width=1920, height=1080, fps=60, duration=4)
+    cover = proj / "delivery" / "019_cover.jpg"
+    Image.new("RGB", (1920, 1080), color=(220, 235, 250)).save(cover, format="JPEG", quality=92)
+    (proj / "brief.json").write_text(
+        '{"project_id": "019_short_clip_test", "target_duration_sec": 70}',
+        encoding="utf-8",
+    )
+    (proj / "delivery" / "bilibili.md").write_text(
+        "# Release\n* **视频标题**：【测试】校验至少一分钟时长门禁\n* **简介**：📋 【借物表 (Credits)】CAFFEIN；Noto Sans CJK SC（GB 45438-2025）\n",
+        encoding="utf-8",
+    )
+    try:
+        rep = VideoQualityGate(root_dir=CONTENTFLOW_ROOT).evaluate_project(proj, video_path=vid, cover_path=cover)
+    finally:
+        release_pyiqa_models()
+    assert not rep.passed
+    assert any("duration_too_short" in b for b in rep.blockers)

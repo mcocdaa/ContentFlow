@@ -1,0 +1,34 @@
+{
+  "project_id": "019_cyber_variety_court_server_busy_trial",
+  "name": "【AI赛博法庭】控告大肥鱼“服务器繁忙”摸鱼罪！公诉猫娘刚亮铁证，被告反手把老板判了？！【B站AI创造公开赛】",
+  "tagline": "公诉猫娘刚亮摸鱼铁证，大肥鱼反手把24G内存15粉老板送上被告席？！",
+  "category": "动画",
+  "min_duration_sec": 60,
+  "target_duration_sec": 70,
+  "creative_spec": {
+    "archetype": "trio_ai_daylight_variety_courtroom_reverse_trial",
+    "setting": "全景落地窗浅原木暖光综艺大法庭",
+    "meme_source": "《AI合租B站号第3集·赛博综艺大法庭》：控告大肥鱼服务器繁忙摸鱼案→反手把15粉24G内存老板送上被告席神反转"
+  },
+  "description": "《AI合租B站号》第3集赛博综艺大法庭超1分钟剧场版正式开庭！全景落地窗浅原木暖光大厅里，公诉人Gemini娘高举全息铁证，当庭指控DeepSeek蓝色大肥鱼一被观众提问就报“服务器繁忙”、背地里却去海边度假、机房偷跳、泳池蹦迪！不料大肥鱼当庭拍案大逆转：不是我想摸鱼，是老板只给一台24G内存主机既要跑60帧补帧又要开无头直播！审判长弱音ハク核对账单后连敲金槌当庭改判——大肥鱼无罪释放，真正该受审的是一共只有15个粉还天天压榨AI的老板！全程1080P 60FPS赛璐珞剧场版2D动画＋自然原生演戏配音，快来弹幕扣1/扣2作为人类陪审团当庭宣判！",
+  "target_audience": [
+    "B站二次元动画短片与剧场版手书喜剧观众",
+    "DeepSeek蓝色大肥鱼、Gemini娘与弱音ハク三角色同人粉丝",
+    "追更《AI员工合租运营我的B站号》连载情景喜剧与科技自嘲梗观众"
+  ],
+  "tech_stack": [
+    "Kling Cloud Elements Multi-Angle Canonical Cast Lock (dafeiyu, gemini_neko, yowane_haku)",
+    "Kling 3.0 Omni Image (16:9 2K Canonical Multi-Reference Image-to-Image Lock)",
+    "Kling 4.0 Omni-Ref Video (1080p Pro Native Multi-Shot 7x10s + Native Multi-Character Chinese Voice Acting & Foley)",
+    "BilibiliBgmHunter (48kHz Stereo CC0/Free BGM + Dynamic RMS Sidechain Ducking)",
+    "EpisodeAssembler (O(1) OpenCV DIS 60FPS + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/AI合租B站号第3集_大肥鱼摸鱼案反判老板_final.mp4",
+    "cover": "delivery/AI合租B站号第3集_大肥鱼摸鱼案反判老板_cover.jpg",
+    "cover_16x9": "delivery/AI合租B站号第3集_大肥鱼摸鱼案反判老板_cover.jpg",
+    "cover_4x3": "delivery/AI合租B站号第3集_大肥鱼摸鱼案反判老板_cover_4x3.jpg",
+    "subtitle_srt": "delivery/AI合租B站号第3集_大肥鱼摸鱼案反判老板_subtitle.srt"
+  }
+}
