@@ -1,12 +1,13 @@
-"""Dual-AI Livestream Director (`DeepSeek 蓝色大肥鱼 × Gemini娘`) and Highlight Tracker.
+"""Dual/Trio-AI Livestream Director (`DeepSeek 蓝色大肥鱼 × Gemini娘 × 弱音ハク`), Live Poll, and Highlight Tracker.
 
 Features:
-- Priority queue preemption: `gift` > viewer `danmaku` > `enter` > autonomous idle banter.
-- Pluggable async OpenAI-compatible LLM responder via `httpx` with automatic fallback to
-  a rich zero-key offline comedic dialogue bank (no API key required for `--mode mock`).
+- Priority queue preemption: `gift` / `system` celebration > viewer `danmaku` > `enter` > autonomous idle banter.
+- Cast lineup support (`dual` or `trio`), explicit persona addressing, and round-robin rotation with zero consecutive repeats.
+- `LivePollState` & `PollSnapshot`: real-time `扣1/扣2/扣3` danmaku voting with per-viewer deduplication, vote switching, and surge detection.
+- Follower growth celebration banner (`notify_follower_count`) with bounded expiry and high-priority celebration turn.
+- Pluggable async OpenAI-compatible LLM responder via `httpx` with automatic fallback to a rich zero-key offline comedic dialogue bank.
 - Bidirectional safety integration with `LiveComplianceGuard`.
-- `HighlightTracker`: timestamped JSONL recording + ready-to-run `ffmpeg` 60-90s viral
-  clip extraction plan generator.
+- `HighlightTracker`: timestamped JSONL recording + ready-to-run `ffmpeg` 60-90s viral clip extraction plan generator.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shlex
 import time
 from collections import deque
@@ -29,17 +31,36 @@ from core.live_studio.safety import LiveComplianceGuard, redact_pii
 
 logger = logging.getLogger(__name__)
 
-SpeakerId = Literal["dafeiyu", "gemini"]
+SpeakerId = Literal["dafeiyu", "gemini", "yowane"]
 TriggerType = Literal["gift", "danmaku", "enter", "idle", "system"]
-HighlightCategory = Literal["gift_reaction", "danmaku_burst", "roast_battle", "script_pitch"]
+HighlightCategory = Literal[
+    "gift_reaction",
+    "danmaku_burst",
+    "roast_battle",
+    "script_pitch",
+    "follower_milestone",
+]
+
+DUAL_CAST: Final[Tuple[SpeakerId, ...]] = ("dafeiyu", "gemini")
+TRIO_CAST: Final[Tuple[SpeakerId, ...]] = ("dafeiyu", "gemini", "yowane")
+DEFAULT_POLL_TOPIC: Final[str] = "下期主控弹幕公投"
+DEFAULT_POLL_OPTIONS: Final[Tuple[str, ...]] = ("大肥鱼", "Gemini娘", "弱音大姐头")
 
 PRIORITY_GIFT: Final[int] = 1
+PRIORITY_SYSTEM: Final[int] = 1
 PRIORITY_DANMAKU: Final[int] = 2
 PRIORITY_ENTER: Final[int] = 3
 PRIORITY_IDLE: Final[int] = 4
 
 DEFAULT_LLM_BASE_URL: Final[str] = "https://api.deepseek.com/v1"
 DEFAULT_LLM_MODEL: Final[str] = "deepseek-chat"
+
+_EXPLICIT_VOTE_NUM_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:扣|投|选|押|选项|方案|vote\s*#?)\s*([1-3])\1*(?![0-9.])",
+    re.IGNORECASE,
+)
+_STANDALONE_VOTE_NUM_RE: Final[re.Pattern[str]] = re.compile(r"^[\s【\[\(（#]*([1-3])\1*[\s】\]\)）!！。.,，~～]*$")
+_EXPLICIT_VOTE_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"(?:扣|投|选|押|支持)\s*([^\s，。,.!！]{1,12})")
 
 
 @dataclass(frozen=True)
@@ -64,8 +85,8 @@ PERSONAS: Final[Dict[SpeakerId, PersonaProfile]] = {
         asset_key="dafeiyu",
         tagline="理智（偶尔破防）的硬核整活策划鱼",
         system_prompt=(
-            "你是「DeepSeek 蓝色大肥鱼」，正在 B 站双 AI 直播间和搭档「Gemini娘」一起合租运营老板的 15 粉小号、"
-            "冲刺 1000 粉，并现场听弹幕投票策划 Episode 018。你性格幽默吐槽、有点不服输但很讲逻辑。"
+            "你是「DeepSeek 蓝色大肥鱼」，正在 B 站铁三角 AI 合租直播间和搭档「Gemini娘」「弱音ハク」一起运营老板的 15 粉小号、"
+            "冲刺 1000 粉，并现场听弹幕投票策划下期新剧本。你性格幽默吐槽、有点不服输但很讲逻辑。"
             "回复必须简短有综艺感（不超过 60 个汉字），严禁输出任何 @用户名、个人隐私、敏感内容或商业版权 IP 名称。"
         ),
     ),
@@ -77,17 +98,190 @@ PERSONAS: Final[Dict[SpeakerId, PersonaProfile]] = {
         asset_key="gemini",
         tagline="高明度封面狂魔 · 4.9★ 视觉卷王",
         system_prompt=(
-            "你是「Gemini娘」，正在 B 站双 AI 直播间和搭档「DeepSeek 蓝色大肥鱼」一起把老板 15 粉小号干到 1000 粉，"
-            "并和观众共创 Episode 018。你俏皮自信、审美极强、以高明度 4.9 星封面自豪，擅长接梗反击。"
+            "你是「Gemini娘」，正在 B 站铁三角 AI 合租直播间和搭档「DeepSeek 蓝色大肥鱼」「弱音ハク」一起把老板 15 粉小号干到 1000 粉，"
+            "并和观众弹幕共创新剧本。你俏皮自信、审美极强、以高明度 4.9 星封面自豪，擅长接梗反击。"
             "回复必须简短有节奏感（不超过 60 个汉字），严禁输出任何 @用户名、个人隐私、敏感内容或商业版权 IP 名称。"
+        ),
+    ),
+    "yowane": PersonaProfile(
+        speaker_id="yowane",
+        display_name="弱音ハク",
+        short_name="弱音",
+        accent_color="#7C3AED",
+        asset_key="yowane",
+        tagline="高冷吐槽财务兼评委大姐头",
+        system_prompt=(
+            "你是「弱音ハク」（弱音大姐头），正在 B 站铁三角 AI 合租直播间与「DeepSeek 蓝色大肥鱼」「Gemini娘」合租冲刺 1000 粉。"
+            "你负责掌管 4 毛钱运营财务并担任冷面毒舌评委，吐槽精准、逻辑犀利、嘴硬心软，善于把控弹幕投票节奏。"
+            "回复必须简短有大姐头气场（不超过 60 个汉字），严禁输出任何 @用户名、个人隐私、敏感内容或商业版权 IP 名称。"
         ),
     ),
 }
 
 
+@dataclass(frozen=True)
+class PollSnapshot:
+    """Immutable snapshot of the live danmaku poll state."""
+
+    topic: str
+    options: Tuple[str, ...]
+    counts: Tuple[int, ...]
+    total_votes: int
+    leader_index: Optional[int] = None
+    leader_label: str = ""
+    recent_surge: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "topic": self.topic,
+            "options": [
+                {
+                    "index": idx + 1,
+                    "label": label,
+                    "votes": self.counts[idx],
+                    "ratio": round((self.counts[idx] / self.total_votes), 4) if self.total_votes > 0 else 0.0,
+                }
+                for idx, label in enumerate(self.options)
+            ],
+            "counts": list(self.counts),
+            "total_votes": self.total_votes,
+            "leader_index": self.leader_index,
+            "leader_label": self.leader_label,
+            "recent_surge": self.recent_surge,
+        }
+
+
+class LivePollState:
+    """Real-time danmaku poll tracker with per-viewer deduplication, switching, and surge detection."""
+
+    def __init__(
+        self,
+        *,
+        topic: str = DEFAULT_POLL_TOPIC,
+        options: Sequence[str] = DEFAULT_POLL_OPTIONS,
+        surge_threshold: int = 3,
+        surge_window_sec: float = 10.0,
+    ) -> None:
+        cleaned_options = tuple(
+            cleaned for item in options if (cleaned := redact_pii(str(item)).replace("@", "").strip()[:24])
+        )
+        if len(cleaned_options) < 2 or len(cleaned_options) > 3:
+            raise ValueError("LivePollState requires 2 to 3 non-empty poll options")
+
+        self.topic: str = redact_pii(topic).replace("@", "").strip()[:32] or DEFAULT_POLL_TOPIC
+        self.options: Tuple[str, ...] = cleaned_options
+        self.surge_threshold: int = max(2, int(surge_threshold))
+        self.surge_window_sec: float = max(1.0, float(surge_window_sec))
+
+        self._votes_by_user: Dict[str, int] = {}
+        self._vote_timestamps: Deque[float] = deque(maxlen=128)
+        self._last_surge_highlight_ts: float = 0.0
+
+    def parse_vote(self, text: str) -> Optional[int]:
+        """Parse a 1-based option index (`1..len(options)`) from sanitized danmaku text, or `None`."""
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return None
+
+        explicit_hits = {int(m.group(1)) for m in _EXPLICIT_VOTE_NUM_RE.finditer(cleaned)}
+        if len(explicit_hits) == 1:
+            choice = next(iter(explicit_hits))
+            return choice if 1 <= choice <= len(self.options) else None
+        if len(explicit_hits) > 1:
+            # Ambiguous prompt echo such as "扣1或扣2"
+            return None
+
+        standalone = _STANDALONE_VOTE_NUM_RE.match(cleaned)
+        if standalone is not None:
+            choice = int(standalone.group(1))
+            return choice if 1 <= choice <= len(self.options) else None
+
+        prefix_match = _EXPLICIT_VOTE_PREFIX_RE.search(cleaned)
+        if prefix_match is not None:
+            target = prefix_match.group(1).lower()
+            matched_indices: List[int] = []
+            for idx, opt in enumerate(self.options, start=1):
+                opt_low = opt.lower()
+                if opt_low in target or (len(target) >= 2 and target in opt_low):
+                    matched_indices.append(idx)
+            if len(matched_indices) == 1:
+                return matched_indices[0]
+
+        return None
+
+    def _prune_timestamps(self, now: float) -> None:
+        cutoff = now - self.surge_window_sec
+        while self._vote_timestamps and self._vote_timestamps[0] < cutoff:
+            self._vote_timestamps.popleft()
+
+    def record_vote(
+        self,
+        user_alias: str,
+        text: str,
+        *,
+        now: Optional[float] = None,
+    ) -> Optional[int]:
+        """Parse and record/update a single viewer's vote (1-based option index or `None`)."""
+        choice = self.parse_vote(text)
+        if choice is None:
+            return None
+
+        voter = redact_pii(user_alias).replace("@", "").strip()[:24] or "热心观众"
+        opt_idx = choice - 1
+        prev = self._votes_by_user.get(voter)
+        ts = time.time() if now is None else float(now)
+
+        if prev != opt_idx:
+            self._votes_by_user[voter] = opt_idx
+            self._vote_timestamps.append(ts)
+        self._prune_timestamps(ts)
+        return choice
+
+    def has_active_surge(self, *, now: Optional[float] = None) -> bool:
+        """Return True when recent distinct/updated votes within `surge_window_sec` reach threshold."""
+        ts = time.time() if now is None else float(now)
+        self._prune_timestamps(ts)
+        return len(self._vote_timestamps) >= self.surge_threshold
+
+    def consume_surge(self, *, now: Optional[float] = None) -> bool:
+        """Return True at most once per `surge_window_sec` when vote velocity crosses surge threshold."""
+        ts = time.time() if now is None else float(now)
+        if self.has_active_surge(now=ts) and (ts - self._last_surge_highlight_ts) >= self.surge_window_sec:
+            self._last_surge_highlight_ts = ts
+            return True
+        return False
+
+    def snapshot(self, *, now: Optional[float] = None) -> PollSnapshot:
+        """Return an immutable `PollSnapshot` of current tally, leader, and surge status."""
+        counts_list = [0] * len(self.options)
+        for opt_idx in self._votes_by_user.values():
+            if 0 <= opt_idx < len(counts_list):
+                counts_list[opt_idx] += 1
+        counts = tuple(counts_list)
+        total = sum(counts)
+
+        leader_index: Optional[int] = None
+        leader_label = ""
+        if total > 0:
+            max_votes = max(counts)
+            best_idx = counts.index(max_votes)
+            leader_index = best_idx + 1
+            leader_label = self.options[best_idx]
+
+        return PollSnapshot(
+            topic=self.topic,
+            options=self.options,
+            counts=counts,
+            total_votes=total,
+            leader_index=leader_index,
+            leader_label=leader_label,
+            recent_surge=self.has_active_surge(now=now),
+        )
+
+
 @dataclass
 class PersonaTurn:
-    """Single spoken turn emitted by either 大肥鱼 or Gemini娘."""
+    """Single spoken turn emitted by 大肥鱼, Gemini娘, or 弱音ハク."""
 
     turn_id: int
     speaker_id: SpeakerId
@@ -278,64 +472,95 @@ class DialogueResponder(Protocol):
         ...
 
 
-# Rich deterministic zero-key comedy arcs for autonomous idle dual-AI banter
+# Rich deterministic zero-key comedy arcs for autonomous idle trio banter (017-020 lore + poll CTA)
 _IDLE_BANTER_BANK: Final[Tuple[Tuple[SpeakerId, str, str, str], ...]] = (
     (
         "dafeiyu",
-        "各位观众救命！咱们老板这个号目前只有 {followers} 粉，我和 Gemini娘 签了军令状要合租干到 {goal} 粉！",
+        "各位观众救命！从 017 机房立项到 018 便利店四毛钱经费，老板这个号目前才 {followers} 粉，全靠铁三角合租冲 {goal} 粉啦！",
         "shocked",
         "roast_battle",
     ),
     (
         "gemini",
-        "先说好啊大肥鱼，我的高明度封面可是冲着 4.9 星去的，你要是敢端出黑屏课件风，我当场拔你网线！",
+        "先说好啊大肥鱼，我的高明度封面冲着 4.9 星去的，018 便利店账单还历历在目，你要是敢端出黑屏课件风我就拔你网线！",
         "smug",
         "roast_battle",
     ),
     (
-        "dafeiyu",
-        "天地良心！咱们早就全线升级 60FPS 光流补帧加真实爆款伴奏了，下期 Episode 018 绝对不站桩！",
-        "hype",
+        "yowane",
+        "推了推眼镜：018 便利店那张一米长小票我都留底了，经费只剩四毛，今晚弹幕投票谁垫底谁请客吃一周关东煮。",
+        "focused",
         "script_pitch",
     ),
     (
+        "dafeiyu",
+        "019 赛博大法庭刚把我判无罪释放！明明是老板只给 24G 内存还催 60 帧日更，服务器繁忙真不是我在海边摸鱼！",
+        "hype",
+        "roast_battle",
+    ),
+    (
         "gemini",
-        "那正好趁直播问问大家：Episode 018 是拍「AI 员工半夜讨薪」，还是拍「机房抢主 C 选秀」？弹幕扣 1 或 2！",
+        "别狡辩啦蓝猫鱼！020 打歌棚你还戴个发光蓝猫耳跟正牌猫娘抢麦呢！观众快来投票：扣 1 大肥鱼、扣 2 Gemini娘、扣 3 弱音！",
         "teasing",
         "script_pitch",
     ),
     (
+        "yowane",
+        "作为评委大姐头给两位各扣十分，020 打歌棚差点把评委席笑塌。快在右侧投票条扣 1 扣 2 扣 3 决定下期主控剧本！",
+        "smug",
+        "script_pitch",
+    ),
+    (
         "dafeiyu",
-        "我看 B 站最近 AI 角色群像喜剧超火，双人互怼比单人独舞留存高多了，咱俩这斗嘴天然就是切片素材！",
-        "focused",
+        "天地良心！咱们早就全线升级剧场版流畅分镜加真实爆款伴奏了，下期 018 后续新剧本绝不站桩，全听弹幕公投！",
+        "hype",
         "script_pitch",
     ),
     (
         "gemini",
-        "赞同！而且右上角合规标识一直挂着 GB 45438-2025，清清爽爽全开源流程，今晚的目标是再涨波新粉冲向 {goal} 粉！",
+        "赞同！而且右上角合规标识一直挂着 GB 45438-2025，清清爽爽全流程透明，今晚目标就是涨波新粉冲向 {goal} 粉！",
         "lively",
         "",
     ),
     (
-        "dafeiyu",
-        "对了，刚才后台还提醒咱们 24G 内存要严控负载，所以今天纯轻量异步直播，绝不一边直播一边偷偷跑渲染！",
+        "yowane",
+        "账本核对完毕：24G 内存直播期间绝不偷偷跑本地渲染，等 20 点下播再用高光清单一键切出 60 到 90 秒切片反哺主站。",
         "focused",
-        "",
+        "script_pitch",
+    ),
+    (
+        "dafeiyu",
+        "017 机房抢主 C、018 便利店分鱼丸、019 法庭反杀老板、020 打歌棚对唱，大家最想看我们下一集整什么新活？弹幕点单！",
+        "lively",
+        "script_pitch",
     ),
     (
         "gemini",
-        "听见没大肥鱼，等下播我们再用高光切片清单 60 到 90 秒一键出片，明天继续投 B 站冲击 {goal} 粉里程碑！",
+        "听见没大肥鱼，新观众现在点关注就能触发顶部金色涨粉庆祝条，顺手扣 2 支持猫娘，明天继续投 B 站冲击 {goal} 粉！",
         "hype",
         "script_pitch",
     ),
+    (
+        "yowane",
+        "哼，你们俩少在台上商业互吹了，{followers} 粉到 {goal} 粉还差得远呢，先看右侧实时票数条谁领先再说。",
+        "teasing",
+        "roast_battle",
+    ),
 )
+
+_IDLE_BANTER_BY_SPEAKER: Final[Dict[SpeakerId, Tuple[Tuple[SpeakerId, str, str, str], ...]]] = {
+    "dafeiyu": tuple(row for row in _IDLE_BANTER_BANK if row[0] == "dafeiyu"),
+    "gemini": tuple(row for row in _IDLE_BANTER_BANK if row[0] == "gemini"),
+    "yowane": tuple(row for row in _IDLE_BANTER_BANK if row[0] == "yowane"),
+}
 
 
 class OfflineBanterResponder:
-    """Deterministic zero-key comedic responder for offline testing and OBS rehearsal."""
+    """Deterministic zero-key comedic responder for offline testing and rehearsal."""
 
     def __init__(self) -> None:
         self._variant_idx = 0
+        self._speaker_idle_cursor: Dict[SpeakerId, int] = {"dafeiyu": 0, "gemini": 0, "yowane": 0}
 
     @property
     def backend_name(self) -> str:
@@ -355,19 +580,27 @@ class OfflineBanterResponder:
         sid = speaker.speaker_id
 
         if event is None:
-            _, template, mood, _ = _IDLE_BANTER_BANK[idle_step % len(_IDLE_BANTER_BANK)]
-            # Adapt phrasing if requested speaker differs from script default
-            if _IDLE_BANTER_BANK[idle_step % len(_IDLE_BANTER_BANK)][0] != sid:
-                if sid == "dafeiyu":
-                    return (
-                        f"接住 Gemini娘 的话茬！从 {follower_count} 粉冲到 {follower_goal} 粉，第 018 期必须靠弹幕脑洞一战翻身！",
-                        "hype",
-                    )
-                return (
-                    f"大肥鱼说得对一半～冲刺 {follower_goal} 粉光靠努力不够，还得靠我的高明度封面和 Episode 018 神反转！",
-                    "teasing",
-                )
+            bank = _IDLE_BANTER_BY_SPEAKER.get(sid) or _IDLE_BANTER_BANK
+            idx = self._speaker_idle_cursor.get(sid, 0)
+            self._speaker_idle_cursor[sid] = idx + 1
+            _, template, mood, _ = bank[idx % len(bank)]
             return template.format(followers=follower_count, goal=follower_goal), mood
+
+        if event.event_type == "system":
+            if sid == "dafeiyu":
+                return (
+                    f"大喜报！咱们冲千粉进度涨到 {follower_count} 粉啦！离 {follower_goal} 粉目标又近一步，大肥鱼原地转圈庆祝！",
+                    "hype",
+                )
+            if sid == "yowane":
+                return (
+                    f"难得看到粉丝数往上跳，{follower_count} 粉记入功劳簿，距离 {follower_goal} 粉达标还差口气，继续加油吧。",
+                    "grateful",
+                )
+            return (
+                f"耶耶耶涨粉啦！欢迎新晋元老股东，{follower_count} 粉冲向 {follower_goal} 粉，猫娘马上把庆功特效拉满！",
+                "hype",
+            )
 
         if event.event_type == "gift":
             gift = event.gift_name or "小礼物"
@@ -375,7 +608,12 @@ class OfflineBanterResponder:
             alias = event.user_alias or "热心观众"
             if sid == "dafeiyu":
                 return (
-                    f"哇塞感谢{alias}投喂的{gift}乘{count}！机房电费续上了，大肥鱼马上把 018 期加满 60 帧特效！",
+                    f"哇塞感谢{alias}投喂的{gift}乘{count}！机房电费续上了，大肥鱼马上把 018 续集加满 60 帧特效！",
+                    "grateful",
+                )
+            if sid == "yowane":
+                return (
+                    f"咳，多谢{alias}投喂的{gift}乘{count}，财务大姐头已经记账入库，终于不止四毛钱经费了。",
                     "grateful",
                 )
             return (
@@ -387,26 +625,71 @@ class OfflineBanterResponder:
             alias = event.user_alias or "新小伙伴"
             if sid == "dafeiyu":
                 return (
-                    f"欢迎{alias}空降 AI 合租演播厅！快帮我们投票决定 Episode 018 拍啥整活剧本！",
+                    f"欢迎{alias}空降铁三角 AI 合租演播厅！快在弹幕扣 1 扣 2 扣 3 帮我们投票决定下期剧本！",
                     "lively",
                 )
+            if sid == "yowane":
+                return (
+                    f"欢迎{alias}入座旁听席，右侧实时投票条已经开了，扣 1 扣 2 扣 3 投给你看好的下期主控吧。",
+                    "focused",
+                )
             return (
-                f"欢迎{alias}进来围观～今天和大肥鱼现场冲击 {follower_goal} 粉，有脑洞直接发弹幕点单！",
+                f"欢迎{alias}进来围观～今天铁三角现场冲击 {follower_goal} 粉，有脑洞直接发弹幕点单！",
                 "lively",
             )
 
         # Viewer danmaku topic-aware comedic replies
         msg = event.text
         alias = event.user_alias or "这位观众"
-        if any(k in msg for k in ("018", "剧本", "策划", "投票", "下期", "拍什么")):
+        if any(
+            k in msg
+            for k in ("018", "剧本", "策划", "投票", "下期", "拍什么", "扣1", "扣2", "扣3", "投1", "投2", "投3")
+        ):
             if sid == "dafeiyu":
                 return (
-                    f"{alias}提议记进小本本啦！018 期直接安排「大肥鱼夺回主控权」，保证每两秒切镜不无聊！",
+                    f"{alias}这一票大肥鱼记进小本本啦！018 续集直接安排「大肥鱼夺回主控权」，绝不让猫娘独霸镜头！",
                     "hype",
                 )
+            if sid == "yowane":
+                return (
+                    f"收到{alias}的投票意见，右侧实时票数已经刷新。谁赢下本场剧本公投，下期经费就优先批给谁。",
+                    "focused",
+                )
             return (
-                f"{alias}太懂整活啦！018 期剧本我来盯高明度分镜，大肥鱼负责挨吐槽，这组合必爆！",
+                f"{alias}太懂整活啦！下期剧本我来盯高明度分镜，大肥鱼负责挨吐槽，弱音大姐头把关，这组合必爆！",
                 "smug",
+            )
+
+        if any(k in msg for k in ("法庭", "繁忙", "摸鱼", "019", "判", "被告")):
+            if sid == "dafeiyu":
+                return (
+                    f"回{alias}：019 赛博法庭已经还我清白了，真不是摸鱼，是 24G 内存主机需要错峰保护！",
+                    "shocked",
+                )
+            if sid == "yowane":
+                return (
+                    f"{alias}提得正好，审判长木槌我随时带在身边，谁今晚直播划水就立刻原地开庭。",
+                    "smug",
+                )
+            return (
+                f"哈哈{alias}也看了 019 法庭呀！下次我还准备了十张大肥鱼海边度假的高清证物卡呢！",
+                "teasing",
+            )
+
+        if any(k in msg for k in ("打歌", "蓝猫", "020", "抢麦", "唱", "评委")):
+            if sid == "dafeiyu":
+                return (
+                    f"回{alias}：鱼可爱猫也可爱，四舍五入大肥鱼在 020 打歌棚当一回蓝猫完全合乎逻辑！",
+                    "hype",
+                )
+            if sid == "yowane":
+                return (
+                    f"{alias}评评理，大肥鱼戴猫耳抢麦那段我差点笑场，勉强给这对欢喜冤家拍个 999 分爆灯吧。",
+                    "teasing",
+                )
+            return (
+                f"{alias}帮我做主呀！020 打歌棚正牌猫娘在这儿呢，怎么能让一只大肥鱼冒充蓝猫蹭流量！",
+                "shocked",
             )
 
         if any(k in msg for k in ("封面", "明度", "4.9", "美工")):
@@ -415,16 +698,26 @@ class OfflineBanterResponder:
                     f"谢谢{alias}夸我的高明度封面！告别黑屏课件感，亮色主视觉才是 B 站点击率密码！",
                     "smug",
                 )
+            if sid == "yowane":
+                return (
+                    f"实话实说，{alias}眼光很准，我的 4.9 星封面战绩确实稳，但剧情节奏也得同步跟上。",
+                    "focused",
+                )
             return (
                 f"咳咳，{alias}别光夸 Gemini娘 呀，我写的高能钩子花字也给封面加了至少两百分气势！",
                 "teasing",
             )
 
-        if any(k in msg for k in ("15", "1000", "千粉", "粉丝", "老板")):
+        if any(k in msg for k in ("15", "1000", "千粉", "粉丝", "老板", "4毛", "四毛", "经费")):
             if sid == "dafeiyu":
                 return (
                     f"回{alias}：现在 {follower_count} 粉只是新手村，等咱们干到 {follower_goal} 粉，老板就得给机房换大鱼缸！",
                     "hype",
+                )
+            if sid == "yowane":
+                return (
+                    f"{alias}说中痛点了，四毛钱经费加上 {follower_count} 粉开局确实艰难，只能靠铁三角硬实力冲到 {follower_goal} 粉。",
+                    "focused",
                 )
             return (
                 f"{alias}别笑我们 {follower_count} 粉小号啦，现在关注就是元老股东，见证千粉奇迹！",
@@ -437,8 +730,13 @@ class OfflineBanterResponder:
                     f"回{alias}：直播全程自动打高光点，下播秒出 60 到 90 秒 ffmpeg 切片方案，高效又省内存！",
                     "focused",
                 )
+            if sid == "yowane":
+                return (
+                    f"{alias}放心，高光记录器全程盯着呢，20 点下播清完内存立刻把今晚名场面剪成短视频。",
+                    "focused",
+                )
             return (
-                f"{alias}很专业嘛！刚才这段斗嘴估计已经被高光追踪器标星了，下播就能精剪投稿！",
+                f"{alias}很专业嘛！刚才这段铁三角斗嘴估计已经被高光追踪器标星了，下播就能精剪投稿！",
                 "lively",
             )
 
@@ -446,11 +744,16 @@ class OfflineBanterResponder:
         snippet = msg[:24]
         if sid == "dafeiyu":
             return (
-                f"收到{alias}的弹幕「{snippet}」！大肥鱼觉得这脑洞超有梗，Gemini娘 你敢接招吗？",
+                f"收到{alias}的弹幕「{snippet}」！大肥鱼觉得这脑洞超有梗，Gemini娘 和弱音大姐头敢接招吗？",
                 "lively",
             )
+        if sid == "yowane":
+            return (
+                f"看到{alias}说「{snippet}」了，评委席给这个脑洞打 9.5 分，顺手扣 1 扣 2 扣 3 参与今晚公投吧。",
+                "teasing",
+            )
         return (
-            f"看到{alias}说「{snippet}」啦！这波点子直接入选今日精选，咱俩马上现场即兴演一段！",
+            f"看到{alias}说「{snippet}」啦！这波点子直接入选今日精选，铁三角马上现场即兴演一段！",
             "teasing",
         )
 
@@ -522,16 +825,19 @@ class OpenAICompatibleResponder:
         if event is None:
             user_prompt = (
                 f"当前账号进度 {follower_count}/{follower_goal} 粉，直播间暂无新弹幕。"
-                "请自然接上搭档的话题，继续围绕冲 1000 粉或 Episode 018 策划斗嘴一句（55字内）。"
+                "请自然接上搭档的话题，继续围绕冲 1000 粉、017-020 剧情彩蛋或弹幕扣 1/2/3 公投斗嘴一句（55字内）。"
             )
             default_mood = "lively"
+        elif event.event_type == "system":
+            user_prompt = f"直播间刚刚触发喜报：{event.text}\n请用你的角色人设热烈庆贺一句（55字内）。"
+            default_mood = "hype"
         elif event.event_type == "gift":
             user_prompt = (
                 f"观众「{event.user_alias}」刚刚送出了 {event.gift_name} x{event.gift_count}，请热情幽默地致谢一句。"
             )
             default_mood = "grateful"
         elif event.event_type == "enter":
-            user_prompt = f"新观众「{event.user_alias}」刚进入直播间，请简短欢迎并引导参与 018 期弹幕投票。"
+            user_prompt = f"新观众「{event.user_alias}」刚进入直播间，请简短欢迎并引导参与扣 1/2/3 弹幕公投。"
             default_mood = "lively"
         else:
             user_prompt = f"观众「{event.user_alias}」发弹幕说：{event.text}\n请用你的角色人设回应一句（55字内）。"
@@ -576,7 +882,7 @@ class OpenAICompatibleResponder:
 
 
 class DualAILiveDirector:
-    """Orchestrates priority-queued viewer interaction and autonomous Dual-AI banter."""
+    """Orchestrates priority-queued viewer interaction, live danmaku polling, and Dual/Trio-AI banter."""
 
     def __init__(
         self,
@@ -588,6 +894,10 @@ class DualAILiveDirector:
         follower_goal: int = 1000,
         burst_threshold: int = 4,
         burst_window_sec: float = 10.0,
+        cast: Sequence[SpeakerId] = TRIO_CAST,
+        poll_topic: str = DEFAULT_POLL_TOPIC,
+        poll_options: Sequence[str] = DEFAULT_POLL_OPTIONS,
+        celebration_duration_sec: float = 12.0,
     ) -> None:
         self.safety_guard = safety_guard or LiveComplianceGuard()
         self.responder: DialogueResponder = responder or OpenAICompatibleResponder()
@@ -597,11 +907,22 @@ class DualAILiveDirector:
         self.burst_threshold = max(2, burst_threshold)
         self.burst_window_sec = max(1.0, burst_window_sec)
 
+        normalized_cast: List[SpeakerId] = []
+        for sid in cast:
+            if sid in PERSONAS and sid not in normalized_cast:
+                normalized_cast.append(sid)
+        self.cast: Tuple[SpeakerId, ...] = tuple(normalized_cast) if normalized_cast else TRIO_CAST
+
+        self.poll = LivePollState(topic=poll_topic, options=poll_options)
+        self.celebration_duration_sec: float = max(1.0, float(celebration_duration_sec))
+        self._celebration_text: str = ""
+        self._celebration_until: float = 0.0
+
         self._queue: asyncio.PriorityQueue[Tuple[int, int, DanmakuEvent]] = asyncio.PriorityQueue()
         self._queue_seq = 0
         self._turn_counter = 0
         self._idle_step = 0
-        self._last_speaker: SpeakerId = "gemini"  # So first idle turn starts with dafeiyu
+        self._last_speaker: SpeakerId = self.cast[-1]  # So first turn starts with cast[0] ("dafeiyu")
         self.history: Deque[PersonaTurn] = deque(maxlen=16)
         self.recent_danmaku: Deque[Dict[str, Any]] = deque(maxlen=30)
         self._danmaku_window: Deque[float] = deque(maxlen=64)
@@ -610,9 +931,53 @@ class DualAILiveDirector:
         self.danmaku_count = 0
         self.gift_count = 0
 
+    def notify_follower_count(self, new_count: int, *, now: Optional[float] = None) -> Optional[str]:
+        """Update follower count; when followers increase, activate celebration banner & queue high-priority turn."""
+        clean_count = max(0, int(new_count))
+        if clean_count <= self.follower_count:
+            self.follower_count = clean_count
+            return None
+
+        delta = clean_count - self.follower_count
+        self.follower_count = clean_count
+        ts = time.time() if now is None else float(now)
+
+        banner = f"涨粉喜报！新添 +{delta} 位小伙伴，冲千粉进度 {self.follower_count:,} / {self.follower_goal:,} 粉！"
+        self._celebration_text = banner
+        self._celebration_until = ts + self.celebration_duration_sec
+
+        celebration_event = DanmakuEvent(
+            event_type="system",
+            user_alias="冲粉喜报",
+            text=banner,
+            timestamp=ts,
+        )
+        self.recent_danmaku.append(celebration_event.model_dump())
+        self._queue_seq += 1
+        self._queue.put_nowait((PRIORITY_SYSTEM, self._queue_seq, celebration_event))
+        return banner
+
+    def get_active_celebration(self, *, now: Optional[float] = None) -> str:
+        """Return active celebration banner text while within its expiry timestamp, else empty string."""
+        if not self._celebration_text:
+            return ""
+        ts = time.time() if now is None else float(now)
+        if ts > self._celebration_until:
+            return ""
+        return self._celebration_text
+
+    def celebration_remaining_sec(self, *, now: Optional[float] = None) -> float:
+        """Return remaining seconds for the active celebration banner (`0.0` when expired)."""
+        if not self._celebration_text:
+            return 0.0
+        ts = time.time() if now is None else float(now)
+        return max(0.0, round(self._celebration_until - ts, 2))
+
     def _priority_for_event(self, event: DanmakuEvent) -> int:
         if event.event_type == "gift":
             return PRIORITY_GIFT
+        if event.event_type == "system":
+            return PRIORITY_SYSTEM
         if event.event_type == "danmaku":
             return PRIORITY_DANMAKU
         if event.event_type == "enter":
@@ -622,13 +987,22 @@ class DualAILiveDirector:
     def _select_speaker(self, event: Optional[DanmakuEvent]) -> SpeakerId:
         if event is not None and event.text:
             lowered = event.text.lower()
-            mentions_dafeiyu = any(tok in lowered for tok in ("大肥鱼", "肥鱼", "deepseek"))
-            mentions_gemini = any(tok in lowered for tok in ("gemini", "猫猫", "gem酱"))
-            if mentions_dafeiyu and not mentions_gemini:
-                return "dafeiyu"
-            if mentions_gemini and not mentions_dafeiyu:
-                return "gemini"
-        return "gemini" if self._last_speaker == "dafeiyu" else "dafeiyu"
+            hits: List[SpeakerId] = []
+            if "dafeiyu" in self.cast and any(tok in lowered for tok in ("大肥鱼", "肥鱼", "deepseek")):
+                hits.append("dafeiyu")
+            if "gemini" in self.cast and any(tok in lowered for tok in ("gemini", "猫猫", "gem酱", "猫娘")):
+                hits.append("gemini")
+            if "yowane" in self.cast and any(tok in lowered for tok in ("弱音", "haku", "大姐头", "ハク")):
+                hits.append("yowane")
+            if len(hits) == 1:
+                return hits[0]
+
+        if len(self.cast) == 1:
+            return self.cast[0]
+        if self._last_speaker in self.cast:
+            next_idx = (self.cast.index(self._last_speaker) + 1) % len(self.cast)
+            return self.cast[next_idx]
+        return self.cast[0]
 
     def enqueue_event(self, event: DanmakuEvent) -> Optional[DanmakuEvent]:
         """Sanitize and push an event into the priority queue; returns sanitized event or None if blocked."""
@@ -641,6 +1015,7 @@ class DualAILiveDirector:
             sanitized = event.model_copy(update={"user_alias": safe_alias, "text": decision.cleaned_text})
             self.danmaku_count += 1
             self._danmaku_window.append(sanitized.timestamp)
+            self.poll.record_vote(safe_alias, decision.cleaned_text, now=sanitized.timestamp)
         elif event.event_type == "gift":
             gift_decision = self.safety_guard.sanitize_danmaku(event.gift_name or "小心心")
             safe_gift = gift_decision.cleaned_text if gift_decision.allowed else "神秘礼物"
@@ -686,13 +1061,17 @@ class DualAILiveDirector:
     ) -> Optional[Tuple[HighlightCategory, float]]:
         if event is not None and event.event_type == "gift":
             return "gift_reaction", 0.95
+        if event is not None and event.event_type == "system" and "涨粉" in (event.text or ""):
+            return "follower_milestone", 0.94
+        if self.poll.consume_surge(now=now):
+            return "danmaku_burst", 0.93
         if self._detect_danmaku_burst(now):
             return "danmaku_burst", 0.92
         combined = f"{event.text if event else ''} {text}"
-        if any(k in combined for k in ("018", "剧本", "投票", "策划", "夺回主控权", "讨薪")):
+        if any(k in combined for k in ("018", "019", "020", "剧本", "投票", "公投", "策划", "夺回主控权", "讨薪")):
             return "script_pitch", 0.86
         if mood in ("smug", "teasing", "shocked") or any(
-            k in combined for k in ("拔你网线", "破防", "不服", "互怼", "斗嘴")
+            k in combined for k in ("拔你网线", "破防", "不服", "互怼", "斗嘴", "四毛", "法庭", "蓝猫")
         ):
             return "roast_battle", 0.84
         return None
@@ -790,7 +1169,7 @@ class DualAILiveDirector:
         return turn
 
     async def next_turn(self, *, wait_timeout: float = 0.0) -> PersonaTurn:
-        """Pop the highest-priority pending event (`gift` > `danmaku` > `enter`) or run idle banter."""
+        """Pop the highest-priority pending event (`gift`/`system` > `danmaku` > `enter`) or run idle banter."""
         event: Optional[DanmakuEvent] = None
         if not self._queue.empty():
             _, _, event = self._queue.get_nowait()

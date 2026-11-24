@@ -1,8 +1,10 @@
-# Dual-AI Interactive Livestream Runbook (`DeepSeek 蓝色大肥鱼 × Gemini娘`)
+# Dual/Trio-AI Interactive Livestream Runbook (`DeepSeek 蓝色大肥鱼 × Gemini娘 × 弱音ハク`)
+
+> **三人铁三角完整 60 分钟节目单与晚间导流运营方案**：请参阅 [LIVE_PROGRAM_TRIO_SHOW.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PROGRAM_TRIO_SHOW.md)（「18:30 投新片 + 19:00–20:00 三人直播接力」导流闭环、四段式节目单、`扣1/扣2/扣3` 实时投票条、涨粉庆祝横幅与 `LIVE_LLM_API_KEY` 接真大模型指南）。
 
 本手册面向 ContentFlow 工作室运营者，同时覆盖两种开播模式：
 1. **OBS 浏览器源模式（K7）**：适合需要人工画面微调与 OBS 本地监视的 1080P60 互动直播。
-2. **100% 无头零麦克风全自动直播模式 + Docker 沙箱（K8，推荐）**：无需桌面环境、无需 OBS、**零麦克风与声卡设备挂载**，由 `Pillow + NumPy` 直接渲染 `1920x1080 @ 30 FPS` 舞台画面，配合 `edge-tts` 双角色合成人声与自动避让（Ducking）Lo-Fi 背景音乐，经由双 OS 管道（`rawvideo` + `s16le 48kHz stereo`）直推单一 `ffmpeg`（优先 `h264_nvenc` CBR `4500k`，自动回退 `libx264`）并全周期自动托管 B 站开播/关播（`try...finally: stopLive`）。
+2. **100% 无头零麦克风全自动直播模式 + Docker 沙箱（K8，推荐）**：无需桌面环境、无需 OBS、**零麦克风与声卡设备挂载**，支持 `--cast trio`（默认：大肥鱼 × 弱音ハク × Gemini娘铁三角 + 右侧实时弹幕投票条 + 金色涨粉庆祝条）与 `--cast dual`（双人经典版），由 `Pillow + NumPy` 直接渲染 `1920x1080 @ 30 FPS` 舞台画面，配合 `edge-tts` 多角色合成人声与自动避让（Ducking）Lo-Fi 背景音乐，经由双 OS 管道（`rawvideo` + `s16le 48kHz stereo`）直推单一 `ffmpeg`（优先 `h264_nvenc` CBR `4500k`，自动回退 `libx264`）并全周期自动托管 B 站开播/关播（`try...finally: stopLive`）。
 
 ---
 
@@ -29,21 +31,24 @@
 | 模块 | 职责与硬约束 |
 | --- | --- |
 | `core/live_studio/bilibili_live_api.py` | 封装 `GetInfo` / `Room/update` / 可选非致命封面上传 / `startLive` / 幂等 `stopLive`；遇到 `code=60024` 时自动生成官方人脸认证二维码 `output/live_face_auth_qr.png` 并干净退出（**严禁绕过人脸验证**）；内置 `scrub_rtmp_secrets()` 全链路脱敏。 |
-| `core/live_studio/headless_streamer.py` | `HeadlessStageRenderer`（1920x1080 30FPS，优先透明抠图、优雅回退定型立绘，内置活跃发言光环、律动、音频波形、15/1,000 粉进度条、右上角永久 `GB 45438-2025` 标识、右侧脱敏弹幕墙与底部高对比字幕）+ `SyntheticAudioMixer`（`zh-CN-XiaoxiaoNeural` 大肥鱼 / `zh-CN-XiaoyiNeural` Gemini娘 + 离线纯 NumPy 旋律回退 + Lo-Fi 自动避让 BGM，每视频帧精确对齐 `1600` 立体声样本 = `6400` 字节，零音画漂移、**绝对零麦克风**）+ `HeadlessLiveStreamer`（单 `ffmpeg` 双 OS 管道直推 + `finally: stop_live` 兜底关播）。 |
-| `scripts/launch_headless_live.py` | 统一 CLI 入口，向 stdout 输出无隐私、可 `grep` 的单行 JSON 状态标签：`FACE_AUTH_REQUIRED`、`LIVE_STARTED`、`DRY_STREAM_DONE`、`LIVE_STOPPED`。 |
+| `core/live_studio/headless_streamer.py` | `HeadlessStageRenderer`（1920x1080 30FPS，支持 `--cast trio` 三人舞台与 `--cast dual` 双人舞台，优先透明抠图、优雅回退定型立绘，内置活跃发言光环、律动、音频波形、15/1,000 粉进度条、金色涨粉庆祝条、右上角永久 `GB 45438-2025` 标识、右侧实时弹幕投票条 + 脱敏弹幕墙与底部高对比字幕）+ `SyntheticAudioMixer`（`zh-CN-XiaoxiaoNeural` 大肥鱼 / `zh-CN-XiaoyiNeural` Gemini娘 / `zh-TW-HsiaoYuNeural` 弱音ハク + 离线纯 NumPy 三声部旋律回退 + Lo-Fi 自动避让 BGM，每视频帧精确对齐 `1600` 立体声样本 = `6400` 字节，零音画漂移、**绝对零麦克风**）+ `HeadlessLiveStreamer`（单 `ffmpeg` 双 OS 管道直推 + `finally: stop_live` 兜底关播）。 |
+| `scripts/launch_headless_live.py` | 统一 CLI 入口（支持 `--cast trio/dual`、`--poll-topic`、`--poll-options`），向 stdout 输出无隐私、可 `grep` 的单行 JSON 状态标签：`FACE_AUTH_REQUIRED`、`LIVE_STARTED`、`DRY_STREAM_DONE`、`LIVE_STOPPED`。 |
 
-### 2.2 20 秒本地零麦克风 Dry-Stream 验片
+### 2.2 15–20 秒本地零麦克风 Dry-Stream 验片（支持 `--cast trio` / `--cast dual`）
 
 ```bash
 # 1) 检查可用内存（必须 >= 5000 MiB）
 free -m
 
-# 2) 运行 20 秒无头干跑测试（输出本地 MP4 + 抽帧视觉核验 PNG）
+# 2) 运行 15 秒铁三角无头干跑测试（输出本地 MP4 + 抽帧视觉核验 PNG）
 ./.venv/bin/python scripts/launch_headless_live.py \
   --mode dry-stream \
-  --duration-sec 20 \
-  --output-mp4 /tmp/k8_dry_stream_test.mp4 \
-  --frame-dump-path /tmp/k8_dry_stream_frame.png \
+  --cast trio \
+  --duration-sec 15 \
+  --poll-topic "下期主控弹幕公投" \
+  --poll-options "大肥鱼,Gemini娘,弱音大姐头" \
+  --output-mp4 /tmp/trio_live_preview.mp4 \
+  --frame-dump-path /tmp/trio_live_stage_preview.png \
   --follower-count 15 \
   --follower-goal 1000
 ```
@@ -53,13 +58,18 @@ free -m
 ```bash
 ./.venv/bin/python scripts/launch_headless_live.py \
   --mode go-live \
-  --duration-sec 600 \
+  --cast trio \
+  --duration-sec 3600 \
   --area-id 1062 \
-  --title "【双AI合租直播】大肥鱼×Gemini娘现场策划018期！15粉冲1000粉" \
+  --title "【铁三角AI合租直播】大肥鱼×Gemini娘×弱音现场弹幕公投！15粉冲1000粉" \
+  --poll-topic "下期主控弹幕公投" \
+  --poll-options "大肥鱼,Gemini娘,弱音大姐头" \
   --record-dir output/live_sessions/session_001 \
   --follower-count 15 \
   --follower-goal 1000
 ```
+
+- **阵容与投票配置**：默认 `--cast trio` 启用三人铁三角舞台；如需切换经典双人布局，传入 `--cast dual`。通过 `--poll-topic` 与 `--poll-options` 可自定义右侧 `扣1/扣2/扣3` 实时弹幕投票议题与 2–3 个选项（详细 60 分钟节目单见 [LIVE_PROGRAM_TRIO_SHOW.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PROGRAM_TRIO_SHOW.md)）。
 
 - **若首次开播触发 `code=60024`（人脸验证）**：终端输出 `FACE_AUTH_REQUIRED` 并将二维码保存至 `output/live_face_auth_qr.png`。请使用 B 站手机客户端扫码完成官方人脸认证后，重新执行上述命令即可自动进入 `LIVE_STARTED` 推流状态。
 - **分区切换**：如需在「虚拟主播 → 虚拟日常」分区开播，将 `--area-id 1062` 改为 `--area-id 371`。
@@ -171,7 +181,9 @@ curl -s http://127.0.0.1:8765/api/status | python3 -m json.tool
 
 ---
 
-## 6. 首播实战剧本计划（`15 → 1,000 粉` 60 分钟流程）
+## 6. 实战节目单计划（`15 → 1,000 粉` 60 分钟流程）
+
+> 完整版三人铁三角「18:30 投新片 + 19:00–20:00 直播接力」四段式节目单与高光闭环，请直接查阅 [LIVE_PROGRAM_TRIO_SHOW.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PROGRAM_TRIO_SHOW.md)。下表保留双人轻量版对照参考：
 
 | 时段 | 环节主题 | 双 AI 互动设计 | 高光切片目标 |
 | --- | --- | --- | --- |

@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """100% Headless Zero-Mic Autonomous Bilibili Livestream CLI Launcher.
 
-Streams a 1920x1080 @ 30 FPS Pillow+NumPy Dual-AI stage (`DeepSeek 蓝色大肥鱼 × Gemini娘`)
+Streams a 1920x1080 @ 30 FPS Pillow+NumPy Dual/Trio-AI stage (`DeepSeek 蓝色大肥鱼 × 弱音ハク × Gemini娘`)
 paired with 100% synthetic 48 kHz stereo `s16le` audio (`edge-tts` + ducked lo-fi ambient BGM)
 directly into a single dual-pipe `ffmpeg` encoder — with ZERO microphone or hardware audio input
 and ZERO PII / RTMP stream key exposure.
 
 Examples:
-    # 20-second headless zero-mic dry stream proof to local MP4
+    # 15-second headless zero-mic trio dry stream preview to local MP4
     ./.venv/bin/python scripts/launch_headless_live.py \
-        --mode dry-stream --duration-sec 20 \
-        --output-mp4 /tmp/k8_dry_stream_test.mp4 \
-        --frame-dump-path /tmp/k8_dry_stream_frame.png
+        --mode dry-stream --cast trio --duration-sec 15 \
+        --output-mp4 /tmp/trio_live_preview.mp4 \
+        --frame-dump-path /tmp/trio_live_stage_preview.png
 
     # Autonomous Bilibili go-live (automatically calls stopLive in finally:)
     ./.venv/bin/python scripts/launch_headless_live.py \
-        --mode go-live --duration-sec 600 --area-id 1062 \
-        --title "【双AI合租直播】大肥鱼×Gemini娘现场策划018期！15粉冲1000粉" \
-        --record-dir output/live_sessions/ep018
+        --mode go-live --cast trio --duration-sec 3600 --area-id 1062 \
+        --poll-topic "下期主控弹幕公投" \
+        --poll-options "大肥鱼,Gemini娘,弱音大姐头" \
+        --record-dir output/live_sessions/trio_show
 """
 
 from __future__ import annotations
@@ -26,10 +27,11 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import signal
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -40,7 +42,15 @@ from core.live_studio.bilibili_live_api import (
     BilibiliLiveController,
     scrub_rtmp_secrets,
 )
-from core.live_studio.director import DualAILiveDirector, HighlightTracker
+from core.live_studio.director import (
+    DEFAULT_POLL_OPTIONS,
+    DEFAULT_POLL_TOPIC,
+    DUAL_CAST,
+    TRIO_CAST,
+    DualAILiveDirector,
+    HighlightTracker,
+    SpeakerId,
+)
 from core.live_studio.headless_streamer import (
     DEFAULT_FPS,
     HeadlessLiveStreamer,
@@ -51,7 +61,8 @@ from core.live_studio.headless_streamer import (
 
 logger = logging.getLogger("contentflow.headless_live")
 
-DEFAULT_SHOW_TITLE = "【双AI合租直播】大肥鱼×Gemini娘现场策划018期！15粉冲1000粉"
+DEFAULT_SHOW_TITLE = "【铁三角AI合租直播】大肥鱼×Gemini娘×弱音现场弹幕公投！15粉冲1000粉"
+_POLL_SPLIT_RE = re.compile(r"[,，|/]+")
 
 
 def get_available_ram_mib() -> Optional[int]:
@@ -89,6 +100,24 @@ def emit_status_line(tag: str, payload: Dict[str, Any]) -> str:
     return line
 
 
+def parse_poll_options(raw: str) -> Tuple[str, ...]:
+    """Parse 2-3 comma/slash-separated poll option labels with sanitization."""
+    parts = [
+        scrub_rtmp_secrets(token).replace("@", "").strip()[:24]
+        for token in _POLL_SPLIT_RE.split(raw or "")
+        if token.strip()
+    ]
+    cleaned = tuple(p for p in parts if p)
+    if len(cleaned) < 2 or len(cleaned) > 3:
+        raise ValueError("--poll-options must specify 2 or 3 non-empty options separated by commas.")
+    return cleaned
+
+
+def resolve_cast(cast_mode: str) -> Tuple[SpeakerId, ...]:
+    """Map `--cast` CLI value (`dual` / `trio`) to canonical speaker tuple."""
+    return DUAL_CAST if cast_mode == "dual" else TRIO_CAST
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Launch ContentFlow 100% Headless Zero-Mic Autonomous Bilibili Livestream Engine",
@@ -98,6 +127,24 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("dry-stream", "go-live"),
         default="dry-stream",
         help="Run local MP4 verification (`dry-stream`) or live Bilibili RTMP broadcast (`go-live`).",
+    )
+    parser.add_argument(
+        "--cast",
+        choices=("dual", "trio"),
+        default="trio",
+        help="Broadcast lineup: `trio` (大肥鱼+Gemini娘+弱音ハク, default) or `dual` (大肥鱼+Gemini娘).",
+    )
+    parser.add_argument(
+        "--poll-topic",
+        type=str,
+        default=DEFAULT_POLL_TOPIC,
+        help="Live danmaku poll topic displayed in the right-side widget.",
+    )
+    parser.add_argument(
+        "--poll-options",
+        type=str,
+        default=",".join(DEFAULT_POLL_OPTIONS),
+        help="Comma-separated 2-3 option labels for 扣1/扣2/扣3 danmaku voting.",
     )
     parser.add_argument(
         "--duration-sec",
@@ -192,6 +239,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--follower-count must be non-negative.")
     if args.follower_goal <= 0:
         parser.error("--follower-goal must be positive.")
+    try:
+        args.parsed_poll_options = parse_poll_options(args.poll_options)
+    except ValueError as exc:
+        parser.error(str(exc))
+    args.resolved_cast = resolve_cast(args.cast)
     return args
 
 
@@ -209,6 +261,14 @@ async def run_headless_live(
             avail_mib,
         )
 
+    cast_tuple: Tuple[SpeakerId, ...] = getattr(args, "resolved_cast", resolve_cast(getattr(args, "cast", "trio")))
+    poll_options: Tuple[str, ...] = getattr(
+        args,
+        "parsed_poll_options",
+        parse_poll_options(getattr(args, "poll_options", ",".join(DEFAULT_POLL_OPTIONS))),
+    )
+    poll_topic: str = str(getattr(args, "poll_topic", DEFAULT_POLL_TOPIC) or DEFAULT_POLL_TOPIC)
+
     record_dir = Path(args.record_dir) if args.record_dir else None
     hl_jsonl = (record_dir / "live_highlights.jsonl") if record_dir is not None else None
     tracker = HighlightTracker(jsonl_path=hl_jsonl)
@@ -216,12 +276,16 @@ async def run_headless_live(
         highlight_tracker=tracker,
         follower_count=args.follower_count,
         follower_goal=args.follower_goal,
+        cast=cast_tuple,
+        poll_topic=poll_topic,
+        poll_options=poll_options,
     )
     renderer = HeadlessStageRenderer(
         fps=args.fps,
         follower_count=args.follower_count,
         follower_goal=args.follower_goal,
         show_title=args.title,
+        cast=cast_tuple,
     )
     mixer = SyntheticAudioMixer(
         fps=args.fps,

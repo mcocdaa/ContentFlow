@@ -30,21 +30,26 @@ from aiohttp.test_utils import TestClient, TestServer
 from core.live_studio.danmaku import _compute_wbi_params
 from core.live_studio import (
     AI_DISCLOSURE_BANNER,
+    DUAL_CAST,
     HEADER_SIZE,
     OP_AUTH,
     OP_AUTH_REPLY,
     OP_HEARTBEAT,
     OP_HEARTBEAT_REPLY,
     OP_MESSAGE,
+    PERSONAS,
     REDACTED_TOKEN,
+    TRIO_CAST,
     BilibiliDanmakuClient,
     DanmakuEvent,
     DualAILiveDirector,
     HighlightTracker,
     LiveComplianceGuard,
+    LivePollState,
     MockDanmakuSource,
     OfflineBanterResponder,
     OpenAICompatibleResponder,
+    PollSnapshot,
     StageServer,
     create_stage_app,
     pack_packet,
@@ -662,3 +667,165 @@ def test_launch_live_mvp_cli_parsing_and_bounded_rehearsal(tmp_path: Path) -> No
     assert int(str(summary["turns_emitted"])) >= 1
     assert summary["clip_plan_path"] is not None
     assert Path(str(summary["clip_plan_path"])).is_file()
+
+
+# ---------------------------------------------------------------------------
+# 6. Trio Cast Rotation, Live Poll, Follower Celebration & Yowane Assets
+# ---------------------------------------------------------------------------
+
+
+def test_trio_cast_rotation_yowane_addressing_and_safety_deflection() -> None:
+    async def _run() -> None:
+        assert "yowane" in PERSONAS
+        assert PERSONAS["yowane"].display_name == "弱音ハク"
+        assert PERSONAS["yowane"].short_name == "弱音"
+        assert PERSONAS["yowane"].accent_color == "#7C3AED"
+        assert PERSONAS["yowane"].asset_key == "yowane"
+
+        guard = LiveComplianceGuard()
+        yowane_deflect = guard.get_deflection("yowane")
+        assert "弱音" in yowane_deflect
+        assert "@" not in yowane_deflect
+
+        director = DualAILiveDirector(responder=OfflineBanterResponder(), cast=TRIO_CAST)
+        turns = [await director.next_turn() for _ in range(6)]
+        speakers = [t.speaker_id for t in turns]
+        assert speakers == ["dafeiyu", "gemini", "yowane", "dafeiyu", "gemini", "yowane"]
+        for i in range(1, len(speakers)):
+            assert speakers[i] != speakers[i - 1]
+        for t in turns:
+            assert "@" not in t.text
+            assert t.text.strip() != ""
+
+        # Explicit addressing picks Yowane regardless of rotation turn
+        for prompt in ("弱音给这段打几分？", "haku 快来看看四毛钱账单", "大姐头评评理！"):
+            reply = await director.process_event(DanmakuEvent(event_type="danmaku", user_alias="围观粉", text=prompt))
+            assert reply.speaker_id == "yowane"
+            assert "@" not in reply.text
+
+        # Dual cast mode strictly alternates only dafeiyu & gemini
+        dual_director = DualAILiveDirector(responder=OfflineBanterResponder(), cast=DUAL_CAST)
+        dual_speakers = [(await dual_director.next_turn()).speaker_id for _ in range(4)]
+        assert dual_speakers == ["dafeiyu", "gemini", "dafeiyu", "gemini"]
+
+    asyncio.run(_run())
+
+
+def test_live_poll_parsing_dedup_vote_switch_and_surge() -> None:
+    poll = LivePollState(
+        topic="下期主控公投",
+        options=("大肥鱼", "Gemini娘", "弱音大姐头"),
+        surge_threshold=3,
+        surge_window_sec=10.0,
+    )
+
+    # Non-vote sentences with numbers must NOT falsely trigger votes
+    for non_vote in ("018期投票拍讨薪！", "15粉冲1000粉", "加油冲呀第1条", "投15个币", "扣1还是扣2好呢"):
+        assert poll.parse_vote(non_vote) is None
+
+    assert poll.parse_vote("扣1") == 1
+    assert poll.parse_vote("投 2 支持猫娘") == 2
+    assert poll.parse_vote("选3") == 3
+    assert poll.parse_vote("1") == 1
+    assert poll.parse_vote("222!") == 2
+    assert poll.parse_vote("3") == 3
+
+    # Per-viewer deduplication & vote switching (never inflates total votes)
+    assert poll.record_vote("观众A", "扣1", now=100.0) == 1
+    assert poll.record_vote("观众A", "1", now=101.0) == 1  # Same choice -> no duplicate count
+    snap1 = poll.snapshot(now=101.0)
+    assert isinstance(snap1, PollSnapshot)
+    assert snap1.counts == (1, 0, 0)
+    assert snap1.total_votes == 1
+    assert snap1.leader_index == 1
+    assert snap1.recent_surge is False
+
+    # Viewer A switches vote from 1 -> 3
+    assert poll.record_vote("观众A", "扣3 弱音大姐头冲", now=102.0) == 3
+    snap2 = poll.snapshot(now=102.0)
+    assert snap2.counts == (0, 0, 1)
+    assert snap2.total_votes == 1
+    assert snap2.leader_index == 3
+    assert snap2.leader_label == "弱音大姐头"
+
+    # Two more distinct votes within window trigger surge highlight
+    assert poll.record_vote("观众B", "2", now=103.0) == 2
+    assert poll.record_vote("观众C", "扣3", now=104.0) == 3
+    snap3 = poll.snapshot(now=104.0)
+    assert snap3.counts == (0, 1, 2)
+    assert snap3.total_votes == 3
+    assert snap3.leader_index == 3
+    assert snap3.recent_surge is True
+    assert poll.consume_surge(now=104.0) is True
+    assert poll.consume_surge(now=105.0) is False  # Cooldown avoids duplicate burst highlights
+
+    # Integrated inside DualAILiveDirector.enqueue_event
+    director = DualAILiveDirector(responder=OfflineBanterResponder(), cast=TRIO_CAST)
+    assert director.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="小蓝", text="扣1")) is not None
+    assert director.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="小红", text="扣3")) is not None
+    assert director.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="小蓝", text="扣3")) is not None
+    assert director.poll.snapshot().counts == (0, 0, 2)
+    assert director.poll.snapshot().total_votes == 2
+
+
+def test_notify_follower_count_triggers_celebration_banner_and_priority_turn() -> None:
+    async def _run() -> None:
+        director = DualAILiveDirector(
+            responder=OfflineBanterResponder(),
+            follower_count=15,
+            follower_goal=1000,
+            celebration_duration_sec=10.0,
+        )
+        # Same or lower count does not trigger celebration
+        assert director.notify_follower_count(15, now=1000.0) is None
+        assert director.get_active_celebration(now=1000.0) == ""
+
+        # Enqueue regular danmaku first, then follower growth -> celebration preempts danmaku!
+        director.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="普通观众", text="加油直播！"))
+        banner = director.notify_follower_count(18, now=1000.0)
+        assert banner is not None
+        assert "+3" in banner
+        assert "18" in banner
+        assert "@" not in banner
+        assert director.follower_count == 18
+        assert director.get_active_celebration(now=1005.0) == banner
+        assert director.celebration_remaining_sec(now=1005.0) == 5.0
+        assert director.get_active_celebration(now=1015.0) == ""
+
+        first_turn = await director.next_turn()
+        assert first_turn.trigger_type == "system"
+        assert first_turn.is_highlight is True
+        assert first_turn.highlight_category == "follower_milestone"
+        assert "@" not in first_turn.text
+
+        second_turn = await director.next_turn()
+        assert second_turn.trigger_type == "danmaku"
+
+    asyncio.run(_run())
+
+
+def test_stage_server_yowane_asset_and_poll_status() -> None:
+    async def _run() -> None:
+        director = DualAILiveDirector(responder=OfflineBanterResponder(), cast=TRIO_CAST)
+        director.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="投票粉", text="扣3"))
+        stage = StageServer(director=director, mode="mock", room_id=None)
+        app = create_stage_app(stage)
+
+        async with TestClient(TestServer(app)) as client:
+            resp_yowane = await client.get("/assets/characters/yowane")
+            assert resp_yowane.status == 200
+            assert len(await resp_yowane.read()) > 10_000
+
+            resp_alias = await client.get("/assets/characters/yowane_haku")
+            assert resp_alias.status == 200
+
+            resp_status = await client.get("/api/status")
+            assert resp_status.status == 200
+            status = await resp_status.json()
+            assert status["assets"]["yowane"] == "/assets/characters/yowane"
+            assert status["cast"] == ["dafeiyu", "gemini", "yowane"]
+            assert status["poll"]["total_votes"] == 1
+            assert status["poll"]["counts"] == [0, 0, 1]
+            assert status["poll"]["leader_index"] == 3
+
+    asyncio.run(_run())

@@ -34,6 +34,8 @@ CHARACTER_ASSETS: Final[Dict[str, str]] = {
     "deepseek_dafeiyu": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png",
     "gemini": "library/characters/gemini_neko/gemini_canonical_full.png",
     "gemini_neko": "library/characters/gemini_neko/gemini_canonical_full.png",
+    "yowane": "library/characters/yowane_haku/master_reference.jpg",
+    "yowane_haku": "library/characters/yowane_haku/master_reference.jpg",
 }
 
 
@@ -96,12 +98,16 @@ class StageServer:
             "highlight_count": len(self.director.highlight_tracker.moments),
             "follower_count": self.director.follower_count,
             "follower_goal": self.director.follower_goal,
+            "cast": list(self.director.cast),
+            "poll": self.director.poll.snapshot().to_dict(),
+            "celebration": self.director.get_active_celebration(),
             "llm_mode": self.director.responder.backend_name,
             "ai_disclosure_banner": AI_DISCLOSURE_BANNER,
             "safety": self.director.safety_guard.get_stats(),
             "assets": {
                 "dafeiyu": "/assets/characters/dafeiyu",
                 "gemini": "/assets/characters/gemini",
+                "yowane": "/assets/characters/yowane",
             },
         }
 

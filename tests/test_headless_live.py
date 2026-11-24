@@ -35,18 +35,22 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from core.audio_router import VERIFIED_FREE_EDGE_TTS_VOICES
 from core.auth_vault import AuthVault
 from core.live_studio import (
     AI_DISCLOSURE_BANNER,
     BYTES_PER_VIDEO_FRAME,
+    DUAL_CAST,
     FACE_AUTH_REQUIRED_CODE,
     REDACTED_RTMP_TOKEN,
     REDACTED_TOKEN,
+    TRIO_CAST,
     BilibiliLiveController,
     DualAILiveDirector,
     HeadlessLiveStreamer,
     HeadlessStageRenderer,
     HighlightTracker,
+    LivePollState,
     OfflineBanterResponder,
     PersonaTurn,
     RoomStatus,
@@ -55,6 +59,7 @@ from core.live_studio import (
     scrub_rtmp_secrets,
     synthesize_offline_fallback_pcm,
 )
+from core.live_studio.headless_streamer import VOICE_MAP, VOICE_STYLE_MAP
 from scripts import launch_headless_live
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -720,3 +725,118 @@ def test_launch_headless_live_cli_parsing_and_redacted_status(capsys: pytest.Cap
     parsed = json.loads(captured.split(" ", 1)[1])
     assert parsed["ok"] is True
     assert parsed["banner"] == AI_DISCLOSURE_BANNER
+
+
+# ---------------------------------------------------------------------------
+# 7. Trio Voice Alignment, Offline Yowane Synth, Trio Stage & CLI Options
+# ---------------------------------------------------------------------------
+
+
+def test_voice_map_subset_of_verified_edge_tts_and_yowane_offline_distinct() -> None:
+    assert set(VOICE_MAP.keys()) == {"dafeiyu", "gemini", "yowane"}
+    assert set(VOICE_STYLE_MAP.keys()) == {"dafeiyu", "gemini", "yowane"}
+    assert set(VOICE_MAP.values()).issubset(VERIFIED_FREE_EDGE_TTS_VOICES)
+    assert VOICE_MAP["dafeiyu"] == "zh-CN-XiaoxiaoNeural"
+    assert VOICE_MAP["gemini"] == "zh-CN-XiaoyiNeural"
+    assert VOICE_MAP["yowane"] == "zh-TW-HsiaoYuNeural"
+    assert VOICE_STYLE_MAP["yowane"] == ("+0%", "-4Hz")
+
+    sample_text = "弱音大姐头冷面查账，请观众扣一扣二扣三投票决定下期主控！"
+    fish_pcm = synthesize_offline_fallback_pcm(sample_text, "dafeiyu")
+    gem_pcm = synthesize_offline_fallback_pcm(sample_text, "gemini")
+    yow_pcm = synthesize_offline_fallback_pcm(sample_text, "yowane")
+
+    assert yow_pcm.ndim == 2 and yow_pcm.shape[1] == 2
+    assert float(np.sqrt(np.mean(yow_pcm * yow_pcm))) > 0.05
+    # Distinct lower-mid harmonic profile from both dafeiyu and gemini
+    min_len = min(len(fish_pcm), len(gem_pcm), len(yow_pcm), 9600)
+    assert not np.allclose(yow_pcm[:min_len], fish_pcm[:min_len])
+    assert not np.allclose(yow_pcm[:min_len], gem_pcm[:min_len])
+    # Centered stereo panning for Yowane vs asymmetric left/right for dafeiyu/gemini
+    assert np.allclose(yow_pcm[:min_len, 0], yow_pcm[:min_len, 1], atol=1e-5)
+
+
+def test_trio_headless_stage_renderer_1080p_poll_widget_and_celebration() -> None:
+    renderer = HeadlessStageRenderer(cast=TRIO_CAST, follower_count=18, follower_goal=1000)
+    assert renderer.cast == TRIO_CAST
+    assert renderer.loaded_assets["background"] != "gradient_fallback"
+    assert renderer.loaded_assets["dafeiyu"].startswith(("cutout:", "canonical:"))
+    assert renderer.loaded_assets["gemini"].startswith(("cutout:", "canonical:"))
+    assert renderer.loaded_assets["yowane"].startswith(("cutout:", "canonical:"))
+    # Main repo cutout discovery should resolve Yowane solo rooftop cutout inside share worktree
+    assert "yowane_rooftop_hero_cutout.png" in renderer.loaded_assets["yowane"]
+
+    poll = LivePollState(topic="下期主控弹幕公投", options=("大肥鱼", "Gemini娘", "弱音大姐头"))
+    poll.record_vote("观众1", "扣1", now=10.0)
+    poll.record_vote("观众2", "扣2", now=11.0)
+    poll.record_vote("观众3", "扣3", now=12.0)
+    poll.record_vote("观众4", "扣3", now=13.0)
+    snap = poll.snapshot(now=13.0)
+
+    turn_yowane = PersonaTurn(
+        turn_id=3,
+        speaker_id="yowane",
+        speaker_name="弱音ハク",
+        text="推了推眼镜：目前弱音大姐头票数领先，四毛钱经费归我统筹。",
+        mood="focused",
+        is_highlight=True,
+        highlight_category="script_pitch",
+    )
+    sample_dm = [
+        {"event_type": "danmaku", "user_alias": "观众3", "text": "扣3 弱音大姐头冲鸭！"},
+        {"event_type": "gift", "user_alias": "投喂官", "text": "投喂了 小心心 x3"},
+    ]
+
+    frame_base = renderer.render_frame(
+        frame_index=10,
+        active_speaker="yowane",
+        current_turn=turn_yowane,
+        recent_danmaku=sample_dm,
+        audio_level=0.72,
+        poll_snapshot=snap,
+    )
+    frame_celeb = renderer.render_frame(
+        frame_index=10,
+        active_speaker="yowane",
+        current_turn=turn_yowane,
+        recent_danmaku=sample_dm,
+        audio_level=0.72,
+        poll_snapshot=snap,
+        celebration_text="涨粉喜报！新添 +3 位小伙伴，冲千粉进度 18 / 1,000 粉！",
+    )
+    assert frame_base.shape == (1080, 1920, 3)
+    assert frame_base.dtype == np.uint8
+    assert float(frame_base.mean()) > 90.0
+    assert not np.array_equal(frame_base, frame_celeb)
+
+    # Dual cast layout remains supported
+    dual_renderer = HeadlessStageRenderer(cast=DUAL_CAST)
+    assert dual_renderer.cast == DUAL_CAST
+    dual_frame = dual_renderer.render_frame(frame_index=0, active_speaker="dafeiyu")
+    assert dual_frame.shape == (1080, 1920, 3)
+
+
+def test_launch_headless_live_cli_cast_and_poll_args() -> None:
+    default_args = launch_headless_live.parse_args([])
+    assert default_args.cast == "trio"
+    assert default_args.resolved_cast == TRIO_CAST
+    assert default_args.parsed_poll_options == ("大肥鱼", "Gemini娘", "弱音大姐头")
+    assert "@" not in default_args.title
+
+    custom_args = launch_headless_live.parse_args(
+        [
+            "--cast",
+            "dual",
+            "--poll-topic",
+            "下期去哪拍",
+            "--poll-options",
+            "赛博法庭，打歌摄影棚",
+        ]
+    )
+    assert custom_args.cast == "dual"
+    assert custom_args.resolved_cast == DUAL_CAST
+    assert custom_args.poll_topic == "下期去哪拍"
+    assert custom_args.parsed_poll_options == ("赛博法庭", "打歌摄影棚")
+
+    with pytest.raises(SystemExit):
+        launch_headless_live.parse_args(["--poll-options", "只有一个选项"])

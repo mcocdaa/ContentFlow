@@ -45,11 +45,13 @@ from core.live_studio.bilibili_live_api import (
     StartLiveResult,
     scrub_rtmp_secrets,
 )
-from core.live_studio.danmaku import BilibiliDanmakuClient, MockDanmakuSource
+from core.live_studio.danmaku import BilibiliDanmakuClient, DanmakuEvent, MockDanmakuSource
 from core.live_studio.director import (
     PERSONAS,
+    TRIO_CAST,
     DualAILiveDirector,
     PersonaTurn,
+    PollSnapshot,
     SpeakerId,
 )
 from core.live_studio.safety import AI_DISCLOSURE_BANNER, redact_pii
@@ -72,20 +74,45 @@ DEFAULT_STUDIO_BG_REL: Final[str] = "projects/017_dafeiyu_gemini_channel_war_ep1
 CHARACTER_CUTOUT_RELS: Final[Dict[SpeakerId, str]] = {
     "dafeiyu": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front_cutout.png",
     "gemini": "projects/015_gemini_neko_cyber_worker_vlog/output/cutouts/neko_vlog_hero_cutout.png",
+    "yowane": "projects/013_yowane_rooftop_lixicheng_march/output/cutouts/yowane_rooftop_hero_cutout.png",
 }
 CHARACTER_CANONICAL_RELS: Final[Dict[SpeakerId, str]] = {
     "dafeiyu": "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png",
     "gemini": "library/characters/gemini_neko/gemini_canonical_full.png",
+    "yowane": "library/characters/yowane_haku/master_reference.jpg",
 }
 
 VOICE_MAP: Final[Dict[SpeakerId, str]] = {
     "dafeiyu": "zh-CN-XiaoxiaoNeural",
     "gemini": "zh-CN-XiaoyiNeural",
+    "yowane": "zh-TW-HsiaoYuNeural",
 }
 VOICE_STYLE_MAP: Final[Dict[SpeakerId, Tuple[str, str]]] = {
     "dafeiyu": ("+4%", "-2Hz"),
     "gemini": ("+8%", "+4Hz"),
+    "yowane": ("+0%", "-4Hz"),
 }
+
+SPEAKER_ACCENT_RGB: Final[Dict[SpeakerId, Tuple[int, int, int]]] = {
+    "dafeiyu": (37, 99, 235),
+    "gemini": (236, 72, 153),
+    "yowane": (124, 58, 237),
+}
+SPEAKER_EQ_LIGHT_RGB: Final[Dict[SpeakerId, Tuple[int, int, int]]] = {
+    "dafeiyu": (56, 189, 248),
+    "gemini": (244, 114, 182),
+    "yowane": (167, 139, 250),
+}
+SPEAKER_EQ_PEAK_RGB: Final[Dict[SpeakerId, Tuple[int, int, int]]] = {
+    "dafeiyu": (37, 99, 235),
+    "gemini": (219, 39, 119),
+    "yowane": (109, 40, 217),
+}
+POLL_BAR_COLORS: Final[Tuple[Tuple[int, int, int], ...]] = (
+    (37, 99, 235),
+    (236, 72, 153),
+    (124, 58, 237),
+)
 
 MOOD_LABELS: Final[Dict[str, str]] = {
     "lively": "元气互动",
@@ -250,7 +277,7 @@ def detect_video_encoder(ffmpeg_bin: str = "ffmpeg") -> Literal["h264_nvenc", "l
 
 
 class HeadlessStageRenderer:
-    """High-speed 1920x1080 Pillow + NumPy broadcast canvas renderer for Dual-AI livestreams."""
+    """High-speed 1920x1080 Pillow + NumPy broadcast canvas renderer for Dual/Trio-AI livestreams."""
 
     def __init__(
         self,
@@ -261,8 +288,9 @@ class HeadlessStageRenderer:
         repo_root: Optional[Path] = None,
         follower_count: int = 15,
         follower_goal: int = 1000,
-        show_title: str = "双AI合租直播 · 大肥鱼 × Gemini娘",
+        show_title: str = "铁三角AI合租直播 · 大肥鱼 × 弱音 × Gemini娘",
         font_path: Optional[Path] = None,
+        cast: Sequence[SpeakerId] = TRIO_CAST,
     ) -> None:
         self.width = width
         self.height = height
@@ -275,9 +303,16 @@ class HeadlessStageRenderer:
             if main_root is not None and main_root not in self._asset_roots:
                 self._asset_roots.append(main_root)
 
+        normalized_cast: List[SpeakerId] = []
+        for sid in cast:
+            if sid in PERSONAS and sid not in normalized_cast:
+                normalized_cast.append(sid)
+        self.cast: Tuple[SpeakerId, ...] = tuple(normalized_cast) if normalized_cast else TRIO_CAST
+        self._is_trio: bool = len(self.cast) >= 3
+
         self.follower_count = max(0, int(follower_count))
         self.follower_goal = max(1, int(follower_goal))
-        self.show_title = scrub_rtmp_secrets(show_title).replace("@", "").strip() or "双AI合租演播厅"
+        self.show_title = scrub_rtmp_secrets(show_title).replace("@", "").strip() or "AI合租演播厅"
 
         self.font_path: Optional[Path] = font_path or resolve_cjk_font_path()
         self._font_title = _load_font(self.font_path, 24)
@@ -288,6 +323,9 @@ class HeadlessStageRenderer:
         self._font_dm_header = _load_font(self.font_path, 23)
         self._font_dm_user = _load_font(self.font_path, 19)
         self._font_dm_body = _load_font(self.font_path, 21)
+        self._font_poll_title = _load_font(self.font_path, 20)
+        self._font_poll_opt = _load_font(self.font_path, 18)
+        self._font_celeb = _load_font(self.font_path, 22)
         self._font_sub_speaker = _load_font(self.font_path, 26)
         self._font_sub_text = _load_font(self.font_path, 34)
 
@@ -296,8 +334,7 @@ class HeadlessStageRenderer:
         # Pre-baked layers for sub-10ms per-frame compositing
         self._base_bg = self._build_base_canvas()
         self._sprites: Dict[SpeakerId, Dict[str, Image.Image]] = {
-            "dafeiyu": self._build_character_sprites("dafeiyu"),
-            "gemini": self._build_character_sprites("gemini"),
+            sid: self._build_character_sprites(sid) for sid in self.cast
         }
         self._milestone_cache_key: Tuple[int, int] = (-1, -1)
         self._milestone_overlay: Optional[Image.Image] = None
@@ -305,8 +342,14 @@ class HeadlessStageRenderer:
         self._subtitle_cache_key: Tuple[int, str, str, str, bool] = (-1, "", "", "", False)
         self._subtitle_overlay: Optional[Image.Image] = None
 
-        self._danmaku_cache_key: Tuple[Tuple[str, str, str], ...] = ()
+        self._danmaku_cache_key: Tuple[int, Tuple[Tuple[str, str, str], ...]] = (0, ())
         self._danmaku_overlay: Optional[Image.Image] = None
+
+        self._poll_cache_key: Tuple[Any, ...] = ()
+        self._poll_overlay: Optional[Image.Image] = None
+
+        self._celebration_cache_key: str = ""
+        self._celebration_overlay: Optional[Image.Image] = None
 
     def _find_asset(self, rel_path: str) -> Optional[Path]:
         for root in self._asset_roots:
@@ -367,9 +410,14 @@ class HeadlessStageRenderer:
         wdraw = ImageDraw.Draw(wash)
         # Soft bright top bar gradient tint
         wdraw.rectangle([(0, 0), (self.width, 102)], fill=(255, 255, 255, 76))
-        # Subtle stage spotlights behind left & right-center characters
-        wdraw.ellipse([(80, 140), (700, 860)], fill=(56, 189, 248, 32))
-        wdraw.ellipse([(690, 140), (1330, 860)], fill=(244, 114, 182, 34))
+        # Subtle stage spotlights behind characters
+        if self._is_trio:
+            wdraw.ellipse([(40, 150), (490, 840)], fill=(56, 189, 248, 34))
+            wdraw.ellipse([(460, 150), (910, 840)], fill=(167, 139, 250, 34))
+            wdraw.ellipse([(880, 150), (1350, 840)], fill=(244, 114, 182, 34))
+        else:
+            wdraw.ellipse([(80, 140), (700, 860)], fill=(56, 189, 248, 32))
+            wdraw.ellipse([(690, 140), (1330, 860)], fill=(244, 114, 182, 34))
         canvas = Image.alpha_composite(canvas, wash)
 
         overlay = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
@@ -511,24 +559,27 @@ class HeadlessStageRenderer:
 
     def _make_vector_avatar_fallback(self, speaker_id: SpeakerId, accent_rgb: Tuple[int, int, int]) -> Image.Image:
         """Zero-asset stylized avatar card so renderer stays functional even in empty test dirs."""
-        tw, th = 440, 540
+        tw, th = (360, 470) if self._is_trio else (440, 540)
         card = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
         draw = ImageDraw.Draw(card)
         draw.rounded_rectangle(
             [(6, 6), (tw - 7, th - 7)],
-            radius=36,
+            radius=34,
             fill=(255, 255, 255, 236),
             outline=(*accent_rgb, 255),
             width=8,
         )
-        draw.ellipse([(100, 86), (340, 326)], fill=(*accent_rgb, 220))
-        label = "大肥鱼" if speaker_id == "dafeiyu" else "Gemini娘"
+        circle_d = min(220, tw - 140)
+        cx0 = (tw - circle_d) // 2
+        cy0 = 76
+        draw.ellipse([(cx0, cy0), (cx0 + circle_d, cy0 + circle_d)], fill=(*accent_rgb, 220))
+        label = PERSONAS[speaker_id].short_name
         w = draw.textlength(label, font=self._font_sub_text)
-        draw.text(((tw - w) / 2, 370), label, font=self._font_sub_text, fill=(15, 23, 42, 255))
+        draw.text(((tw - w) / 2, cy0 + circle_d + 40), label, font=self._font_sub_text, fill=(15, 23, 42, 255))
         return card
 
     def _build_character_sprites(self, speaker_id: SpeakerId) -> Dict[str, Image.Image]:
-        accent_rgb = (37, 99, 235) if speaker_id == "dafeiyu" else (236, 72, 153)
+        accent_rgb = SPEAKER_ACCENT_RGB.get(speaker_id, (37, 99, 235))
         cutout_path = self._find_asset(CHARACTER_CUTOUT_RELS[speaker_id])
         canonical_path = self._find_asset(CHARACTER_CANONICAL_RELS[speaker_id])
 
@@ -547,10 +598,20 @@ class HeadlessStageRenderer:
                         rgba = rgba.crop((0, 0, w, int(h * 0.59)))
                         w, h = rgba.size
                     elif ratio > 1.45:
-                        rgba = rgba.crop((0, 0, w, int(h * 0.66)))
+                        crop_frac = 0.72 if speaker_id == "yowane" else 0.66
+                        rgba = rgba.crop((0, 0, w, int(h * crop_frac)))
                         w, h = rgba.size
-                    target_h = 700 if speaker_id == "dafeiyu" else 620
-                    max_w = 600 if speaker_id == "dafeiyu" else 690
+
+                    if self._is_trio:
+                        trio_dims: Dict[SpeakerId, Tuple[int, int]] = {
+                            "dafeiyu": (575, 370),
+                            "yowane": (555, 395),
+                            "gemini": (510, 470),
+                        }
+                        target_h, max_w = trio_dims.get(speaker_id, (560, 390))
+                    else:
+                        target_h = 700 if speaker_id == "dafeiyu" else 620
+                        max_w = 600 if speaker_id == "dafeiyu" else 690
                     scale = min(target_h / max(1, h), max_w / max(1, w))
                     nw = max(1, int(round(w * scale)))
                     nh = max(1, int(round(h * scale)))
@@ -562,7 +623,8 @@ class HeadlessStageRenderer:
         if fg_rgba is None and canonical_path is not None:
             try:
                 with Image.open(canonical_path) as raw:
-                    fg_rgba = self._make_framed_portrait_card(raw, accent_rgb)
+                    card_size = (370, 520) if self._is_trio else (480, 620)
+                    fg_rgba = self._make_framed_portrait_card(raw, accent_rgb, target_size=card_size)
                     self.loaded_assets[speaker_id] = f"canonical:{canonical_path}"
             except Exception as exc:
                 logger.warning("Canonical portrait load failed for %s (%s); using vector fallback", speaker_id, exc)
@@ -610,19 +672,155 @@ class HeadlessStageRenderer:
         self._milestone_overlay = img
         return img
 
-    def _get_danmaku_overlay(self, recent_danmaku: Sequence[Dict[str, Any]]) -> Image.Image:
+    @staticmethod
+    def _normalize_poll_snapshot(raw: Optional[PollSnapshot | Dict[str, Any]]) -> Optional[PollSnapshot]:
+        if raw is None:
+            return None
+        if isinstance(raw, PollSnapshot):
+            return raw
+        if isinstance(raw, dict):
+            raw_opts = raw.get("options") or ()
+            labels: List[str] = []
+            counts: List[int] = []
+            for item in raw_opts:
+                if isinstance(item, dict):
+                    labels.append(str(item.get("label") or ""))
+                    counts.append(max(0, int(item.get("votes") or 0)))
+                else:
+                    labels.append(str(item))
+            if not counts and isinstance(raw.get("counts"), (list, tuple)):
+                counts = [max(0, int(c)) for c in raw["counts"]]
+            if len(labels) < 2 or len(counts) != len(labels):
+                return None
+            total = sum(counts)
+            leader_idx = raw.get("leader_index")
+            return PollSnapshot(
+                topic=str(raw.get("topic") or "实时弹幕公投"),
+                options=tuple(labels[:3]),
+                counts=tuple(counts[:3]),
+                total_votes=total,
+                leader_index=int(leader_idx) if isinstance(leader_idx, int) else None,
+                leader_label=str(raw.get("leader_label") or ""),
+                recent_surge=bool(raw.get("recent_surge", False)),
+            )
+        return None
+
+    def _get_poll_overlay(self, snap: PollSnapshot) -> Image.Image:
+        key: Tuple[Any, ...] = (snap.topic, snap.options, snap.counts, snap.total_votes, snap.recent_surge)
+        if self._poll_overlay is not None and self._poll_cache_key == key:
+            return self._poll_overlay
+
+        panel_w = 468
+        opt_count = len(snap.options)
+        panel_h = 52 + opt_count * 44
+        img = Image.new("RGBA", (panel_w, panel_h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        border_rgba = (245, 158, 11, 245) if snap.recent_surge else (124, 58, 237, 210)
+        bg_rgba = (255, 251, 235, 242) if snap.recent_surge else (245, 243, 255, 240)
+        draw.rounded_rectangle(
+            [(0, 0), (panel_w - 1, panel_h - 1)],
+            radius=18,
+            fill=bg_rgba,
+            outline=border_rgba,
+            width=2,
+        )
+
+        # Header row: topic on left, total votes / surge badge on right
+        badge_text = f"热度飙升 · {snap.total_votes}票" if snap.recent_surge else f"共 {snap.total_votes} 票"
+        badge_bg = (217, 119, 6, 255) if snap.recent_surge else (79, 70, 229, 255)
+        badge_w = int(draw.textlength(badge_text, font=self._font_poll_opt)) + 20
+        bx0 = panel_w - 12 - badge_w
+        draw.rounded_rectangle([(bx0, 8), (panel_w - 12, 34)], radius=12, fill=badge_bg)
+        draw.text((bx0 + 10, 10), badge_text, font=self._font_poll_opt, fill=(255, 255, 255, 255))
+
+        topic_clean = redact_pii(snap.topic).replace("@", "").strip() or "实时弹幕公投"
+        topic_lines = _wrap_text_by_width(
+            draw, topic_clean, self._font_poll_title, max_width=max(120, bx0 - 24), max_lines=1
+        )
+        draw.text(
+            (14, 9),
+            topic_lines[0] if topic_lines else "实时弹幕公投",
+            font=self._font_poll_title,
+            fill=(30, 41, 59, 255),
+        )
+
+        # Option rows: high-contrast text above color-coded progress bar
+        row_y = 44
+        bar_x0, bar_x1 = 14, panel_w - 14
+        bar_w = bar_x1 - bar_x0
+        for idx, label in enumerate(snap.options):
+            votes = snap.counts[idx]
+            ratio = (votes / snap.total_votes) if snap.total_votes > 0 else 0.0
+            pct_int = int(round(ratio * 100))
+            is_leader = snap.total_votes > 0 and snap.leader_index == (idx + 1)
+            bar_rgb = POLL_BAR_COLORS[idx % len(POLL_BAR_COLORS)]
+
+            safe_label = redact_pii(label).replace("@", "").strip()[:14]
+            left_text = f"扣{idx + 1} {safe_label}"
+            right_text = f"{'★ ' if is_leader else ''}{votes}票 ({pct_int}%)"
+            right_w = draw.textlength(right_text, font=self._font_poll_opt)
+            draw.text((bar_x0, row_y), left_text, font=self._font_poll_opt, fill=(15, 23, 42, 255))
+            draw.text(
+                (bar_x1 - right_w, row_y),
+                right_text,
+                font=self._font_poll_opt,
+                fill=(*bar_rgb, 255) if is_leader else (71, 85, 105, 255),
+            )
+
+            track_y0, track_y1 = row_y + 24, row_y + 35
+            draw.rounded_rectangle([(bar_x0, track_y0), (bar_x1, track_y1)], radius=6, fill=(226, 232, 240, 255))
+            if votes > 0:
+                fill_w = max(14, int(round(bar_w * ratio)))
+                draw.rounded_rectangle(
+                    [(bar_x0, track_y0), (min(bar_x1, bar_x0 + fill_w), track_y1)],
+                    radius=6,
+                    fill=(*bar_rgb, 245),
+                )
+            row_y += 44
+
+        self._poll_cache_key = key
+        self._poll_overlay = img
+        return img
+
+    def _get_celebration_overlay(self, celebration_text: str) -> Image.Image:
+        safe_text = redact_pii(celebration_text).replace("@", "").strip()
+        if self._celebration_overlay is not None and self._celebration_cache_key == safe_text:
+            return self._celebration_overlay
+
+        w, h = 940, 52
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle(
+            [(0, 0), (w - 1, h - 1)],
+            radius=24,
+            fill=(254, 243, 199, 246),
+            outline=(217, 119, 6, 255),
+            width=3,
+        )
+        draw.rounded_rectangle([(14, 9), (132, 43)], radius=15, fill=(217, 119, 6, 255))
+        draw.text((28, 13), "涨粉喜报", font=self._font_badge, fill=(255, 255, 255, 255))
+        lines = _wrap_text_by_width(draw, safe_text, self._font_celeb, max_width=w - 166, max_lines=1)
+        draw.text((146, 13), lines[0] if lines else safe_text, font=self._font_celeb, fill=(120, 53, 15, 255))
+
+        self._celebration_cache_key = safe_text
+        self._celebration_overlay = img
+        return img
+
+    def _get_danmaku_overlay(self, recent_danmaku: Sequence[Dict[str, Any]], *, panel_h: int = 620) -> Image.Image:
         items: List[Tuple[str, str, str]] = []
-        for row in list(recent_danmaku)[-6:]:
+        max_cards = 4 if panel_h < 500 else 6
+        for row in list(recent_danmaku)[-max_cards:]:
             etype = str(row.get("event_type") or "danmaku")
             user = redact_pii(str(row.get("user_alias") or "热心观众")).replace("@", "").strip()[:12] or "热心观众"
             text = redact_pii(str(row.get("text") or "")).replace("@", "").strip()[:48]
             if text:
                 items.append((etype, user, text))
-        key = tuple(items)
+        key = (panel_h, tuple(items))
         if self._danmaku_overlay is not None and self._danmaku_cache_key == key:
             return self._danmaku_overlay
 
-        panel_w, panel_h = 468, 620
+        panel_w = 468
         img = Image.new("RGBA", (panel_w, panel_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
@@ -635,17 +833,24 @@ class HeadlessStageRenderer:
                 width=2,
             )
             draw.text((20, 32), "弹幕互动热身中…", font=self._font_dm_user, fill=(37, 99, 235, 255))
-            draw.text((20, 64), "发弹幕投票 Episode 018 剧本方向！", font=self._font_dm_body, fill=(51, 65, 85, 255))
+            draw.text(
+                (20, 64), "发弹幕扣 1 / 扣 2 / 扣 3 投票下期剧本！", font=self._font_dm_body, fill=(51, 65, 85, 255)
+            )
         else:
-            y = 8
+            y = 6
             for etype, user, text in items:
-                if y > panel_h - 86:
+                if y > panel_h - 82:
                     break
                 if etype == "gift":
                     bg_rgba = (254, 243, 199, 242)
                     border_rgba = (245, 158, 11, 235)
                     tag_text = "礼物"
                     tag_bg = (217, 119, 6, 255)
+                elif etype == "system":
+                    bg_rgba = (254, 249, 195, 244)
+                    border_rgba = (234, 179, 8, 240)
+                    tag_text = "喜报"
+                    tag_bg = (202, 138, 4, 255)
                 elif etype == "enter":
                     bg_rgba = (224, 242, 254, 230)
                     border_rgba = (56, 189, 248, 210)
@@ -658,7 +863,7 @@ class HeadlessStageRenderer:
                     tag_bg = (79, 70, 229, 255)
 
                 wrapped = _wrap_text_by_width(draw, text, self._font_dm_body, max_width=panel_w - 36, max_lines=2)
-                card_h = 46 + len(wrapped) * 26
+                card_h = 44 + len(wrapped) * 26
                 if y + card_h > panel_h:
                     break
                 draw.rounded_rectangle(
@@ -668,14 +873,14 @@ class HeadlessStageRenderer:
                     outline=border_rgba,
                     width=2,
                 )
-                draw.rounded_rectangle([(12, y + 10), (66, y + 34)], radius=9, fill=tag_bg)
-                draw.text((19, y + 11), tag_text, font=self._font_small, fill=(255, 255, 255, 255))
-                draw.text((76, y + 10), user, font=self._font_dm_user, fill=(15, 23, 42, 255))
-                ty = y + 40
+                draw.rounded_rectangle([(12, y + 9), (66, y + 33)], radius=9, fill=tag_bg)
+                draw.text((19, y + 10), tag_text, font=self._font_small, fill=(255, 255, 255, 255))
+                draw.text((76, y + 9), user, font=self._font_dm_user, fill=(15, 23, 42, 255))
+                ty = y + 38
                 for line in wrapped:
                     draw.text((16, ty), line, font=self._font_dm_body, fill=(30, 41, 59, 255))
                     ty += 26
-                y += card_h + 10
+                y += card_h + 9
 
         self._danmaku_cache_key = key
         self._danmaku_overlay = img
@@ -683,11 +888,16 @@ class HeadlessStageRenderer:
 
     def _get_subtitle_overlay(self, turn: Optional[PersonaTurn]) -> Image.Image:
         if turn is None:
-            key = (0, "dafeiyu", "lively", "欢迎进入双AI合租直播间！大肥鱼和Gemini娘正在热身开播！", False)
+            default_line = (
+                "欢迎进入铁三角AI合租直播间！大肥鱼、弱音和Gemini娘正在等你扣1/扣2/扣3投票！"
+                if self._is_trio
+                else "欢迎进入双AI合租直播间！大肥鱼和Gemini娘正在热身开播！"
+            )
+            key = (0, "dafeiyu", "lively", default_line, False)
             speaker_id: SpeakerId = "dafeiyu"
             speaker_name = PERSONAS["dafeiyu"].display_name
             mood = "lively"
-            text = key[3]
+            text = default_line
             is_highlight = False
         else:
             safe_text = redact_pii(turn.text).replace("@", "").strip()
@@ -705,7 +915,8 @@ class HeadlessStageRenderer:
         img = Image.new("RGBA", (dock_w, dock_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        accent = (37, 99, 235, 255) if speaker_id == "dafeiyu" else (236, 72, 153, 255)
+        accent_rgb = SPEAKER_ACCENT_RGB.get(speaker_id, (37, 99, 235))
+        accent = (*accent_rgb, 255)
         name_w = int(draw.textlength(speaker_name, font=self._font_sub_speaker)) + 44
         draw.rounded_rectangle([(0, 4), (name_w, 48)], radius=18, fill=accent)
         draw.text((22, 10), speaker_name, font=self._font_sub_speaker, fill=(255, 255, 255, 255))
@@ -745,12 +956,15 @@ class HeadlessStageRenderer:
         audio_level: float = 0.0,
         follower_count: Optional[int] = None,
         follower_goal: Optional[int] = None,
+        poll_snapshot: Optional[PollSnapshot | Dict[str, Any]] = None,
+        celebration_text: str = "",
     ) -> np.ndarray:
         """Render a single `1920x1080` RGB24 frame (`uint8` ndarray shaped `(1080, 1920, 3)`)."""
         t = frame_index / float(self.fps)
         level = max(0.0, min(1.0, float(audio_level)))
         f_count = self.follower_count if follower_count is None else max(0, int(follower_count))
         f_goal = self.follower_goal if follower_goal is None else max(1, int(follower_goal))
+        resolved_active: SpeakerId = active_speaker if active_speaker in self._sprites else self.cast[0]
 
         frame = self._base_bg.copy()
 
@@ -759,33 +973,52 @@ class HeadlessStageRenderer:
         frame.paste(milestone, (612, 18), milestone)
 
         # 2) Characters (draw inactive first, active on top with vertical bounce & glow halo)
-        # Stage horizontal anchors keep both characters cleanly left of right-side danmaku panel (x < 1370)
-        anchors: Dict[SpeakerId, Tuple[int, int]] = {
-            "dafeiyu": (360, 822),
-            "gemini": (985, 818),
-        }
-        order: Tuple[SpeakerId, SpeakerId] = (
-            ("gemini", "dafeiyu") if active_speaker == "dafeiyu" else ("dafeiyu", "gemini")
-        )
+        # Stage horizontal anchors keep all characters cleanly left of right-side panel (x < 1370)
+        if self._is_trio:
+            anchors: Dict[SpeakerId, Tuple[int, int]] = {
+                "dafeiyu": (265, 814),
+                "yowane": (685, 814),
+                "gemini": (1110, 796),
+            }
+            visual_order: Tuple[SpeakerId, ...] = tuple(
+                sid for sid in ("dafeiyu", "yowane", "gemini") if sid in self._sprites
+            )
+            phase_offsets: Dict[SpeakerId, float] = {"dafeiyu": 0.0, "yowane": 1.1, "gemini": 2.2}
+        else:
+            anchors = {
+                "dafeiyu": (360, 822),
+                "gemini": (985, 818),
+                "yowane": (685, 818),
+            }
+            visual_order = self.cast
+            phase_offsets = {"dafeiyu": 0.0, "gemini": 1.5, "yowane": 0.8}
 
-        for sid in order:
-            is_active = sid == active_speaker
+        draw_order = [sid for sid in visual_order if sid != resolved_active]
+        draw_order.append(resolved_active)
+
+        for sid in draw_order:
+            is_active = sid == resolved_active
             sprite = self._sprites[sid]["active" if is_active else "idle"]
             cx, bottom_y = anchors[sid]
             if is_active:
                 bounce = int(round(-14.0 * abs(math.sin(t * 5.6)) * (0.28 + 0.72 * level)))
             else:
-                bounce = int(round(-3.5 * math.sin(t * 2.1 + (0.0 if sid == "dafeiyu" else 1.5))))
-            paste_x = max(12, cx - sprite.width // 2)
-            paste_y = max(92, bottom_y - sprite.height + bounce)
+                bounce = int(round(-3.5 * math.sin(t * 2.1 + phase_offsets.get(sid, 0.0))))
+            paste_x = max(12, min(1372 - sprite.width, cx - sprite.width // 2))
+            paste_y = max(96, bottom_y - sprite.height + bounce)
             frame.paste(sprite, (paste_x, paste_y), sprite)
 
-        # 3) Character nameplate badges & animated audio waveform visualizer bars
+        # 2b) Optional golden follower celebration capsule banner over top of left stage
+        if celebration_text and celebration_text.strip():
+            celeb_overlay = self._get_celebration_overlay(celebration_text)
+            frame.paste(celeb_overlay, (216, 96), celeb_overlay)
+
+        # 3) Character nameplate badges
         draw = ImageDraw.Draw(frame)
-        for sid in ("dafeiyu", "gemini"):
-            is_active = sid == active_speaker
+        for sid in visual_order:
+            is_active = sid == resolved_active
             cx, _ = anchors[sid]
-            accent = (37, 99, 235) if sid == "dafeiyu" else (236, 72, 153)
+            accent = SPEAKER_ACCENT_RGB.get(sid, (37, 99, 235))
             plate_label = f"{PERSONAS[sid].short_name} · {'发言中' if is_active else '待机'}"
             pw = int(draw.textlength(plate_label, font=self._font_nameplate)) + 34
             px0 = cx - pw // 2
@@ -797,31 +1030,52 @@ class HeadlessStageRenderer:
             )
             draw.text((px0 + 17, py0 + 7), plate_label, font=self._font_nameplate, fill=(255, 255, 255))
 
-        # Audio waveform visualizer bars (centered between characters above subtitle dock)
-        bar_count = 26
-        bar_w = 10
-        bar_gap = 6
-        total_eq_w = bar_count * bar_w + (bar_count - 1) * bar_gap
-        eq_x0 = 678 - total_eq_w // 2
-        eq_base_y = 822
-        eq_color = (56, 189, 248) if active_speaker == "dafeiyu" else (244, 114, 182)
-        eq_peak = (37, 99, 235) if active_speaker == "dafeiyu" else (219, 39, 119)
-        for idx in range(bar_count):
-            dist_center = abs(idx - (bar_count - 1) / 2.0) / ((bar_count - 1) / 2.0)
-            envelope = 1.0 - 0.55 * dist_center
-            wave = 0.5 + 0.5 * math.sin(t * 11.5 + idx * 0.55)
-            h_px = int(8 + (56.0 * (0.14 + 0.86 * level) * envelope * (0.35 + 0.65 * wave)))
-            bx0 = eq_x0 + idx * (bar_w + bar_gap)
-            color = eq_peak if h_px > 34 else eq_color
-            draw.rounded_rectangle([(bx0, eq_base_y - h_px), (bx0 + bar_w, eq_base_y)], radius=4, fill=color)
-
-        # 4) Right-side sanitized danmaku ticker
-        dm_overlay = self._get_danmaku_overlay(recent_danmaku)
-        frame.paste(dm_overlay, (1408, 186), dm_overlay)
+        # 4) Right-side live poll bar widget (optional) + sanitized danmaku ticker
+        norm_poll = self._normalize_poll_snapshot(poll_snapshot)
+        if norm_poll is not None:
+            poll_overlay = self._get_poll_overlay(norm_poll)
+            frame.paste(poll_overlay, (1408, 182), poll_overlay)
+            dm_top = 182 + poll_overlay.height + 10
+            dm_h = max(180, 808 - dm_top)
+            dm_overlay = self._get_danmaku_overlay(recent_danmaku, panel_h=dm_h)
+            frame.paste(dm_overlay, (1408, dm_top), dm_overlay)
+        else:
+            dm_overlay = self._get_danmaku_overlay(recent_danmaku, panel_h=620)
+            frame.paste(dm_overlay, (1408, 186), dm_overlay)
 
         # 5) Bottom wrapped high-contrast Chinese speaker subtitle bar
         sub_overlay = self._get_subtitle_overlay(current_turn)
         frame.paste(sub_overlay, (56, 846), sub_overlay)
+
+        # 6) Animated audio waveform visualizer bars (center stage in dual mode; subtitle console right in trio mode)
+        eq_color = SPEAKER_EQ_LIGHT_RGB.get(resolved_active, (56, 189, 248))
+        eq_peak = SPEAKER_EQ_PEAK_RGB.get(resolved_active, (37, 99, 235))
+        draw = ImageDraw.Draw(frame)
+        if self._is_trio:
+            bar_count = 22
+            bar_w = 8
+            bar_gap = 5
+            total_eq_w = bar_count * bar_w + (bar_count - 1) * bar_gap
+            eq_x0 = 1860 - total_eq_w
+            eq_base_y = 892
+            max_bar_h = 34.0
+        else:
+            bar_count = 26
+            bar_w = 10
+            bar_gap = 6
+            total_eq_w = bar_count * bar_w + (bar_count - 1) * bar_gap
+            eq_x0 = 678 - total_eq_w // 2
+            eq_base_y = 822
+            max_bar_h = 56.0
+
+        for idx in range(bar_count):
+            dist_center = abs(idx - (bar_count - 1) / 2.0) / ((bar_count - 1) / 2.0)
+            envelope = 1.0 - 0.55 * dist_center
+            wave = 0.5 + 0.5 * math.sin(t * 11.5 + idx * 0.55)
+            h_px = int(6 + (max_bar_h * (0.14 + 0.86 * level) * envelope * (0.35 + 0.65 * wave)))
+            bx0 = eq_x0 + idx * (bar_w + bar_gap)
+            color = eq_peak if h_px > int(max_bar_h * 0.6) else eq_color
+            draw.rounded_rectangle([(bx0, eq_base_y - h_px), (bx0 + bar_w, eq_base_y)], radius=4, fill=color)
 
         return np.ascontiguousarray(np.asarray(frame, dtype=np.uint8))
 
@@ -843,10 +1097,13 @@ def synthesize_offline_fallback_pcm(
     duration_sec = max(1.6, min(5.8, syllable_count * 0.19))
     total_samples = int(round(duration_sec * sample_rate))
 
-    # Distinct pentatonic registers: 大肥鱼 warm mid-register, Gemini娘 bright upper-register
+    # Distinct pentatonic registers: 大肥鱼 warm mid, Gemini娘 bright upper, 弱音 cool lower-mid
     if speaker_id == "dafeiyu":
         scale_hz = np.array([261.63, 293.66, 329.63, 392.00, 349.23, 329.63], dtype=np.float32)
         pan_l, pan_r = 0.88, 0.72
+    elif speaker_id == "yowane":
+        scale_hz = np.array([196.00, 220.00, 246.94, 293.66, 261.63, 220.00], dtype=np.float32)
+        pan_l, pan_r = 0.80, 0.80
     else:
         scale_hz = np.array([440.00, 493.88, 523.25, 587.33, 659.25, 523.25], dtype=np.float32)
         pan_l, pan_r = 0.72, 0.88
@@ -1437,7 +1694,7 @@ class HeadlessLiveStreamer:
         audio_frames_generated = 0
         audio_cur_turn: Optional[PersonaTurn] = None
         current_turn: Optional[PersonaTurn] = None
-        active_speaker: SpeakerId = "dafeiyu"
+        active_speaker: SpeakerId = self.director.cast[0]
         dumped_frame = False
         audio_meta_q: Deque[Tuple[float, bool, Optional[PersonaTurn]]] = deque()
         prefill_audio_frames = min(20, total_frames)
@@ -1483,9 +1740,28 @@ class HeadlessLiveStreamer:
             audio_frames_generated += 1
 
         try:
-            # Seed initial rehearsal danmaku in dry-stream so the right-side ticker is immediately lively
+            # Seed initial rehearsal danmaku + live poll votes in dry-stream so stage widgets are immediately lively
             if mode == "dry-stream":
-                seed_source = MockDanmakuSource(interval_sec=0.0, max_events=4)
+                dry_seed_events = [
+                    DanmakuEvent(event_type="enter", user_alias="熬夜写代码的小蓝", text="进入了直播间"),
+                    DanmakuEvent(event_type="danmaku", user_alias="鱼粉一号", text="扣1 支持大肥鱼继续吐槽24G内存！"),
+                    DanmakuEvent(event_type="danmaku", user_alias="封面颜控", text="扣2 Gemini娘4.9星高明度封面必胜！"),
+                    DanmakuEvent(
+                        event_type="danmaku",
+                        user_alias="财务旁听生",
+                        text="扣3 弱音大姐头冷面查账太好笑了，快评评理！",
+                    ),
+                    DanmakuEvent(
+                        event_type="gift",
+                        user_alias="机房投喂官",
+                        text="投喂了 小心心 x3",
+                        gift_name="小心心",
+                        gift_count=3,
+                    ),
+                ]
+                seed_source = MockDanmakuSource(
+                    interval_sec=0.0, max_events=len(dry_seed_events), custom_events=dry_seed_events
+                )
                 async for ev in seed_source.events():
                     self.director.enqueue_event(ev)
                 await seed_source.close()
@@ -1564,6 +1840,8 @@ class HeadlessLiveStreamer:
                     audio_level=audio_level,
                     follower_count=self.director.follower_count,
                     follower_goal=self.director.follower_goal,
+                    poll_snapshot=self.director.poll.snapshot(),
+                    celebration_text=self.director.get_active_celebration(),
                 )
 
                 if frame_dump_path is not None and not dumped_frame and frame_idx >= dump_frame_idx:
@@ -1590,6 +1868,8 @@ class HeadlessLiveStreamer:
                     audio_level=0.5,
                     follower_count=self.director.follower_count,
                     follower_goal=self.director.follower_goal,
+                    poll_snapshot=self.director.poll.snapshot(),
+                    celebration_text=self.director.get_active_celebration(),
                 )
                 Image.fromarray(fallback_rgb, mode="RGB").save(frame_dump_path, format="PNG")
                 dumped_frame = True
@@ -1654,6 +1934,8 @@ class HeadlessLiveStreamer:
             "turns_emitted": len(self.director.history),
             "danmaku_count": self.director.danmaku_count,
             "gift_count": self.director.gift_count,
+            "cast": list(self.director.cast),
+            "poll": self.director.poll.snapshot().to_dict(),
             "highlights_recorded": len(self.director.highlight_tracker.moments),
             "frame_dump_path": str(frame_dump_path) if (frame_dump_path is not None and dumped_frame) else None,
             "stderr_tail": list(self._stderr_lines)[-6:],
