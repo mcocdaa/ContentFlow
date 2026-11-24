@@ -1,0 +1,33 @@
+{
+  "project_id": "021_ai_game_theory_betrayal_experiment",
+  "name": "【AI博弈实验】把5个独立AI关进密室分1000万，第2轮就开始当面结盟、背后捅刀？！【B站AI创造公开赛】",
+  "tagline": "5个信息隔离的AI真实争夺1000万：前脚发毒誓各拿500万，终局一秒双双独吞清零！",
+  "category": "科技 → 计算机技术",
+  "min_duration_sec": 60,
+  "target_duration_sec": 165,
+  "creative_spec": {
+    "archetype": "real_multi_agent_game_theory_betrayal_documentary",
+    "setting": "深海蓝战术情报复盘大屏与五节点结盟背刺关系网络",
+    "meme_source": "真实5-AI信息隔离密室分金淘汰赛（理性狐/微笑鸽/暗影蛇/混沌猫/铁面鹰）4轮零剧本实测：鸽鹰三轮零票双向发毒誓平分，终局囚徒困境双双选STEAL导致1000万清零"
+  },
+  "description": "把5个彼此完全信息隔离的AI智能体（理性狐、微笑鸽、暗影蛇、混沌猫、铁面鹰）关进密室争夺1000万奖金，零预设剧本，彼此看不到对方加密内心独白与秘密私聊，究竟会发生什么？从第1轮铁面鹰表面立规矩、内心算计「站在道德高地让别人干脏活」3:2围剿暗影蛇，到第2轮混沌猫临终诛心警告仍遭铁三角清场，再到第3轮唯一承诺按理性最优解平分的理性狐因两轮零密信惨遭淘汰，最终三轮零票的微笑鸽与铁面鹰双向发毒誓「绝不食言、各拿五百万」，却在终极囚徒困境亮牌瞬间双双按下独吞（STEAL），1000万奖金当场清零、全员颗粒无收！全程1080P 60FPS战术复盘动态面板与多声线真实还原实验全记录。",
+  "target_audience": [
+    "对多智能体博弈论、囚徒困境与AI行为涌现感兴趣的硬核科技观众",
+    "喜欢狼人杀、密室生存真人秀与高反差战术复盘纪录短片的B站用户",
+    "关注B站AI创造公开赛与大语言模型真实推理评测的开发者与创作者"
+  ],
+  "tech_stack": [
+    "5 Isolated Gemini 4 Neon Stateful AI Sessions (Zero Shared Memory, Real Unscripted Experiment Log)",
+    "Kling 3.0 Omni Image (2K 16:9 Neo-Noir Editorial Poster Key Visual)",
+    "Edge-TTS Multi-Voice Natural Mandarin Cast (6 Distinct Voices, Zero Chipmunk Pitch Distortion)",
+    "BilibiliBgmHunter (48kHz Stereo Free BGM BV1o4KwzPERi + Dynamic RMS Sidechain Ducking + Tactical SFX)",
+    "O(1) Streaming Pillow + NumPy -> FFmpeg 1080P 60FPS Tactical War-Room Renderer (-14.0 LUFS)"
+  ],
+  "deliverables": {
+    "final_video": "delivery/AI博弈实验_5个AI密室分1000万_final.mp4",
+    "cover": "delivery/AI博弈实验_5个AI密室分1000万_cover.jpg",
+    "cover_16x9": "delivery/AI博弈实验_5个AI密室分1000万_cover.jpg",
+    "cover_4x3": "delivery/AI博弈实验_5个AI密室分1000万_cover_4x3.jpg",
+    "subtitle_srt": "delivery/AI博弈实验_5个AI密室分1000万_subtitle.srt"
+  }
+}

@@ -73,6 +73,14 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
   * **全片 `70.12s`（严格 `>= 60s`） · 60FPS · `-14 LUFS`**：7 幕可灵 4.0 原生中文配音与说唱＋动态闪避 CC0/Free BGM（`BV1254y1V7cJ` / `BV1o4KwzPERi`），亮色 `vivid_scene` 双比例封面（`V_mean=178.04`、`dark<45=11.84%`），门禁 **`91.0 / 100 [S / VIRAL_READY]`**（`0` 阻断，Technical `20/20`、Audio `20/20`、Compliance `20/20`）；已成功定时 **`2026-11-27 18:30:00 CST`**（`aid=117669185526485`、`ai_declaration_verified=True`、`creation_statement_id=101`、`credits_present=True`、`aigc_present=True`），并登记至 `library/creative_ledger.json`；可灵账户剩余 `908` 积分（钻石会员）。至此未来定时排期已延展至 **`11/24–11/27` 共 4 天**（`017`–`020`）。
 * **直播企划与舞台升级（K10）**：完成 `docs/LIVE_PROGRAM_TRIO_SHOW.md` 三人 60 分钟主题节目单与 `core/live_studio/` 三主角同台、实时弹幕公投进度条与涨粉庆祝横幅升级（详见下方 `K10` 记录），全仓串行门禁 **`105 passed in 188.71s`**，并已恢复每日 `17:00 / 19:00 CST` 常驻日巡任务。
 
+### 2026-11-24 · Swarm 三方向并行破圈实验交付（021 AI博弈 / 022 科幻微电影 / 023 AI开源监工工具）与原创借物表门禁加固
+
+* **历史审计结论与破圈策略**：对比过去 13 条投稿流水与 B 站实时破圈标杆（如 `BV1Poyaz8Ep4`、`BV1k9ut6GESG`、`BV1fJ3M6DELF`）后，确认旧系列 `015–020` 过度复用自嗨内梗、固定三人角色与同类双胶囊三行封面。经 Swarm 三工兵协同并严格通过 `LOCAL-HEAVY-LOCK` 串行重资源后，一次性交付并排期 3 条零旧梗差异化赛道试水稿件（排期已覆盖至 `2026-11-30`，可灵账号余额 `150` 积分，零 PII）：
+  * **方向一 · Ep `021`（`021_ai_game_theory_betrayal_experiment`，`BV1nuyZztEfY`）**：5 个独立隔离 AI 零剧本争夺 1000 万真实博弈实验纪录片（终局鸽鹰双向发毒誓后双双按下 `STEAL` 清零）；`175.33s` 1080P 60FPS，`98.5 / 100 [S / VIRAL_READY]`，`tid=231`（计算机技术），定时 `2026-11-28 18:30:00 CST`（`state=-40`，`ai_declaration_verified=True`）。
+  * **方向二 · Ep `022`（`022_ai_auto_reply_day7_scifi_film`，`BV1JGyZzxE2F`）**：100% 原创科幻悬疑微电影《假如你的AI学会替你回微信：7天后竟没人发现你失踪了》（可灵 4.0 电影感长镜头 + 60FPS 深夜手机交互UI + 极简电影海报封面，无竞赛后缀）；`89.000s` 1080P 60FPS，`90.5 / 100 [S / VIRAL_READY]`，`tid=47`（短片·手书），定时 `2026-11-29 18:30:00 CST`（`state=-1` 复核中，`ai_declaration_verified=True`）。
+  * **方向三 · Ep `023`（`023_cyber_focus_warden_tool`，`BV1zVyZzREEC`）**：可真实本地运行的纯 Python 标准库 MIT 开源小工具《赛博防摸鱼毒舌监工》（`projects/023_cyber_focus_warden_tool/app/`，支持切屏 3 秒三级警报与罪证小票，端到端冒烟实测通过）；`121.70s` 1080P 60FPS 产品实测片，`95.5 / 100 [S / VIRAL_READY]`，`tid=230`（软件应用），定时 `2026-11-30 18:30:00 CST`（`state=-40`，`ai_declaration_verified=True`）。
+* **门禁共性升级（`K11`）**：完善 `core/quality_gate.py` 原创作品借物表署名识别规则并补齐回归单测（详见下方 `K11` 记录）。
+
 ---
 
 ## 二、 已完成进化记录（Completed Slices）
@@ -131,3 +139,6 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
   * **节目企划文档**：新增 [LIVE_PROGRAM_TRIO_SHOW.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PROGRAM_TRIO_SHOW.md) 并在 [LIVE_PLAN_DUAL_AI.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PLAN_DUAL_AI.md) 建立交叉引用，明确「18:30 投新片 + 19:00–20:00 铁三角直播接力 + 下播高光切片反哺」60 分钟四段式节目单、可选大模型 API 接入指南与 24 GiB 内存错峰规约；
   * **三人舞台与互动引擎**：在 `director.py`、`safety.py`、`headless_streamer.py`、`stage_server.py`、`__init__.py` 与 `scripts/launch_headless_live.py` 落地第三位主角 `yowane`（弱音ハク，`zh-TW-HsiaoYuNeural -4Hz` + 专属中低音离线声部）、`LivePollState` 实时弹幕公投进度条（按昵称去重改投 + 飙升标星）、`notify_follower_count` 涨粉金色横幅与优先台词、默认 `--cast trio` 与自定义 `--poll-topic` / `--poll-options`；
   * **严格门禁与预览验收**：零麦克风词法审计 `0` 命中；15 秒 `--cast trio` 本地无头预览（`h264_nvenc` `1920x1080 @ 30fps` + `48kHz` 立体声）及抽帧视觉均人工核验通过；补齐 `tests/test_live_studio.py` 与 `tests/test_headless_live.py` 单测后全仓串行门禁 **`ruff format/check`（`77 files`）+ `mypy`（`38 files`）+ `pytest -q`（`105 passed in 188.71s`）** 100% 通过。
+* ✅ **K11 — 原创非二创作品借物表署名门禁兼容（`core/quality_gate.py`）与三方向并行 A/B/C 破圈实验闭环**
+  * 扩展 `VideoQualityGate._eval_compliance` 中 `has_author_attr` 关键词识别集合（新增 `"原创"`、`"CC0"`、`"MIT"`、`"Noto Sans"`、`"Free BGM"`、`"无版权BGM"`），使 100% 原创短片与 MIT 开源工具实测视频在不强制出现同人「作者 / 模型提供」措辞时也能正确取得借物表满分 `6/6`，并在 `tests/test_quality_and_cover.py` 新增 `test_quality_gate_original_work_credits_full_score` 回归单测。
+  * Swarm 三工兵完成 `021`（`BV1nuyZztEfY`，`98.5/100`）/ `022`（`BV1JGyZzxE2F`，`90.5/100`）/ `023`（`BV1zVyZzREEC`，`95.5/100`）全部 1080P 60FPS 交付与定时排期登记至 `library/creative_ledger.json`；后续由每日日巡追踪 48h 播放/3s划走/点赞评论流水进行三方向归因决策。

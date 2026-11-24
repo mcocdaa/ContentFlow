@@ -716,3 +716,34 @@ def test_quality_gate_blocks_under_60s_for_episode_018_plus(tmp_path: Path) -> N
         release_pyiqa_models()
     assert not rep.passed
     assert any("duration_too_short" in b for b in rep.blockers)
+
+
+def test_quality_gate_original_work_credits_full_score(tmp_path: Path) -> None:
+    """Verifies 100% original works/tools attributing open licenses (原创/CC0/MIT/Noto Sans) pass 20/20 compliance."""
+    gate = VideoQualityGate(root_dir=CONTENTFLOW_ROOT)
+    proj = tmp_path / "022_original_scifi_test"
+    (proj / "delivery").mkdir(parents=True)
+    (proj / "brief.json").write_text(
+        '{"project_id": "022_original_scifi_test", "category": "动画 → 短片·手书", "min_duration_sec": 60}',
+        encoding="utf-8",
+    )
+    (proj / "delivery" / "bilibili.md").write_text(
+        (
+            "# Release\n"
+            "* **主选分区**：动画 -> 短片·手书\n"
+            "* **主标题**：【科幻悬疑短片】假如你的AI学会替你回微信：7天后竟没人发现你失踪了……\n"
+            "* **标签**：科幻悬疑, 原创动画, AI短片, 细思极恐, 微电影\n"
+            "* **简介**：\n"
+            "  【借物表 (Credits)】\n"
+            "  剧情与视觉｜ContentFlow 原创剧本与原创美术\n"
+            "  音乐｜CC0 无版权BGM（BV1o4KwzPERi）\n"
+            "  字体与许可｜开源字体 Noto Sans CJK SC (SIL OFL 1.1) / 配套源码 MIT 协议\n"
+            "  【AIGC 标识】依据国家标准 GB 45438-2025 显式标识本片包含人工智能生成合成内容。\n"
+        ),
+        encoding="utf-8",
+    )
+    blockers: list[str] = []
+    comp = gate._eval_compliance(proj, blockers)
+    assert blockers == []
+    assert comp.score == 20.0
+    assert comp.issues == []

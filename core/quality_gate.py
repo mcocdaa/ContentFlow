@@ -962,6 +962,12 @@ class VideoQualityGate:
                 "吉田明彦",
                 "CAFFEIN",
                 "Crypton",
+                "原创",
+                "CC0",
+                "MIT",
+                "Noto Sans",
+                "Free BGM",
+                "无版权BGM",
             )
         )
         if has_credits_header and has_author_attr and has_reference_creator_attr:
