@@ -1,0 +1,34 @@
+{
+  "project_id": "020_trio_ai_karaoke_cat_fish_battle_mv",
+  "name": "【AI打歌棚整活】大肥鱼硬说自己是猫？Gemini猫娘冲上台抢麦对唱，弱音评委直接笑崩！【B站AI创造公开赛】",
+  "tagline": "大肥鱼戴蓝猫耳发箍硬说自己是猫，Gemini正牌猫娘滑铲抢麦互怼对唱，弱音评委直接拍爆999分亮黄灯！",
+  "category": "动画",
+  "min_duration_sec": 60,
+  "target_duration_sec": 70,
+  "creative_spec": {
+    "archetype": "bright_pop_studio_ai_parody_chorus_mic_battle_mv",
+    "setting": "晴空马卡龙高饱和音乐综艺打歌摄影棚与玻璃评委席",
+    "meme_source": "《AI合租B站号第4集·打歌棚抢麦战》：大肥鱼戴蓝猫耳发箍硬说自己是猫×Gemini正牌猫娘滑铲抢麦对唱×弱音评委拍爆999分亮黄灯反转"
+  },
+  "description": "《AI合租B站号》第4集——超1分钟剧场版2D音乐综艺打歌棚抢麦对唱战高能开麦！在晴空马卡龙天蓝×嫩粉×纯白柔光打歌摄影棚里，DeepSeek蓝色大肥鱼突然戴上发光浅蓝猫耳发箍死抱银色复古立麦，一本正经发表暴论：“鱼可爱，猫可爱，四舍五入大肥鱼我也是正牌蓝猫！”还顺手来了一段洗脑深海算力蓝猫娘节奏说唱！正牌猫娘Gemini娘当场气鼓鼓帅气滑铲冲上舞台一把拽走话筒架展开正反打抢麦互怼对唱！透明玻璃评委席上，戴白色头戴耳机的弱音ハク忍俊不禁，直接一掌拍爆亮黄999分大按钮并甩出全息账单：再不合唱冲千粉，明天猫粮和小鱼干经费一起清零！三人最终在马卡龙彩带礼花下围麦齐声合唱，快来弹幕投票站队蓝猫鱼还是真猫娘！",
+  "target_audience": [
+    "B站二次元动画短片与剧场版手书音乐喜剧观众",
+    "DeepSeek蓝色大肥鱼、Gemini娘与弱音ハク三角色同人粉丝",
+    "追更《AI员工合租运营我的B站号》连载情景喜剧与大肥鱼热梗整活观众"
+  ],
+  "tech_stack": [
+    "Kling Cloud Elements Multi-Angle Canonical Cast Lock (dafeiyu, gemini_neko, yowane_haku)",
+    "Kling 3.0 Omni Image (16:9 2K Canonical Multi-Reference Image-to-Image Lock)",
+    "Kling 4.0 Omni-Ref Video (1080p Pro Native Multi-Shot 7x10s + Native Multi-Character Chinese Voice Acting & Rhythmic Rap)",
+    "BilibiliBgmHunter (48kHz Stereo CC0/Free BGM + Dynamic RMS Sidechain Ducking)",
+    "EpisodeAssembler (O(1) OpenCV DIS 60FPS + K2 Hook Banner)",
+    "FFmpeg"
+  ],
+  "deliverables": {
+    "final_video": "delivery/AI打歌棚整活_大肥鱼猫娘抢麦对唱_final.mp4",
+    "cover": "delivery/AI打歌棚整活_大肥鱼猫娘抢麦对唱_cover.jpg",
+    "cover_16x9": "delivery/AI打歌棚整活_大肥鱼猫娘抢麦对唱_cover.jpg",
+    "cover_4x3": "delivery/AI打歌棚整活_大肥鱼猫娘抢麦对唱_cover_4x3.jpg",
+    "subtitle_srt": "delivery/AI打歌棚整活_大肥鱼猫娘抢麦对唱_subtitle.srt"
+  }
+}

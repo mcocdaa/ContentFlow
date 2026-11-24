@@ -67,6 +67,12 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
   * **分群归因（`cli.py benchmark --attribution`）**：新娱乐高明度赛道（`n=10`，含刚转公开的 `BV1PyyWzqE38`）均播 `58.60` vs 旧白板（`n=3`）`36.33`（**`1.61x` / `+22.27`**），点赞率 `5.80% vs 0.92%`（`+4.88%`），封标星级 `3.09★ vs 2.43★`（`+0.66★`），头部标杆 `BV198sw6oEHN`（`131` 播放 / `4.5★`）。
 * **Kaizen 切片 K9 完工**：排期存货充足（`3 >= 2` 天），完成免费声线纠错（弱音 Edge-TTS 合法化与音调参数透传）及 B 站回读抗限流重试机制（详见下方 `K9` 记录）。
 
+### 2026-11-24 · Swarm 双轨并行：020 打歌棚长片排期交付 + K10 三人铁三角主题直播企划与舞台升级
+
+* **第 020 期旗舰交付（`020_trio_ai_karaoke_cat_fish_battle_mv`，`BV196yRzzELs`）**：
+  * **全片 `70.12s`（严格 `>= 60s`） · 60FPS · `-14 LUFS`**：7 幕可灵 4.0 原生中文配音与说唱＋动态闪避 CC0/Free BGM（`BV1254y1V7cJ` / `BV1o4KwzPERi`），亮色 `vivid_scene` 双比例封面（`V_mean=178.04`、`dark<45=11.84%`），门禁 **`91.0 / 100 [S / VIRAL_READY]`**（`0` 阻断，Technical `20/20`、Audio `20/20`、Compliance `20/20`）；已成功定时 **`2026-11-27 18:30:00 CST`**（`aid=117669185526485`、`ai_declaration_verified=True`、`creation_statement_id=101`、`credits_present=True`、`aigc_present=True`），并登记至 `library/creative_ledger.json`；可灵账户剩余 `908` 积分（钻石会员）。至此未来定时排期已延展至 **`11/24–11/27` 共 4 天**（`017`–`020`）。
+* **直播企划与舞台升级（K10）**：完成 `docs/LIVE_PROGRAM_TRIO_SHOW.md` 三人 60 分钟主题节目单与 `core/live_studio/` 三主角同台、实时弹幕公投进度条与涨粉庆祝横幅升级（详见下方 `K10` 记录），全仓串行门禁 **`105 passed in 188.71s`**，并已恢复每日 `17:00 / 19:00 CST` 常驻日巡任务。
+
 ---
 
 ## 二、 已完成进化记录（Completed Slices）
@@ -121,3 +127,7 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
   * 已在 `core/audio_router.py` 新增 `VERIFIED_FREE_EDGE_TTS_VOICES` 实测免费声线集合与 `CharacterVoiceProfile.edge_tts_pitch`，将 `yowane_haku` 的无效 Azure 专属声线 `"zh-CN-XiaohanNeural"` 修正为已验证免费 `"zh-TW-HsiaoYuNeural"`（`-4Hz`），并为 `dafeiyu`（`-2Hz`）与 `gemini_neko`（`+4Hz`）配置独立音高区分；在 `core/local_tts.py`（`_synth_edge_tts`、`synthesize_text`、`_synthesize_scenes_inprocess`、`synthesize_scenes`、`_cli_main`）与 `cli.py audio-router-status` 全链路向后兼容透传 `edge_pitch`（保留 `inspect.signature` 检测兼容旧版 3/4 参测试替身）；
   * 已在 `core/publisher.py` 为 `BilibiliUploader.verify_archive_submission` 增加瞬时限流/空响应（`-509`/`JSONDecodeError`/`ConnectionError`）指数退避重试，并新增 `verify_archives_batch` 串行批量节奏控制与脱敏兜底返回；
   * 已在 `tests/test_audio_router.py` 与 `tests/test_publisher.py` 补齐离线全 Mock 单测；全仓串行门禁通过（`ruff format --check .` `76 files` / `ruff check .` / `mypy core cli.py scripts/launch_live_mvp.py scripts/launch_headless_live.py` `38 source files` / `pytest -q` **`98 passed in 189.48s`**）。
+* ✅ **K10 — 三人铁三角全自动直播企划与舞台/实时投票/涨粉庆祝升级（`docs/LIVE_PROGRAM_TRIO_SHOW.md` + `core/live_studio/` + `scripts/launch_headless_live.py`）**
+  * **节目企划文档**：新增 [LIVE_PROGRAM_TRIO_SHOW.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PROGRAM_TRIO_SHOW.md) 并在 [LIVE_PLAN_DUAL_AI.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PLAN_DUAL_AI.md) 建立交叉引用，明确「18:30 投新片 + 19:00–20:00 铁三角直播接力 + 下播高光切片反哺」60 分钟四段式节目单、可选大模型 API 接入指南与 24 GiB 内存错峰规约；
+  * **三人舞台与互动引擎**：在 `director.py`、`safety.py`、`headless_streamer.py`、`stage_server.py`、`__init__.py` 与 `scripts/launch_headless_live.py` 落地第三位主角 `yowane`（弱音ハク，`zh-TW-HsiaoYuNeural -4Hz` + 专属中低音离线声部）、`LivePollState` 实时弹幕公投进度条（按昵称去重改投 + 飙升标星）、`notify_follower_count` 涨粉金色横幅与优先台词、默认 `--cast trio` 与自定义 `--poll-topic` / `--poll-options`；
+  * **严格门禁与预览验收**：零麦克风词法审计 `0` 命中；15 秒 `--cast trio` 本地无头预览（`h264_nvenc` `1920x1080 @ 30fps` + `48kHz` 立体声）及抽帧视觉均人工核验通过；补齐 `tests/test_live_studio.py` 与 `tests/test_headless_live.py` 单测后全仓串行门禁 **`ruff format/check`（`77 files`）+ `mypy`（`38 files`）+ `pytest -q`（`105 passed in 188.71s`）** 100% 通过。
