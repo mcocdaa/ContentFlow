@@ -9,6 +9,7 @@ Provides both:
 from __future__ import annotations
 
 from core.live_studio.bilibili_live_api import (
+    BILIBILI_LIVE_AREA_ROOM_LIST_URL,
     DEFAULT_LIVE_AREA_V2,
     FACE_AUTH_REQUIRED_CODE,
     REDACTED_RTMP_TOKEN,
@@ -82,6 +83,7 @@ __all__ = [
     "AI_DISCLOSURE_BANNER",
     "AmbientBotActor",
     "AutonomousWorldBrain",
+    "BILIBILI_LIVE_AREA_ROOM_LIST_URL",
     "BYTES_PER_VIDEO_FRAME",
     "CHARACTER_ASSETS",
     "DEFAULT_LIVE_AREA_V2",

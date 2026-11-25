@@ -81,6 +81,14 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
   * **方向三 · Ep `023`（`023_cyber_focus_warden_tool`，`BV1zVyZzREEC`）**：可真实本地运行的纯 Python 标准库 MIT 开源小工具《赛博防摸鱼毒舌监工》（`projects/023_cyber_focus_warden_tool/app/`，支持切屏 3 秒三级警报与罪证小票，端到端冒烟实测通过）；`121.70s` 1080P 60FPS 产品实测片，`95.5 / 100 [S / VIRAL_READY]`，`tid=230`（软件应用），定时 `2026-11-30 18:30:00 CST`（`state=-40`，`ai_declaration_verified=True`）。
 * **门禁共性升级（`K11`）**：完善 `core/quality_gate.py` 原创作品借物表署名识别规则并补齐回归单测（详见下方 `K11` 记录）。
 
+### 2026-11-25 17:00 CST · 发布前巡检、直播冷启动分区对标与 K13 零中断热切换交付
+
+* **17:00 CST 日巡核验（零 PII）**：
+  * 账号粉丝 `15`、累计播放 `896`、点赞 `37`、收藏 `3`、评论 `24`；已公开 `14` 篇（匹配项目 `13` 篇置顶全部 `already_pinned`），未来 6 天定时排期（`11/25 018 BV1CqyhzWEhR`、`11/26 019 BV1hsyHzrEzW`、`11/27 020 BV196yRzzELs`、`11/28 021 BV1nuyZztEfY`、`11/29 022 BV1JGyZzxE2F`、`11/30 023 BV1zVyZzREEC`）**全部 `state=-40` 过审且连同 `017` `7/7` 回读 `ai_declaration_verified=True`（`creation_statement_id=101`）**、`0` 退回。
+  * **分群归因（`cli.py benchmark --attribution`）**：新娱乐高明度赛道（`n=11`）均播 `71.55` vs 旧白板（`n=3`）`36.33`（**`1.97x` / `+35.22`**），点赞率 `4.57% vs 0.92%`（`+3.65%`），封标星级 `3.34★ vs 2.43★`（`+0.91★`），头部单篇 `BV1VaytzcEp9`（`133` 播放 / `3.8★`）。
+* **直播冷启动分区对标与晚间档期衔接（`output/live_world_03` → `live_world_04`）**：
+  * 下午 `90` 分钟 2D 工坊实播（`430` 句播报、`0` Paid DeepSeek API 调用）结合实时榜单验证：`371` 分区在播房间超 `700` 间、冷启动极易沉底；`1062`（`AI应用·机器人`）当前全区仅 `36` 间在播（`top10_online_floor=626`、首页直达全部房间）且同赛道「大肥鱼」题材活跃。已预上传全新 `1062` 专属 `4:3` 亮色封面 `output/live_world_04/live_cover_1062_v3_4x3.jpg`（`800×600`、`mean_luma=192.9`、`dark<45=8.08%`），与今晚 `18:30 CST` `018` 期发布精准错峰 `2` 分钟（`18:28 CST`）开播承接视频头像在播导流。
+
 ---
 
 ## 二、 已完成进化记录（Completed Slices）
@@ -145,3 +153,6 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 * ✅ **K12 — `4:3` 直播封面自动裁剪修复 + 实时流量/StopLiveData 观测 + 2D 活世界弹幕共建工坊与零 Key Agent 控制桥（`core/live_studio/world_engine.py` + `scripts/live_agent_ctl.py`）**
   * **同业直播对标与冷启动实测结论**：`2026-11-25 09:55 CST` 抓取 B 站 `AI应用·机器人` 分区头部在播样本后确认，小体量冷启动破圈房间（`52` 粉→`449` 在线、`1116` 粉→`2435` 在线、`742` 粉→`2442` 在线）共性在于「持续运转的 2D 活世界 + 巨型倒计时/生存数值锚点 + 3 秒弹幕即时反馈 + Agent 实时工作台明示不是录像 + 观众记忆归属感」。
   * **工程升级**：`BilibiliLiveController.upload_live_cover` 自动将任意比例封面裁剪编码为 B 站合规 `4:3 (800×600)` JPEG 并通过 `platform=web` 提交（实测 `code=0 / cover_updated=True`，彻底消除 `42603`）；`start_live` 安全捕获 `live_key`，新增 `get_live_telemetry` 与 `get_stop_live_data`（以及 `danmaku.parse_room_stats_command` 处理 `WATCHED_CHANGE`/`ONLINE_RANK_COUNT`）；新增 `ViewerMemoryStore`（零 UID 持久化熟人体系）、`LiveAgentWorld` + `WorldStageRenderer`（1080P 30FPS 稳态 `< 33ms/帧`）、`Director.enqueue_agent_speech`、`HeadlessLiveStreamer` `--stage-mode world` 控制桥（`danmaku_inbox.jsonl` / `agent_commands.jsonl` / `world_state.json` / `live_session_report.json`）与 `scripts/live_agent_ctl.py`（无需外部大模型 API Key 即可由 AI Coding Agent 亲手接管操作）；全仓串行门禁通过（`ruff` + `mypy` `40 files` + `pytest -q` `111 passed`）。
+* ✅ **K13 — 2D 活世界留存/寻路优化（`b94a9c2`）+ 直播间不断流热更新与分区榜单零 PII 遥测（`core/live_studio/bilibili_live_api.py` + `scripts/live_agent_ctl.py`）**
+  * **世界留存与视觉秩序加固（`b94a9c2`）**：落地危机冷却 `CRISIS_COOLDOWN_SEC=300s`、水平主走廊 `CORRIDOR_Y=278` 绕障寻路、2 名明示 AI 标识的工坊助手（`AmbientBotActor` 不虚增真实观众数）、`1`/`打卡` 零门槛入列、真实进房 `45` 秒冷却大肥鱼女声破冰欢迎、`ENTRY_EFFECT` 解析及无上限 `DualAILiveDirector.total_turns_emitted`。
+  * **不断流热更新与分区榜单遥测（本次提交）**：新增 `BilibiliLiveController.update_room_info`（同一接口不断流热更新 `title` 与 `area_id`，兼容重构 `update_room_title` 5 键返回）与 `get_partition_room_list`（零 `roomid`/`uid`/`uname` PII 抓取 `room/v3/area/getRoomList` 实时在播总数、`top10_online_floor` 与 `my_rank`）；`core/live_studio/__init__.py` 导出 `BILIBILI_LIVE_AREA_ROOM_LIST_URL`；`scripts/live_agent_ctl.py` 新增 `update-room`（支持 `--notify-stage`）与 `partition-rank` 子命令；在 `tests/test_live_world.py` 补全离线单测并经线上只读冒烟确认 `partition-rank --area-id 1062` 零 PII 泄露（`total_rooms=36`）；全仓串行门禁通过（`ruff format/check` `80 files`、`mypy` `40 source files`、`pytest -q` **`117 passed in 271.33s`**）。

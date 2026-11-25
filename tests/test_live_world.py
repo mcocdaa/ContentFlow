@@ -823,3 +823,157 @@ def test_world_crisis_cooldown_corridor_bots_and_visitor_icebreaker(tmp_path: Pa
     d20 = asyncio.run(_run_20_turns())
     assert len(d20.history) == 16
     assert d20.total_turns_emitted == 20
+
+
+def test_live_room_hot_update_partition_rank_and_ctl_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify zero-downtime update_room_info, zero-PII partition ranking, and live_agent_ctl subcommands."""
+    vault = _make_vault_with_cookies(tmp_path)
+    fake_session = _FakeSession(
+        get_map={
+            "area/getRoomList": _FakeResponse(
+                {
+                    "code": 0,
+                    "message": "0",
+                    "data": {
+                        "count": 41,
+                        "list": [
+                            {
+                                "roomid": 11112222,
+                                "uid": 99887766,
+                                "uname": "secret_host_name",
+                                "title": "头部AI工坊 live @spam",
+                                "online": 8904,
+                                "area_name": "AI应用·机器人",
+                            },
+                            {
+                                "roomid": 22334455,
+                                "uid": 77665544,
+                                "uname": "our_secret_uname",
+                                "title": "大肥鱼AI生存挑战：没人发1就断电",
+                                "online": 42,
+                                "area_name": "AI应用·机器人",
+                            },
+                            {
+                                "roomid": 33445566,
+                                "uid": 66554433,
+                                "uname": "other_secret_host",
+                                "title": "桌面测试房",
+                                "online": 9,
+                                "area_name": "AI应用·机器人",
+                            },
+                        ],
+                    },
+                }
+            ),
+        },
+        post_map={
+            "Room/update": _FakeResponse({"code": 0, "message": "ok"}),
+        },
+    )
+    ctrl = BilibiliLiveController(vault=vault, session=fake_session)  # type: ignore[arg-type]
+
+    # 1. Combined title + area_id update strips @, sends both fields, and redacts room_id
+    combined = ctrl.update_room_info(22334455, title="大肥鱼AI生存挑战 @全体", area_id=1062)
+    assert combined["ok"] is True
+    assert combined["area_id"] == 1062
+    assert combined["title"] == "大肥鱼AI生存挑战 全体"
+    assert combined["room_id"] == "<REDACTED>"
+    last_post = fake_session.calls[-1][2]["data"]
+    assert last_post["area_id"] == "1062"
+    assert last_post["title"] == "大肥鱼AI生存挑战 全体"
+
+    # 2. Area-only update omits title field cleanly
+    area_only = ctrl.update_room_info(22334455, area_id=1062)
+    assert area_only["ok"] is True and area_only["title"] is None and area_only["area_id"] == 1062
+    assert "title" not in fake_session.calls[-1][2]["data"]
+
+    # 3. Legacy update_room_title preserves exact 5 keys
+    legacy = ctrl.update_room_title(22334455, "大肥鱼工坊")
+    assert set(legacy.keys()) == {"ok", "code", "room_id", "title", "message"}
+    assert legacy["title"] == "大肥鱼工坊"
+
+    with pytest.raises(ValueError):
+        ctrl.update_room_info(22334455)
+
+    # 4. Partition room ranking strips all host PII / room IDs / @ mentions
+    rank_res = ctrl.get_partition_room_list(1062, page=1, page_size=50, my_room_id=22334455, top_k=5)
+    assert rank_res["ok"] is True
+    assert rank_res["total_rooms"] == 41
+    assert rank_res["returned_count"] == 3
+    assert rank_res["my_rank"] == 2
+    assert rank_res["page_max_online"] == 8904
+    assert rank_res["page_min_online"] == 9
+    assert rank_res["top10_online_floor"] == 9
+    assert rank_res["top_rooms"][1]["is_mine"] is True
+    assert rank_res["top_rooms"][0]["is_mine"] is False
+    serialized_rank = json.dumps(rank_res, ensure_ascii=False)
+    for forbidden in ("22334455", "11112222", "99887766", "secret_host_name", "our_secret_uname", "@"):
+        assert forbidden not in serialized_rank
+
+    # 5. CLI subcommands update-room & partition-rank work cleanly with zero PII
+    class _FakeCliController:
+        def get_my_room_info(self) -> Any:
+            return type("_Info", (), {"room_id": 22334455})()
+
+        def update_room_info(
+            self, room_id: int, *, title: Optional[str] = None, area_id: Optional[int] = None
+        ) -> Dict[str, Any]:
+            assert room_id == 22334455
+            return {
+                "ok": True,
+                "code": 0,
+                "room_id": "<REDACTED>",
+                "title": str(title or "").replace("@", ""),
+                "area_id": area_id,
+                "message": "ok",
+            }
+
+        def get_partition_room_list(self, area_id: int, **kwargs: Any) -> Dict[str, Any]:
+            return {
+                "ok": True,
+                "code": 0,
+                "area_id": area_id,
+                "total_rooms": 41,
+                "returned_count": 1,
+                "my_rank": 1,
+                "top10_online_floor": 42,
+                "page_max_online": 42,
+                "page_min_online": 42,
+                "top_rooms": [
+                    {"rank": 1, "title": "测试房", "online": 42, "area_name": "AI应用·机器人", "is_mine": True}
+                ],
+                "message": "0",
+            }
+
+    monkeypatch.setattr("core.live_studio.bilibili_live_api.BilibiliLiveController", _FakeCliController)
+    rec_dir = tmp_path / "cli_rec"
+    rc1 = live_agent_ctl.main(
+        [
+            "--record-dir",
+            str(rec_dir),
+            "update-room",
+            "--title",
+            "Ep018同步开播",
+            "--area-id",
+            "1062",
+            "--notify-stage",
+        ]
+    )
+    assert rc1 == 0
+    out1 = json.loads(capsys.readouterr().out)
+    assert out1["ok"] is True and out1["area_id"] == 1062
+    cmd_lines = [
+        json.loads(line) for line in (rec_dir / "agent_commands.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert cmd_lines[-1]["cmd"] == "work_log" and cmd_lines[-1]["tag"] == "LIVE"
+    assert "分区->1062" in cmd_lines[-1]["text"]
+
+    rc2 = live_agent_ctl.main(["partition-rank", "--area-id", "1062", "--page-size", "50", "--top-k", "5"])
+    assert rc2 == 0
+    out2 = json.loads(capsys.readouterr().out)
+    assert out2["ok"] is True and out2["total_rooms"] == 41 and out2["my_rank"] == 1
+    assert "22334455" not in json.dumps(out2)

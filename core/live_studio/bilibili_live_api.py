@@ -21,7 +21,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Final, Optional, Tuple
+from typing import Any, Dict, Final, List, Optional, Tuple
 
 import requests
 from PIL import Image
@@ -41,6 +41,7 @@ BILIBILI_LIVE_ROOM_UPDATE_URL: Final[str] = "https://api.live.bilibili.com/room/
 BILIBILI_LIVE_START_URL: Final[str] = "https://api.live.bilibili.com/room/v1/Room/startLive"
 BILIBILI_LIVE_STOP_URL: Final[str] = "https://api.live.bilibili.com/room/v1/Room/stopLive"
 BILIBILI_LIVE_STOP_DATA_URL: Final[str] = "https://api.live.bilibili.com/xlive/app-blink/v1/live/StopLiveData"
+BILIBILI_LIVE_AREA_ROOM_LIST_URL: Final[str] = "https://api.live.bilibili.com/room/v3/area/getRoomList"
 BILIBILI_LIVE_IMAGE_UPLOAD_URL: Final[str] = "https://api.bilibili.com/x/upload/web/image"
 BILIBILI_LIVE_PRELIVE_UPDATE_URL: Final[str] = (
     "https://api.live.bilibili.com/xlive/app-blink/v1/preLive/UpdatePreLiveInfo"
@@ -258,21 +259,42 @@ class BilibiliLiveController:
             message=msg,
         )
 
-    def update_room_title(self, room_id: int, title: str) -> Dict[str, Any]:
-        """Update live room title via `POST /room/v1/Room/update`."""
+    def update_room_info(
+        self,
+        room_id: int,
+        *,
+        title: Optional[str] = None,
+        area_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Hot-update live room title and/or partition `area_id` via `POST /room/v1/Room/update`."""
         if room_id <= 0:
             raise ValueError("room_id must be a positive integer")
-        clean_title = scrub_rtmp_secrets(title).replace("@", "").strip()
-        if not clean_title:
-            raise ValueError("title must not be empty after sanitization")
+        if title is None and area_id is None:
+            raise ValueError("At least one of title or area_id must be provided")
+
+        clean_title: Optional[str] = None
+        if title is not None:
+            clean_title = scrub_rtmp_secrets(title).replace("@", "").strip()
+            if not clean_title:
+                raise ValueError("title must not be empty after sanitization")
+
+        area_id_int: Optional[int] = None
+        if area_id is not None:
+            area_id_int = int(area_id)
+            if area_id_int <= 0:
+                raise ValueError("area_id must be a positive integer")
 
         cookies, csrf = self._load_cookies_and_csrf()
-        form_data = {
+        form_data: Dict[str, str] = {
             "room_id": str(room_id),
-            "title": clean_title,
             "csrf": csrf,
             "csrf_token": csrf,
         }
+        if clean_title is not None:
+            form_data["title"] = clean_title
+        if area_id_int is not None:
+            form_data["area_id"] = str(area_id_int)
+
         resp = self._session.post(
             BILIBILI_LIVE_ROOM_UPDATE_URL,
             data=form_data,
@@ -289,7 +311,19 @@ class BilibiliLiveController:
             "code": code,
             "room_id": REDACTED_TOKEN,
             "title": clean_title,
+            "area_id": area_id_int,
             "message": msg,
+        }
+
+    def update_room_title(self, room_id: int, title: str) -> Dict[str, Any]:
+        """Update live room title via `POST /room/v1/Room/update`."""
+        res = self.update_room_info(room_id, title=title)
+        return {
+            "ok": res["ok"],
+            "code": res["code"],
+            "room_id": res["room_id"],
+            "title": res["title"],
+            "message": res["message"],
         }
 
     @staticmethod
@@ -691,4 +725,115 @@ class BilibiliLiveController:
                 "new_fans_club": 0,
                 "cover_exposure_count": 0,
                 "cover_click_rate": 0.0,
+            }
+
+    def get_partition_room_list(
+        self,
+        area_id: int,
+        *,
+        parent_area_id: int = 0,
+        page: int = 1,
+        page_size: int = 30,
+        sort_type: str = "online",
+        my_room_id: Optional[int] = None,
+        top_k: int = 10,
+    ) -> Dict[str, Any]:
+        """Fetch zero-PII partition ranking & competition density from `room/v3/area/getRoomList`."""
+        area_id_int = int(area_id)
+        if area_id_int <= 0:
+            raise ValueError("area_id must be a positive integer")
+        page_num = max(1, int(page))
+        size_num = max(1, min(99, int(page_size)))
+        top_limit = max(1, min(30, int(top_k)))
+        parent_num = int(parent_area_id)
+
+        try:
+            cookies: Optional[Dict[str, str]] = self.vault.load_bilibili_cookies() or None
+        except Exception:
+            cookies = None
+
+        try:
+            resp = self._session.get(
+                BILIBILI_LIVE_AREA_ROOM_LIST_URL,
+                params={
+                    "platform": "web",
+                    "parent_area_id": str(parent_num),
+                    "area_id": str(area_id_int),
+                    "page": str(page_num),
+                    "page_size": str(size_num),
+                    "sort_type": str(sort_type or "online"),
+                },
+                cookies=cookies,
+                headers=self._headers(referer="https://live.bilibili.com/"),
+                timeout=self.timeout_sec,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            code = int(payload.get("code", -1))
+            msg = scrub_rtmp_secrets(str(payload.get("message") or payload.get("msg") or ""))
+            data = payload.get("data") or {}
+            total_rooms = max(0, int(data.get("count") or 0))
+            raw_list = data.get("list") or []
+
+            my_rank: Optional[int] = None
+            onlines: List[int] = []
+            top_rooms: List[Dict[str, Any]] = []
+            for idx, item in enumerate(raw_list):
+                if not isinstance(item, dict):
+                    continue
+                rank = (page_num - 1) * size_num + idx + 1
+                item_room_id = int(item.get("roomid") or item.get("room_id") or 0)
+                is_mine = bool(my_room_id and my_room_id > 0 and item_room_id == my_room_id)
+                if is_mine and my_rank is None:
+                    my_rank = rank
+                online = max(0, int(item.get("online") or 0))
+                onlines.append(online)
+                if idx < top_limit:
+                    clean_room_title = scrub_rtmp_secrets(str(item.get("title") or "")).replace("@", "").strip()[:60]
+                    top_rooms.append(
+                        {
+                            "rank": rank,
+                            "title": clean_room_title,
+                            "online": online,
+                            "area_name": str(item.get("area_name") or "").strip(),
+                            "is_mine": is_mine,
+                        }
+                    )
+
+            return {
+                "ok": code == 0,
+                "code": code,
+                "area_id": area_id_int,
+                "parent_area_id": parent_num,
+                "page": page_num,
+                "page_size": size_num,
+                "total_rooms": total_rooms,
+                "returned_count": len(onlines),
+                "my_rank": my_rank,
+                "top10_online_floor": onlines[min(9, len(onlines) - 1)] if onlines else 0,
+                "page_max_online": max(onlines) if onlines else 0,
+                "page_min_online": min(onlines) if onlines else 0,
+                "top_rooms": top_rooms,
+                "message": msg,
+            }
+        except Exception as exc:
+            safe_err = scrub_rtmp_secrets(str(exc))
+            if my_room_id and my_room_id > 0:
+                safe_err = safe_err.replace(str(my_room_id), REDACTED_TOKEN)
+            logger.warning("get_partition_room_list failed (%s): %s", type(exc).__name__, safe_err)
+            return {
+                "ok": False,
+                "code": -1,
+                "area_id": area_id_int,
+                "parent_area_id": parent_num,
+                "page": page_num,
+                "page_size": size_num,
+                "total_rooms": 0,
+                "returned_count": 0,
+                "my_rank": None,
+                "top10_online_floor": 0,
+                "page_max_online": 0,
+                "page_min_online": 0,
+                "top_rooms": [],
+                "message": safe_err,
             }

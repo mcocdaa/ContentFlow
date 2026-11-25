@@ -74,6 +74,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_act.add_argument("--action", choices=WORLD_ACTIONS, required=True)
     p_act.add_argument("--payload-json", type=str, default="{}")
 
+    p_update = sub.add_parser(
+        "update-room",
+        help="Hot-update live room title and/or partition area_id without restarting FFmpeg",
+    )
+    p_update.add_argument("--title", type=str, default=None)
+    p_update.add_argument("--area-id", type=int, default=None)
+    p_update.add_argument(
+        "--notify-stage",
+        action="store_true",
+        help="Push a sanitized LIVE work_log notification into agent_commands.jsonl on success",
+    )
+
+    p_rank = sub.add_parser(
+        "partition-rank",
+        help="Inspect zero-PII live partition competition density and current rank",
+    )
+    p_rank.add_argument("--area-id", type=int, default=1062)
+    p_rank.add_argument("--parent-area-id", type=int, default=0)
+    p_rank.add_argument("--page", type=int, default=1)
+    p_rank.add_argument("--page-size", type=int, default=50)
+    p_rank.add_argument("--top-k", type=int, default=10)
+
     sub.add_parser("stop", help="Request clean live stream shutdown and StopLiveData collection")
     return parser
 
@@ -148,6 +170,46 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         cmd_path = _append_command(record_dir, act_payload)
         print(json.dumps({"ok": True, "queued": act_payload, "cmd_path": str(cmd_path)}, ensure_ascii=False))
         return 0
+
+    if args.command == "update-room":
+        if args.title is None and args.area_id is None:
+            print(json.dumps({"ok": False, "error": "missing_title_or_area_id"}, ensure_ascii=False))
+            return 2
+        from core.live_studio.bilibili_live_api import BilibiliLiveController
+
+        ctrl = BilibiliLiveController()
+        info = ctrl.get_my_room_info()
+        res = ctrl.update_room_info(info.room_id, title=args.title, area_id=args.area_id)
+        if args.notify_stage and res.get("ok"):
+            parts = []
+            if res.get("area_id") is not None:
+                parts.append(f"分区->{res['area_id']}")
+            if res.get("title"):
+                parts.append(f"标题「{res['title']}」")
+            log_text = _scrub_clean(f"热更新直播间：{' / '.join(parts) or '配置已更新'}")
+            _append_command(record_dir, {"cmd": "work_log", "tag": "LIVE", "text": log_text})
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
+
+    if args.command == "partition-rank":
+        from core.live_studio.bilibili_live_api import BilibiliLiveController
+
+        ctrl = BilibiliLiveController()
+        my_room_id: Optional[int] = None
+        try:
+            my_room_id = ctrl.get_my_room_info().room_id
+        except Exception:
+            my_room_id = None
+        res = ctrl.get_partition_room_list(
+            args.area_id,
+            parent_area_id=args.parent_area_id,
+            page=args.page,
+            page_size=args.page_size,
+            my_room_id=my_room_id,
+            top_k=args.top_k,
+        )
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0 if res.get("ok") else 1
 
     if args.command == "stop":
         stop_payload: Dict[str, Any] = {"cmd": "stop"}
