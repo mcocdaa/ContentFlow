@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import numpy as np
+import pytest
 from PIL import Image
 
 from core.auth_vault import AuthVault
@@ -282,6 +283,8 @@ def test_viewer_memory_and_live_agent_world_commands(tmp_path: Path) -> None:
     acc_res = world.apply_agent_command({"cmd": "world_action", "action": "accept_suggestion", "suggestion_id": sug_id})
     assert acc_res["ok"] is True
     assert reloaded.get_viewer("点子王")["badge"] == "建议采纳官"  # type: ignore[index]
+    assert "采纳「点子王」建议" in world.work_log[-1]["text"]
+    assert "无效" not in world.work_log[-1]["text"]
 
     # Agent workbench & speak bridge
     wb_res = world.apply_agent_command(
@@ -588,3 +591,146 @@ def test_world_context_prompting_and_autonomous_world_brain(tmp_path: Path) -> N
             assert await err_brain.decide_next_actions(world.export_state_dict()) == []
 
     asyncio.run(_run_brain())
+
+
+def test_zero_burn_cli_defaults_smart_cache_female_voice_and_call_caps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 1. CLI defaults NEVER enable paid DeepSeek endpoints by default
+    def_args = launch_headless_live.parse_args([])
+    assert def_args.tts_backend == "edge"
+    assert def_args.enable_deepseek_llm is False
+    assert def_args.enable_deepseek_brain is False
+    assert def_args.max_deepseek_tts_calls == 30
+    assert def_args.max_deepseek_llm_calls == 60
+    assert def_args.max_deepseek_brain_calls == 24
+
+    with pytest.raises(SystemExit):
+        launch_headless_live.parse_args(["--max-deepseek-tts-calls", "-1"])
+
+    # 2. Smart mode gates DeepSeek female TTS strictly to interactive dafeiyu turns, deduplicates via disk cache,
+    #    enforces max_deepseek_tts_calls cap, and ignores DEEPSEEK_TTS_VOICE=tide env overrides.
+    monkeypatch.setenv("DEEPSEEK_TTS_VOICE", "tide")
+    pcm_samples = (np.sin(np.linspace(0.0, 24.0 * np.pi, 4800, dtype=np.float32)) * 12000.0).astype("<i2")
+    pcm_bytes = pcm_samples.tobytes()
+
+    async def _run_caps() -> None:
+        tts_requests: List[Dict[str, Any]] = []
+
+        def tts_handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content.decode("utf-8"))
+            tts_requests.append(body)
+            return httpx.Response(200, content=pcm_bytes, headers={"Content-Type": "audio/pcm"})
+
+        cache_dir = tmp_path / "tts_cache"
+        async with httpx.AsyncClient(transport=httpx.MockTransport(tts_handler)) as tts_client:
+            smart_mixer = SyntheticAudioMixer(
+                tts_backend="smart",
+                use_edge_tts=False,
+                tts_cache_dir=cache_dir,
+                max_deepseek_tts_calls=1,
+                deepseek_api_key="sk-smart-secret-01",
+                deepseek_http_client=tts_client,
+            )
+            # Idle turn -> 0 DeepSeek calls
+            await smart_mixer.synthesize_turn_pcm(
+                PersonaTurn(
+                    turn_id=1, speaker_id="dafeiyu", speaker_name="大肥鱼", text="无人暖场idle", trigger_type="idle"
+                )
+            )
+            assert smart_mixer.deepseek_api_calls == 0
+
+            # Partner interactive turn -> 0 DeepSeek calls
+            await smart_mixer.synthesize_turn_pcm(
+                PersonaTurn(
+                    turn_id=2,
+                    speaker_id="gemini",
+                    speaker_name="Gemini娘",
+                    text="感谢小花花！",
+                    trigger_type="danmaku",
+                )
+            )
+            assert smart_mixer.deepseek_api_calls == 0
+
+            # Interactive dafeiyu turn -> 1 DeepSeek female stella call & persisted to disk cache
+            await smart_mixer.synthesize_turn_pcm(
+                PersonaTurn(
+                    turn_id=3,
+                    speaker_id="dafeiyu",
+                    speaker_name="大肥鱼",
+                    text="感谢开工建造工坊！",
+                    trigger_type="danmaku",
+                )
+            )
+            assert smart_mixer.deepseek_api_calls == 1
+            assert smart_mixer.tts_stats["deepseek"] == 1
+            assert tts_requests[0]["voice_id"] == "stella"
+
+            # Repeat identical interactive text -> served from disk cache (0 additional HTTP calls!)
+            await smart_mixer.synthesize_turn_pcm(
+                PersonaTurn(
+                    turn_id=4,
+                    speaker_id="dafeiyu",
+                    speaker_name="大肥鱼",
+                    text="感谢开工建造工坊！",
+                    trigger_type="gift",
+                )
+            )
+            assert smart_mixer.deepseek_api_calls == 1
+            assert smart_mixer.tts_stats["deepseek_cache"] == 1
+
+            # New uncached interactive text hits max_deepseek_tts_calls=1 cap -> clean offline fallback
+            fb = await smart_mixer.synthesize_turn_pcm(
+                PersonaTurn(
+                    turn_id=5,
+                    speaker_id="dafeiyu",
+                    speaker_name="大肥鱼",
+                    text="全新未缓存句触发封顶",
+                    trigger_type="danmaku",
+                )
+            )
+            assert len(fb) >= 48000
+            assert smart_mixer.deepseek_api_calls == 1
+            assert len(tts_requests) == 1
+
+        # 3. LLM & Brain hard session call caps stop extra HTTP requests cleanly
+        llm_hits = 0
+
+        def llm_handler(_request: httpx.Request) -> httpx.Response:
+            nonlocal llm_hits
+            llm_hits += 1
+            return httpx.Response(200, json={"choices": [{"message": {"content": "首次回复正常完成！"}}]})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(llm_handler)) as llm_client:
+            capped_resp = OpenAICompatibleResponder(api_key="sk-cap-llm", max_calls=1, http_client=llm_client)
+            director = DualAILiveDirector(responder=capped_resp)
+            t1 = await director.next_turn()
+            t2 = await director.next_turn()
+            assert "首次回复" in t1.text
+            assert t2.text.strip() != ""
+            assert capped_resp.calls_made == 1
+            assert llm_hits == 1
+
+        brain_hits = 0
+
+        def brain_handler(_request: httpx.Request) -> httpx.Response:
+            nonlocal brain_hits
+            brain_hits += 1
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": json.dumps({"task": "巡查", "stage": 1, "log_text": "推进"})}}]
+                },
+            )
+
+        w = LiveAgentWorld(memory_path=tmp_path / "cap_mem.json")
+        async with httpx.AsyncClient(transport=httpx.MockTransport(brain_handler)) as brain_client:
+            capped_brain = AutonomousWorldBrain(api_key="sk-cap-brain", max_calls=1, http_client=brain_client)
+            c1 = await capped_brain.decide_next_actions(w.export_state_dict())
+            c2 = await capped_brain.decide_next_actions(w.export_state_dict())
+            assert len(c1) >= 1
+            assert c2 == []
+            assert capped_brain.calls_made == 1
+            assert brain_hits == 1
+
+    asyncio.run(_run_caps())

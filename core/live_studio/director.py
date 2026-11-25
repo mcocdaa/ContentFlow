@@ -736,6 +736,16 @@ class OfflineBanterResponder:
             gift = event.gift_name or "小礼物"
             count = max(1, event.gift_count)
             alias = event.user_alias or "热心观众"
+            if world_ctx is not None:
+                add_s = 300 * count
+                if sid == "dafeiyu":
+                    return f"感谢{alias}投喂{gift}x{count}！电饭煲白米饭到账，工坊立刻续命+{add_s}秒！", "grateful"
+                if sid == "yowane":
+                    return (
+                        f"收到{alias}投喂的{gift}x{count}，已给工坊供电续命+{add_s}秒并授予白米饭供应商！",
+                        "grateful",
+                    )
+                return f"哇谢谢{alias}送的{gift}x{count}！工坊直接续命+{add_s}秒，向{follower_goal}粉冲鸭！", "grateful"
             if sid == "dafeiyu":
                 return (
                     f"哇塞感谢{alias}投喂的{gift}乘{count}！机房电费续上了，大肥鱼马上把 018 续集加满 60 帧特效！",
@@ -904,6 +914,7 @@ class OpenAICompatibleResponder:
         base_url: Optional[str] = None,
         model: Optional[str] = None,
         timeout_sec: float = 12.0,
+        max_calls: Optional[int] = None,
         fallback: Optional[OfflineBanterResponder] = None,
         http_client: Optional[httpx.AsyncClient] = None,
         world_context_provider: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -919,6 +930,8 @@ class OpenAICompatibleResponder:
         ).rstrip("/")
         self.model = (model or os.getenv("LIVE_LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
         self.timeout_sec = timeout_sec
+        self.max_calls: Optional[int] = None if max_calls is None else max(0, int(max_calls))
+        self.calls_made: int = 0
         self.world_context_provider = world_context_provider
         self.fallback = fallback or OfflineBanterResponder(world_context_provider=world_context_provider)
         if self.fallback.world_context_provider is None and world_context_provider is not None:
@@ -958,7 +971,7 @@ class OpenAICompatibleResponder:
         follower_goal: int,
         idle_step: int,
     ) -> Tuple[str, str]:
-        if not self.has_api_key:
+        if not self.has_api_key or (self.max_calls is not None and self.calls_made >= self.max_calls):
             return await self.fallback.generate_line(
                 speaker=speaker,
                 event=event,
@@ -1050,6 +1063,7 @@ class OpenAICompatibleResponder:
         }
 
         try:
+            self.calls_made += 1
             if self._external_client is not None:
                 resp = await self._external_client.post(url, headers=headers, json=body, timeout=self.timeout_sec)
             else:

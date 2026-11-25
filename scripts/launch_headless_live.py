@@ -236,9 +236,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--tts-backend",
-        choices=("auto", "deepseek", "edge", "offline"),
-        default="auto",
-        help="TTS speech synthesis backend: auto (DeepSeek for lead + Edge for partners), deepseek, edge, or offline.",
+        choices=("edge", "smart", "auto", "deepseek", "offline"),
+        default="edge",
+        help=(
+            "TTS backend: edge (free default, 0 DeepSeek spend), smart (DeepSeek female stella only on real viewer/Agent "
+            "triggers + cache), auto (lead stella + partners edge), deepseek (all stella), or offline."
+        ),
+    )
+    parser.add_argument(
+        "--tts-cache-dir",
+        type=str,
+        default=str(REPO_ROOT / "output" / "live_tts_cache"),
+        help="Disk PCM cache dir to deduplicate repeated DeepSeek TTS utterances.",
+    )
+    parser.add_argument(
+        "--max-deepseek-tts-calls",
+        type=int,
+        default=30,
+        help="Hard per-session cap on uncached DeepSeek TTS HTTP calls (default: 30; 0 disables new calls).",
+    )
+    parser.add_argument(
+        "--enable-deepseek-llm",
+        action="store_true",
+        help="Opt-in to live DeepSeek Chat dialogue replies (disabled by default to avoid paid API burn).",
+    )
+    parser.add_argument(
+        "--max-deepseek-llm-calls",
+        type=int,
+        default=60,
+        help="Hard per-session cap on DeepSeek Chat dialogue HTTP calls when enabled (default: 60).",
+    )
+    parser.add_argument(
+        "--enable-deepseek-brain",
+        action="store_true",
+        help="Opt-in to DeepSeek AutonomousWorldBrain ticks in world mode (disabled by default; Gemini Agent drives directly).",
+    )
+    parser.add_argument(
+        "--max-deepseek-brain-calls",
+        type=int,
+        default=24,
+        help="Hard per-session cap on AutonomousWorldBrain HTTP calls when enabled (default: 24).",
     )
     parser.add_argument(
         "--no-edge-tts",
@@ -248,13 +285,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-llm",
         action="store_true",
-        help="Disable DeepSeek/OpenAI LLM dialogue & AutonomousWorldBrain (use zero-key offline bank).",
+        help="Force-disable DeepSeek/OpenAI LLM dialogue & AutonomousWorldBrain.",
     )
     parser.add_argument(
         "--autonomous-interval-sec",
         type=float,
         default=75.0,
-        help="Seconds between AutonomousWorldBrain ticks in `--stage-mode world` (0 disables; default: 75).",
+        help="Seconds between AutonomousWorldBrain ticks when `--enable-deepseek-brain` is set (default: 75).",
     )
     parser.add_argument(
         "--log-level",
@@ -280,6 +317,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--follower-goal must be positive.")
     if args.autonomous_interval_sec < 0:
         parser.error("--autonomous-interval-sec must be >= 0.")
+    if args.max_deepseek_tts_calls < 0:
+        parser.error("--max-deepseek-tts-calls must be >= 0.")
+    if args.max_deepseek_llm_calls < 0:
+        parser.error("--max-deepseek-llm-calls must be >= 0.")
+    if args.max_deepseek_brain_calls < 0:
+        parser.error("--max-deepseek-brain-calls must be >= 0.")
     try:
         args.parsed_poll_options = parse_poll_options(args.poll_options)
     except ValueError as exc:
@@ -342,11 +385,16 @@ async def run_headless_live(
 
     world_context_provider = world.export_state_dict if world is not None else None
     no_llm = bool(getattr(args, "no_llm", False))
+    enable_llm = bool(getattr(args, "enable_deepseek_llm", False)) and not no_llm
+    max_llm_calls = int(getattr(args, "max_deepseek_llm_calls", 60))
     responder: Any
-    if no_llm:
-        responder = OfflineBanterResponder(world_context_provider=world_context_provider)
+    if enable_llm:
+        responder = OpenAICompatibleResponder(
+            max_calls=max_llm_calls,
+            world_context_provider=world_context_provider,
+        )
     else:
-        responder = OpenAICompatibleResponder(world_context_provider=world_context_provider)
+        responder = OfflineBanterResponder(world_context_provider=world_context_provider)
 
     record_dir = Path(args.record_dir) if args.record_dir else None
     hl_jsonl = (record_dir / "live_highlights.jsonl") if record_dir is not None else None
@@ -365,22 +413,30 @@ async def run_headless_live(
     if bool(getattr(args, "no_edge_tts", False)):
         effective_tts_backend: TtsBackendMode = "offline"
     else:
-        raw_tts_backend = str(getattr(args, "tts_backend", "auto") or "auto").strip().lower()
+        raw_tts_backend = str(getattr(args, "tts_backend", "edge") or "edge").strip().lower()
         effective_tts_backend = (
-            raw_tts_backend if raw_tts_backend in ("auto", "deepseek", "edge", "offline") else "auto"  # type: ignore[assignment]
+            raw_tts_backend if raw_tts_backend in ("edge", "smart", "auto", "deepseek", "offline") else "edge"  # type: ignore[assignment]
         )
+
+    raw_cache_dir = str(getattr(args, "tts_cache_dir", "") or "").strip()
+    tts_cache_dir = Path(raw_cache_dir) if raw_cache_dir else (REPO_ROOT / "output" / "live_tts_cache")
+    max_tts_calls = int(getattr(args, "max_deepseek_tts_calls", 30))
 
     mixer = SyntheticAudioMixer(
         fps=args.fps,
         bgm_path=Path(args.bgm_path) if args.bgm_path else None,
         use_edge_tts=effective_tts_backend != "offline",
         tts_backend=effective_tts_backend,
+        tts_cache_dir=tts_cache_dir,
+        max_deepseek_tts_calls=max_tts_calls,
     )
 
     brain_interval = float(getattr(args, "autonomous_interval_sec", 75.0))
+    enable_brain = bool(getattr(args, "enable_deepseek_brain", False)) and not no_llm
+    max_brain_calls = int(getattr(args, "max_deepseek_brain_calls", 24))
     world_brain: Optional[AutonomousWorldBrain] = None
-    if world is not None and not no_llm and brain_interval > 0.0:
-        world_brain = AutonomousWorldBrain(interval_sec=brain_interval)
+    if world is not None and enable_brain and brain_interval > 0.0 and max_brain_calls > 0:
+        world_brain = AutonomousWorldBrain(interval_sec=brain_interval, max_calls=max_brain_calls)
 
     cb = status_callback if status_callback is not None else emit_status_line
     streamer = HeadlessLiveStreamer(

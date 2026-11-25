@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import io
 import json
 import logging
@@ -43,7 +44,6 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 from config.settings import (
     DEFAULT_DEEPSEEK_BASE_URL,
     DEFAULT_DEEPSEEK_TTS_URL,
-    DEFAULT_DEEPSEEK_TTS_VOICE,
     DEFAULT_FONTS,
 )
 from core.live_studio.bilibili_live_api import (
@@ -1200,17 +1200,18 @@ def build_ambient_lofi_bgm_loop(
     return stereo.astype(np.float32)
 
 
+DEEPSEEK_FEMALE_VOICE: Final[str] = "stella"
 DEEPSEEK_VOICE_MAP: Final[Dict[SpeakerId, str]] = {
-    "dafeiyu": "stella",
-    "gemini": "stella",
-    "yowane": "stella",
+    "dafeiyu": DEEPSEEK_FEMALE_VOICE,
+    "gemini": DEEPSEEK_FEMALE_VOICE,
+    "yowane": DEEPSEEK_FEMALE_VOICE,
 }
 DEEPSEEK_PAN_MAP: Final[Dict[SpeakerId, Tuple[float, float]]] = {
     "dafeiyu": (0.94, 0.86),
     "gemini": (0.86, 0.94),
     "yowane": (0.90, 0.90),
 }
-TtsBackendMode = Literal["auto", "deepseek", "edge", "offline"]
+TtsBackendMode = Literal["edge", "smart", "auto", "deepseek", "offline"]
 
 
 class SyntheticAudioMixer:
@@ -1225,6 +1226,8 @@ class SyntheticAudioMixer:
         bgm_path: Optional[Path] = None,
         use_edge_tts: bool = True,
         tts_backend: Optional[TtsBackendMode] = None,
+        tts_cache_dir: Optional[Path | str] = None,
+        max_deepseek_tts_calls: Optional[int] = None,
         deepseek_api_key: Optional[str] = None,
         deepseek_tts_url: Optional[str] = None,
         deepseek_voice_map: Optional[Dict[SpeakerId, str]] = None,
@@ -1246,6 +1249,11 @@ class SyntheticAudioMixer:
             resolved_backend = tts_backend
         self.tts_backend: TtsBackendMode = resolved_backend
         self.use_edge_tts = bool(use_edge_tts) and resolved_backend != "offline"
+        self.tts_cache_dir: Optional[Path] = Path(tts_cache_dir) if tts_cache_dir is not None else None
+        self.max_deepseek_tts_calls: Optional[int] = (
+            None if max_deepseek_tts_calls is None else max(0, int(max_deepseek_tts_calls))
+        )
+        self.deepseek_api_calls: int = 0
 
         resolved_ds_key = (
             deepseek_api_key if deepseek_api_key is not None else (os.getenv("DEEPSEEK_API_KEY") or "")
@@ -1264,7 +1272,7 @@ class SyntheticAudioMixer:
         self._deepseek_lock: Optional[asyncio.Lock] = None
         self._deepseek_lock_loop: Optional[asyncio.AbstractEventLoop] = None
 
-        self.tts_stats: Dict[str, int] = {"deepseek": 0, "edge": 0, "offline": 0}
+        self.tts_stats: Dict[str, int] = {"deepseek": 0, "deepseek_cache": 0, "edge": 0, "offline": 0}
         self.ffmpeg_bin = shutil.which(ffmpeg_bin) or ffmpeg_bin
         self.bgm_idle_gain = float(bgm_idle_gain)
         self.bgm_duck_gain = float(bgm_duck_gain)
@@ -1397,15 +1405,30 @@ class SyntheticAudioMixer:
         pan_l, pan_r = DEEPSEEK_PAN_MAP.get(speaker_id, (0.90, 0.90))
         return np.stack([mono * pan_l, mono * pan_r], axis=-1).astype(np.float32)
 
-    async def _synthesize_deepseek_tts_pcm(self, safe_text: str, speaker_id: SpeakerId) -> Optional[np.ndarray]:
+    async def _synthesize_deepseek_tts_pcm(
+        self, safe_text: str, speaker_id: SpeakerId
+    ) -> Tuple[Optional[np.ndarray], bool]:
         if not self._deepseek_api_key:
-            return None
-        voice_candidate = (
-            self._deepseek_voice_map.get(speaker_id) or os.getenv("DEEPSEEK_TTS_VOICE") or DEFAULT_DEEPSEEK_TTS_VOICE
-        ).strip()
-        voice_id = (
-            voice_candidate.lower() if voice_candidate.lower() in {"stella", "tide"} else DEFAULT_DEEPSEEK_TTS_VOICE
-        )
+            return None, False
+        voice_candidate = (self._deepseek_voice_map.get(speaker_id) or DEEPSEEK_FEMALE_VOICE).strip().lower()
+        voice_id = voice_candidate if voice_candidate in {"stella", "tide"} else DEEPSEEK_FEMALE_VOICE
+
+        cache_path: Optional[Path] = None
+        if self.tts_cache_dir is not None:
+            digest = hashlib.sha256(f"{voice_id}:{safe_text}".encode("utf-8")).hexdigest()[:24]
+            cache_path = self.tts_cache_dir / f"ds_{voice_id}_{digest}.pcm"
+            if cache_path.is_file():
+                try:
+                    cached_bytes = cache_path.read_bytes()
+                    decoded_cache = self._decode_deepseek_pcm_24k_to_stereo(cached_bytes, speaker_id)
+                    if decoded_cache is not None and len(decoded_cache) > self.samples_per_frame:
+                        return decoded_cache, True
+                except Exception:
+                    pass
+
+        if self.max_deepseek_tts_calls is not None and self.deepseek_api_calls >= self.max_deepseek_tts_calls:
+            return None, False
+
         headers = {
             "Authorization": f"Bearer {self._deepseek_api_key}",
             "Content-Type": "application/json",
@@ -1418,9 +1441,12 @@ class SyntheticAudioMixer:
         }
 
         async with self._get_deepseek_lock():
+            if self.max_deepseek_tts_calls is not None and self.deepseek_api_calls >= self.max_deepseek_tts_calls:
+                return None, False
             last_err: Optional[str] = None
             for attempt in range(2):
                 try:
+                    self.deepseek_api_calls += 1
                     if self._deepseek_http_client is not None:
                         resp = await self._deepseek_http_client.post(
                             self.deepseek_tts_url, headers=headers, json=payload, timeout=12.0
@@ -1431,25 +1457,41 @@ class SyntheticAudioMixer:
 
                     if resp.status_code == 400:
                         logger.info("DeepSeek TTS rejected text for %s (HTTP 400)", speaker_id)
-                        return None
+                        return None, False
                     if resp.status_code >= 400:
                         last_err = f"HTTP_{resp.status_code}"
-                        if attempt == 0 and resp.status_code in (429, 503, 504):
+                        if (
+                            attempt == 0
+                            and resp.status_code in (429, 503, 504)
+                            and (
+                                self.max_deepseek_tts_calls is None
+                                or self.deepseek_api_calls < self.max_deepseek_tts_calls
+                            )
+                        ):
                             await asyncio.sleep(0.30)
                             continue
                         break
 
-                    decoded = self._decode_deepseek_pcm_24k_to_stereo(bytes(resp.content), speaker_id)
+                    raw_pcm = bytes(resp.content)
+                    decoded = self._decode_deepseek_pcm_24k_to_stereo(raw_pcm, speaker_id)
                     if decoded is not None and len(decoded) > self.samples_per_frame:
-                        return decoded
+                        if cache_path is not None:
+                            with contextlib.suppress(Exception):
+                                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                                tmp_cache = cache_path.with_suffix(f".pcm.tmp.{os.getpid()}")
+                                tmp_cache.write_bytes(raw_pcm)
+                                os.replace(tmp_cache, cache_path)
+                        return decoded, False
                     last_err = "TRUNCATED_PCM"
                 except Exception as exc:
                     last_err = type(exc).__name__
-                    if attempt == 0:
+                    if attempt == 0 and (
+                        self.max_deepseek_tts_calls is None or self.deepseek_api_calls < self.max_deepseek_tts_calls
+                    ):
                         await asyncio.sleep(0.30)
             if last_err:
                 logger.info("DeepSeek TTS unavailable for %s (%s); trying fallback", speaker_id, last_err)
-        return None
+        return None, False
 
     async def _synthesize_edge_tts_pcm(self, safe_text: str, speaker_id: SpeakerId) -> Optional[np.ndarray]:
         if not self.use_edge_tts:
@@ -1492,14 +1534,20 @@ class SyntheticAudioMixer:
             return synthesize_offline_fallback_pcm("欢迎来到AI活工坊", turn.speaker_id, sample_rate=self.sample_rate)
 
         order: Tuple[str, ...]
+        is_interactive = turn.trigger_type in ("danmaku", "gift", "enter", "system")
         if self.tts_backend == "offline":
             order = ()
         elif self.tts_backend == "edge":
             order = ("edge",)
+        elif self.tts_backend == "smart":
+            if is_interactive and turn.speaker_id == "dafeiyu":
+                order = ("deepseek", "edge") if self.use_edge_tts else ("deepseek",)
+            else:
+                order = ("edge",) if self.use_edge_tts else ()
         elif self.tts_backend == "deepseek":
             order = ("deepseek", "edge") if self.use_edge_tts else ("deepseek",)
         else:
-            # auto: give DeepSeek 蓝色大肥鱼 official DeepSeek voice while keeping distinct Edge voices for partners
+            # auto: give DeepSeek 蓝色大肥鱼 official DeepSeek female voice while keeping distinct Edge voices for partners
             if turn.speaker_id == "dafeiyu":
                 order = ("deepseek", "edge") if self.use_edge_tts else ("deepseek",)
             else:
@@ -1507,12 +1555,14 @@ class SyntheticAudioMixer:
 
         for provider in order:
             pcm: Optional[np.ndarray] = None
+            from_cache = False
             if provider == "deepseek":
-                pcm = await self._synthesize_deepseek_tts_pcm(safe_text, turn.speaker_id)
+                pcm, from_cache = await self._synthesize_deepseek_tts_pcm(safe_text, turn.speaker_id)
             elif provider == "edge":
                 pcm = await self._synthesize_edge_tts_pcm(safe_text, turn.speaker_id)
             if pcm is not None and len(pcm) > self.samples_per_frame:
-                self.tts_stats[provider] = self.tts_stats.get(provider, 0) + 1
+                stat_key = "deepseek_cache" if (provider == "deepseek" and from_cache) else provider
+                self.tts_stats[stat_key] = self.tts_stats.get(stat_key, 0) + 1
                 return pcm
 
         self.tts_stats["offline"] = self.tts_stats.get("offline", 0) + 1
@@ -2270,6 +2320,9 @@ class HeadlessLiveStreamer:
             "highlights_recorded": len(self.director.highlight_tracker.moments),
             "tts_backend": self.audio_mixer.tts_backend,
             "tts_stats": dict(self.audio_mixer.tts_stats),
+            "deepseek_tts_api_calls": self.audio_mixer.deepseek_api_calls,
+            "deepseek_llm_api_calls": int(getattr(self.director.responder, "calls_made", 0)),
+            "deepseek_brain_api_calls": int(self.world_brain.calls_made) if self.world_brain is not None else 0,
             "llm_backend": getattr(self.director.responder, "backend_name", "unknown"),
             "autonomous_brain_enabled": bool(self.world_brain is not None and self.world_brain.has_api_key),
             "frame_dump_path": str(frame_dump_path) if (frame_dump_path is not None and dumped_frame) else None,

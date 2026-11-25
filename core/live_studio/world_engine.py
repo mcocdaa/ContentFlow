@@ -76,10 +76,10 @@ LEVEL_THRESHOLDS: Final[Tuple[Tuple[int, int, str], ...]] = (
 )
 
 STATIONS: Final[Dict[str, Tuple[int, int, str, Tuple[int, int, int]]]] = {
-    "代码工位": (220, 170, "写代码 · 修逻辑", (37, 99, 235)),
-    "算力机柜": (640, 152, "24G算力巡检", (14, 116, 144)),
-    "电饭煲补给": (1060, 170, "白米饭续命站", (217, 119, 6)),
-    "弹幕公告塔": (640, 336, "灵感与共建榜", (124, 58, 237)),
+    "代码工位": (245, 168, "写代码 · 修逻辑", (37, 99, 235)),
+    "算力机柜": (643, 168, "24G算力巡检", (14, 116, 144)),
+    "电饭煲补给": (1040, 168, "白米饭续命站", (217, 119, 6)),
+    "弹幕公告塔": (643, 386, "灵感与共建榜", (124, 58, 237)),
 }
 
 _SUGGESTION_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^\s*(?:建议|提案|需求|点子)[:：\s]*")
@@ -389,13 +389,15 @@ class LiveAgentWorld:
             "gemini": "调优画面",
         }
         self.host_actors: Dict[SpeakerId, HostActor] = {}
-        host_offsets = ((-142.0, 26.0), (0.0, 102.0), (142.0, 26.0))
+        top_host_offsets = ((150.0, 12.0), (-150.0, 72.0), (0.0, 122.0))
+        bottom_host_offsets = ((-178.0, 4.0), (178.0, 4.0), (0.0, -90.0))
         for idx, sid in enumerate(self.cast):
             st_name = station_names[idx % len(station_names)]
             sx, sy, _, _ = STATIONS[st_name]
-            ox, oy = host_offsets[idx % len(host_offsets)]
+            offsets = bottom_host_offsets if sy >= 250 else top_host_offsets
+            ox, oy = offsets[idx % len(offsets)]
             hx = max(90.0, min(WORLD_WIDTH - 90.0, float(sx + ox)))
-            hy = min(WORLD_HEIGHT - 74.0, float(sy + oy))
+            hy = max(125.0, min(WORLD_HEIGHT - 74.0, float(sy + oy)))
             self.host_actors[sid] = HostActor(
                 speaker_id=sid,
                 name=PERSONAS[sid].short_name,
@@ -452,11 +454,42 @@ class LiveAgentWorld:
         now = time.time()
         sx, sy, _, _ = STATIONS.get(station, STATIONS["代码工位"])
         offset_seed = sum(ord(c) for c in alias)
-        slot = offset_seed % 6
-        x_offsets = (-145.0, 145.0, -72.0, 72.0, -160.0, 160.0)
-        y_offsets = (56.0, 56.0, 104.0, 104.0, 92.0, 92.0)
-        tx = max(95.0, min(WORLD_WIDTH - 95.0, sx + x_offsets[slot]))
-        ty = max(135.0, min(WORLD_HEIGHT - 76.0, sy + y_offsets[slot]))
+        if sy >= 250:
+            slots: Tuple[Tuple[float, float], ...] = (
+                (-195.0, 14.0),
+                (195.0, 14.0),
+                (-210.0, 74.0),
+                (210.0, 74.0),
+                (-125.0, 84.0),
+                (125.0, 84.0),
+            )
+            min_y, max_y = 286.0, float(WORLD_HEIGHT - 66)
+        else:
+            slots = (
+                (-118.0, 128.0),
+                (118.0, 128.0),
+                (-150.0, 182.0),
+                (150.0, 182.0),
+                (-150.0, 228.0),
+                (150.0, 228.0),
+            )
+            min_y, max_y = 286.0, float(WORLD_HEIGHT - 66)
+
+        candidate_coords = [
+            (
+                max(115.0, min(WORLD_WIDTH - 115.0, float(sx + ox))),
+                max(min_y, min(max_y, float(sy + oy))),
+            )
+            for ox, oy in slots
+        ]
+        default_idx = offset_seed % len(candidate_coords)
+        rotated = candidate_coords[default_idx:] + candidate_coords[:default_idx]
+        tx, ty = rotated[0]
+        other_coords = [(v.target_x, v.target_y) for k, v in self.viewer_actors.items() if k != alias]
+        for cx, cy in rotated:
+            if all(math.hypot(cx - ox, cy - oy) > 48.0 for ox, oy in other_coords):
+                tx, ty = cx, cy
+                break
 
         actor = self.viewer_actors.get(alias)
         if actor is None:
@@ -515,11 +548,13 @@ class LiveAgentWorld:
                 ):
                     next_st = station_keys[(int(self.world_time_sec // 11.0) + idx) % len(station_keys)]
                     sx, sy, st_desc, _ = STATIONS[next_st]
-                    host_offsets = ((-142.0, 26.0), (0.0, 102.0), (142.0, 26.0))
-                    ox, oy = host_offsets[idx % len(host_offsets)]
+                    top_host_offsets = ((150.0, 12.0), (-150.0, 72.0), (0.0, 122.0))
+                    bottom_host_offsets = ((-178.0, 4.0), (178.0, 4.0), (0.0, -90.0))
+                    offsets = bottom_host_offsets if sy >= 250 else top_host_offsets
+                    ox, oy = offsets[idx % len(offsets)]
                     host.target_station = next_st
                     host.target_x = max(90.0, min(WORLD_WIDTH - 90.0, float(sx + ox)))
-                    host.target_y = min(WORLD_HEIGHT - 74.0, float(sy + oy))
+                    host.target_y = max(125.0, min(WORLD_HEIGHT - 74.0, float(sy + oy)))
                     if sid == "dafeiyu":
                         host.action_label = f"巡查{next_st[:2]}"
                     elif sid == "yowane":
@@ -930,7 +965,7 @@ class LiveAgentWorld:
                     self.banner_text = f"采纳 {author} 的建议「{chosen['text'][:18]}」！授予建议采纳官！"
                     self._banner_until_ts = now + 10.0
                     self._recompute_level_locked()
-                    self._push_log_locked("AGENT", f"采纳建议 {chosen['id']} (@无效 已屏蔽: {author})")
+                    self._push_log_locked("AGENT", f"采纳「{author}」建议 {chosen['id']}：{chosen['text'][:22]}")
                     return {"ok": True, "action": action, "suggestion_id": chosen["id"], "author": author}
 
                 if action == "announce":
@@ -1038,6 +1073,7 @@ class AutonomousWorldBrain:
         model: Optional[str] = None,
         interval_sec: float = 75.0,
         timeout_sec: float = 15.0,
+        max_calls: Optional[int] = None,
         http_client: Optional[httpx.AsyncClient] = None,
     ) -> None:
         resolved_key = (
@@ -1052,6 +1088,8 @@ class AutonomousWorldBrain:
         self.model = (model or os.getenv("LIVE_LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
         self.interval_sec = max(1.0, float(interval_sec))
         self.timeout_sec = max(2.0, float(timeout_sec))
+        self.max_calls: Optional[int] = None if max_calls is None else max(0, int(max_calls))
+        self.calls_made: int = 0
         self._external_client = http_client
         self.guard = LiveComplianceGuard()
 
@@ -1062,7 +1100,8 @@ class AutonomousWorldBrain:
     def __repr__(self) -> str:
         return (
             f"AutonomousWorldBrain(base_url={self.base_url!r}, model={self.model!r}, "
-            f"interval_sec={self.interval_sec!r}, configured={self.has_api_key})"
+            f"interval_sec={self.interval_sec!r}, configured={self.has_api_key}, "
+            f"calls_made={self.calls_made}, max_calls={self.max_calls})"
         )
 
     def sanitize_and_build_commands(self, decision: Dict[str, Any], state: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1165,6 +1204,8 @@ class AutonomousWorldBrain:
         """Query DeepSeek Chat in JSON mode to pick the next safe autonomous workshop action."""
         if not self.has_api_key:
             return []
+        if self.max_calls is not None and self.calls_made >= self.max_calls:
+            return []
 
         summary = format_world_context_summary(state)
         sys_prompt = (
@@ -1200,6 +1241,7 @@ class AutonomousWorldBrain:
         }
 
         try:
+            self.calls_made += 1
             if self._external_client is not None:
                 resp = await self._external_client.post(url, headers=headers, json=body, timeout=self.timeout_sec)
             else:
@@ -1854,7 +1896,7 @@ class WorldStageRenderer:
             px = int(round(vx - tok.width / 2))
             py = int(round(vy - tok.height + 6 - bob))
             world_canvas.paste(tok, (px, py), tok)
-            tag = f"{alias}·{vact}" if vact else alias
+            tag = f"{alias[:7]}·{vact[:6]}" if vact else alias[:8]
             tw = int(wdraw.textlength(tag, font=self._font_xs)) + 12
             tx0 = max(6, min(WORLD_WIDTH - tw - 6, int(round(vx - tw / 2))))
             ty0 = max(78, py - 22)
