@@ -919,6 +919,7 @@ class DualAILiveDirector:
         self._celebration_until: float = 0.0
 
         self._queue: asyncio.PriorityQueue[Tuple[int, int, DanmakuEvent]] = asyncio.PriorityQueue()
+        self._agent_speech_queue: Deque[Tuple[SpeakerId, str, str]] = deque(maxlen=16)
         self._queue_seq = 0
         self._turn_counter = 0
         self._idle_step = 0
@@ -1168,8 +1169,51 @@ class DualAILiveDirector:
         self.history.append(turn)
         return turn
 
+    def enqueue_agent_speech(self, speaker_id: SpeakerId, text: str, mood: str = "lively") -> bool:
+        """Validate and queue a high-priority spoken line injected live by the controlling Agent."""
+        if speaker_id not in PERSONAS:
+            return False
+        raw = str(text or "").replace("@", "").strip()
+        if not raw:
+            return False
+        check = self.safety_guard.filter_output(raw, persona=speaker_id)
+        if not check.allowed:
+            return False
+        self._agent_speech_queue.append((speaker_id, check.cleaned_text, str(mood or "lively")[:24]))
+        return True
+
     async def next_turn(self, *, wait_timeout: float = 0.0) -> PersonaTurn:
-        """Pop the highest-priority pending event (`gift`/`system` > `danmaku` > `enter`) or run idle banter."""
+        """Pop highest-priority live Agent speech, queued viewer events, or emit idle banter."""
+        if self._agent_speech_queue:
+            speaker_id, speech_text, mood = self._agent_speech_queue.popleft()
+            speaker = PERSONAS[speaker_id]
+            now = time.time()
+            self.highlight_tracker.record(
+                category="script_pitch",
+                speaker_id=speaker_id,
+                summary=f"{speaker.short_name}: {speech_text}",
+                score=0.90,
+                timestamp=now,
+            )
+            self._turn_counter += 1
+            self._last_speaker = speaker_id
+            turn = PersonaTurn(
+                turn_id=self._turn_counter,
+                speaker_id=speaker_id,
+                speaker_name=speaker.display_name,
+                text=speech_text,
+                mood=mood,
+                trigger_type="system",
+                trigger_user="Agent工作台",
+                trigger_text=speech_text[:48],
+                timestamp=now,
+                safety_deflected=False,
+                is_highlight=True,
+                highlight_category="script_pitch",
+            )
+            self.history.append(turn)
+            return turn
+
         event: Optional[DanmakuEvent] = None
         if not self._queue.empty():
             _, _, event = self._queue.get_nowait()

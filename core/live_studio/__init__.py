@@ -70,6 +70,11 @@ from core.live_studio.stage_server import (
     StageServer,
     create_stage_app,
 )
+from core.live_studio.world_engine import (
+    LiveAgentWorld,
+    ViewerMemoryStore,
+    WorldStageRenderer,
+)
 
 __all__ = [
     "AI_DISCLOSURE_BANNER",
@@ -100,6 +105,7 @@ __all__ = [
     "HeadlessStageRenderer",
     "HighlightMoment",
     "HighlightTracker",
+    "LiveAgentWorld",
     "LiveComplianceGuard",
     "LivePollState",
     "LiveStageRuntime",
@@ -113,6 +119,8 @@ __all__ = [
     "StageServer",
     "StartLiveResult",
     "SyntheticAudioMixer",
+    "ViewerMemoryStore",
+    "WorldStageRenderer",
     "create_stage_app",
     "detect_video_encoder",
     "pack_packet",

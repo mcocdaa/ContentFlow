@@ -16,6 +16,7 @@ Security & Privacy Invariants:
 
 from __future__ import annotations
 
+import io
 import logging
 import re
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, Final, Optional, Tuple
 
 import requests
+from PIL import Image
 
 from config.settings import OUTPUT_DIR
 from core.auth_vault import STANDARD_USER_AGENT, AuthVault, encode_qr_matrix, render_qr_png
@@ -33,9 +35,12 @@ logger = logging.getLogger(__name__)
 REDACTED_RTMP_TOKEN: Final[str] = "<REDACTED_RTMP_URL>"
 
 BILIBILI_LIVE_GET_INFO_URL: Final[str] = "https://api.live.bilibili.com/xlive/app-blink/v1/room/GetInfo"
+BILIBILI_LIVE_ROOM_GET_INFO_URL: Final[str] = "https://api.live.bilibili.com/room/v1/Room/get_info"
+BILIBILI_LIVE_INFO_BY_ROOM_URL: Final[str] = "https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom"
 BILIBILI_LIVE_ROOM_UPDATE_URL: Final[str] = "https://api.live.bilibili.com/room/v1/Room/update"
 BILIBILI_LIVE_START_URL: Final[str] = "https://api.live.bilibili.com/room/v1/Room/startLive"
 BILIBILI_LIVE_STOP_URL: Final[str] = "https://api.live.bilibili.com/room/v1/Room/stopLive"
+BILIBILI_LIVE_STOP_DATA_URL: Final[str] = "https://api.live.bilibili.com/xlive/app-blink/v1/live/StopLiveData"
 BILIBILI_LIVE_IMAGE_UPLOAD_URL: Final[str] = "https://api.bilibili.com/x/upload/web/image"
 BILIBILI_LIVE_PRELIVE_UPDATE_URL: Final[str] = (
     "https://api.live.bilibili.com/xlive/app-blink/v1/preLive/UpdatePreLiveInfo"
@@ -135,6 +140,7 @@ class StartLiveResult:
     rtmp_addr: str = field(default="", repr=False)
     rtmp_code: str = field(default="", repr=False)
     rtmp_url: str = field(default="", repr=False)
+    live_key: str = field(default="", repr=False)
     face_auth_qr_path: Optional[Path] = None
     message: str = ""
 
@@ -160,6 +166,7 @@ class StartLiveResult:
             "room_id": REDACTED_TOKEN if self.room_id else "",
             "rtmp_url": REDACTED_RTMP_TOKEN if has_rtmp else "",
             "has_rtmp": has_rtmp,
+            "has_live_key": bool(self.live_key),
             "face_auth_qr_path": str(self.face_auth_qr_path) if self.face_auth_qr_path is not None else None,
             "message": scrub_rtmp_secrets(self.message),
         }
@@ -285,8 +292,38 @@ class BilibiliLiveController:
             "message": msg,
         }
 
+    @staticmethod
+    def _prepare_cover_payload(target: Path) -> Tuple[str, bytes, str]:
+        """Normalize a live cover image in memory to Bilibili 4:3 (`800x600`) JPEG under 280 KB."""
+        try:
+            with Image.open(target) as raw_img:
+                rgb = raw_img.convert("RGB")
+                sw, sh = rgb.size
+                target_ratio = 4.0 / 3.0
+                src_ratio = sw / max(1, sh)
+                if src_ratio > target_ratio:
+                    crop_w = max(1, int(round(sh * target_ratio)))
+                    x0 = max(0, (sw - crop_w) // 2)
+                    rgb = rgb.crop((x0, 0, x0 + crop_w, sh))
+                elif src_ratio < target_ratio:
+                    crop_h = max(1, int(round(sw / target_ratio)))
+                    y0 = max(0, (sh - crop_h) // 2)
+                    rgb = rgb.crop((0, y0, sw, y0 + crop_h))
+                resized = rgb.resize((800, 600), Image.Resampling.LANCZOS)
+                encoded = b""
+                for quality in (86, 82, 76):
+                    buf = io.BytesIO()
+                    resized.save(buf, format="JPEG", quality=quality, optimize=True)
+                    encoded = buf.getvalue()
+                    if len(encoded) <= 280 * 1024:
+                        break
+                return f"{target.stem}_4x3.jpg", encoded, "image/jpeg"
+        except Exception:
+            mime = "image/png" if target.suffix.lower() == ".png" else "image/jpeg"
+            return target.name, target.read_bytes(), mime
+
     def upload_live_cover(self, cover_path: Path, room_id: Optional[int] = None) -> Dict[str, Any]:
-        """Optional non-fatal live room cover upload & update; never crashes start flow."""
+        """Optional non-fatal 4:3 (`800x600`) live room cover upload & update; never crashes start flow."""
         target = Path(cover_path)
         if not target.is_file():
             return {
@@ -297,16 +334,15 @@ class BilibiliLiveController:
             }
         try:
             cookies, csrf = self._load_cookies_and_csrf()
-            mime = "image/png" if target.suffix.lower() == ".png" else "image/jpeg"
-            with target.open("rb") as fh:
-                upload_resp = self._session.post(
-                    BILIBILI_LIVE_IMAGE_UPLOAD_URL,
-                    data={"bucket": "live", "dir": "new_room_cover", "csrf": csrf},
-                    files={"file": (target.name, fh, mime)},
-                    cookies=cookies,
-                    headers=self._headers(),
-                    timeout=self.timeout_sec,
-                )
+            upload_name, payload_bytes, mime = self._prepare_cover_payload(target)
+            upload_resp = self._session.post(
+                BILIBILI_LIVE_IMAGE_UPLOAD_URL,
+                data={"bucket": "live", "dir": "new_room_cover", "csrf": csrf},
+                files={"file": (upload_name, io.BytesIO(payload_bytes), mime)},
+                cookies=cookies,
+                headers=self._headers(),
+                timeout=self.timeout_sec,
+            )
             upload_resp.raise_for_status()
             up_payload = upload_resp.json()
             up_code = int(up_payload.get("code", -1))
@@ -327,8 +363,8 @@ class BilibiliLiveController:
                 }
 
             update_data: Dict[str, str] = {
-                "platform": "pc",
-                "mobi_app": "pc",
+                "platform": "web",
+                "mobi_app": "web",
                 "build": "1",
                 "cover": cover_url,
                 "csrf": csrf,
@@ -424,6 +460,7 @@ class BilibiliLiveController:
             rtmp_addr = str(rtmp_info.get("addr") or "").strip()
             rtmp_code = str(rtmp_info.get("code") or "").strip()
             rtmp_url = _assemble_rtmp_url(rtmp_addr, rtmp_code)
+            live_key = str(data.get("live_key") or data.get("liveKey") or "").strip()
             if not rtmp_url:
                 return StartLiveResult(
                     ok=False,
@@ -440,6 +477,7 @@ class BilibiliLiveController:
                 rtmp_addr=rtmp_addr,
                 rtmp_code=rtmp_code,
                 rtmp_url=rtmp_url,
+                live_key=live_key,
                 message="Bilibili live session started",
             )
 
@@ -493,4 +531,158 @@ class BilibiliLiveController:
                 "code": -1,
                 "room_id": REDACTED_TOKEN,
                 "message": safe_err,
+            }
+
+    def get_live_telemetry(self, room_id: int) -> Dict[str, Any]:
+        """Fetch real-time online viewers, watched count, and follower count (strictly zero PII)."""
+        online = 0
+        watched_num = 0
+        watched_text = "0人看过"
+        attention = 0
+        live_status = 0
+        ok = False
+
+        if room_id <= 0:
+            return {
+                "ok": False,
+                "online": 0,
+                "watched_num": 0,
+                "watched_text": watched_text,
+                "attention": 0,
+                "live_status": 0,
+            }
+
+        try:
+            r1 = self._session.get(
+                BILIBILI_LIVE_ROOM_GET_INFO_URL,
+                params={"room_id": str(room_id)},
+                headers=self._headers(),
+                timeout=self.timeout_sec,
+            )
+            r1.raise_for_status()
+            p1 = r1.json()
+            if int(p1.get("code", -1)) == 0:
+                d1 = p1.get("data") or {}
+                online = max(0, int(d1.get("online") or 0))
+                attention = max(0, int(d1.get("attention") or 0))
+                live_status = int(d1.get("live_status") or 0)
+                ok = True
+        except Exception as exc:
+            logger.debug("get_live_telemetry Room/get_info skipped (%s)", type(exc).__name__)
+
+        try:
+            r2 = self._session.get(
+                BILIBILI_LIVE_INFO_BY_ROOM_URL,
+                params={"room_id": str(room_id)},
+                headers=self._headers(),
+                timeout=self.timeout_sec,
+            )
+            r2.raise_for_status()
+            p2 = r2.json()
+            if int(p2.get("code", -1)) == 0:
+                d2 = p2.get("data") or {}
+                rinfo = d2.get("room_info") or {}
+                if not ok:
+                    online = max(0, int(rinfo.get("online") or online))
+                    live_status = int(rinfo.get("live_status") or live_status)
+                wshow = d2.get("watched_show") or {}
+                watched_num = max(0, int(wshow.get("num") or 0))
+                raw_txt = str(wshow.get("text_large") or "").strip()
+                if raw_txt:
+                    watched_text = scrub_rtmp_secrets(raw_txt)
+                elif watched_num > 0:
+                    watched_text = f"{watched_num}人看过"
+                anchor_rel = (d2.get("anchor_info") or {}).get("relation_info") or {}
+                if anchor_rel.get("attention") is not None and attention == 0:
+                    attention = max(0, int(anchor_rel.get("attention") or 0))
+                ok = True
+        except Exception as exc:
+            logger.debug("get_live_telemetry getInfoByRoom skipped (%s)", type(exc).__name__)
+
+        return {
+            "ok": ok,
+            "online": online,
+            "watched_num": watched_num,
+            "watched_text": watched_text,
+            "attention": attention,
+            "live_status": live_status,
+        }
+
+    def get_stop_live_data(self, live_key: str) -> Dict[str, Any]:
+        """Fetch end-of-session Bilibili StopLiveData summary by `live_key` without leaking secrets."""
+        clean_key = str(live_key or "").strip()
+        if not clean_key:
+            return {
+                "ok": False,
+                "code": -1,
+                "live_time_sec": 0,
+                "watched_count": 0,
+                "max_online": 0,
+                "add_fans": 0,
+                "danmu_num": 0,
+                "hamster_rmb": 0.0,
+                "new_fans_club": 0,
+                "cover_exposure_count": 0,
+                "cover_click_rate": 0.0,
+            }
+
+        def _nonneg_int(val: Any) -> int:
+            try:
+                num = int(val)
+                return num if num >= 0 else 0
+            except (TypeError, ValueError):
+                return 0
+
+        def _nonneg_float(val: Any) -> float:
+            try:
+                num = float(val)
+                return num if num >= 0.0 else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        try:
+            cookies, _ = self._load_cookies_and_csrf()
+            resp = self._session.get(
+                BILIBILI_LIVE_STOP_DATA_URL,
+                params={"live_key": clean_key},
+                cookies=cookies,
+                headers=self._headers(),
+                timeout=self.timeout_sec,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            code = int(payload.get("code", -1))
+            data = payload.get("data") or {}
+            cov_exp = data.get("cover_exposure_count")
+            cov_exp_num = cov_exp.get("count") if isinstance(cov_exp, dict) else cov_exp
+            cov_ctr = data.get("cover_click_rate")
+            cov_ctr_num = cov_ctr.get("rate") if isinstance(cov_ctr, dict) else cov_ctr
+            return {
+                "ok": code == 0,
+                "code": code,
+                "live_time_sec": _nonneg_int(data.get("LiveTime")),
+                "watched_count": _nonneg_int(data.get("WatchedCount")),
+                "max_online": _nonneg_int(data.get("MaxOnline")),
+                "add_fans": _nonneg_int(data.get("AddFans")),
+                "danmu_num": _nonneg_int(data.get("DanmuNum")),
+                "hamster_rmb": round(_nonneg_float(data.get("HamsterRmb")), 4),
+                "new_fans_club": _nonneg_int(data.get("NewFansClub")),
+                "cover_exposure_count": _nonneg_int(cov_exp_num),
+                "cover_click_rate": round(_nonneg_float(cov_ctr_num), 4),
+            }
+        except Exception as exc:
+            safe_err = scrub_rtmp_secrets(str(exc).replace(clean_key, REDACTED_TOKEN))
+            logger.warning("get_stop_live_data failed (%s): %s", type(exc).__name__, safe_err)
+            return {
+                "ok": False,
+                "code": -1,
+                "live_time_sec": 0,
+                "watched_count": 0,
+                "max_online": 0,
+                "add_fans": 0,
+                "danmu_num": 0,
+                "hamster_rmb": 0.0,
+                "new_fans_club": 0,
+                "cover_exposure_count": 0,
+                "cover_click_rate": 0.0,
             }

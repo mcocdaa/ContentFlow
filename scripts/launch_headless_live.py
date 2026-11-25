@@ -58,6 +58,7 @@ from core.live_studio.headless_streamer import (
     StatusCallback,
     SyntheticAudioMixer,
 )
+from core.live_studio.world_engine import DEFAULT_MEMORY_PATH, LiveAgentWorld, WorldStageRenderer
 
 logger = logging.getLogger("contentflow.headless_live")
 
@@ -133,6 +134,18 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("dual", "trio"),
         default="trio",
         help="Broadcast lineup: `trio` (大肥鱼+Gemini娘+弱音ハク, default) or `dual` (大肥鱼+Gemini娘).",
+    )
+    parser.add_argument(
+        "--stage-mode",
+        choices=("trio_talk", "world"),
+        default="trio_talk",
+        help="Stage layout mode: `trio_talk` (default portrait talk show) or `world` (2D interactive workshop + workbench).",
+    )
+    parser.add_argument(
+        "--memory-path",
+        type=str,
+        default=str(DEFAULT_MEMORY_PATH),
+        help="Viewer memory JSON store path for `--stage-mode world`.",
     )
     parser.add_argument(
         "--poll-topic",
@@ -280,13 +293,33 @@ async def run_headless_live(
         poll_topic=poll_topic,
         poll_options=poll_options,
     )
-    renderer = HeadlessStageRenderer(
-        fps=args.fps,
-        follower_count=args.follower_count,
-        follower_goal=args.follower_goal,
-        show_title=args.title,
-        cast=cast_tuple,
-    )
+    stage_mode = str(getattr(args, "stage_mode", "trio_talk") or "trio_talk")
+    world: Optional[LiveAgentWorld] = None
+    renderer: Any
+    if stage_mode == "world":
+        mem_path = Path(str(getattr(args, "memory_path", DEFAULT_MEMORY_PATH) or DEFAULT_MEMORY_PATH))
+        world = LiveAgentWorld(
+            memory_path=mem_path,
+            follower_count=args.follower_count,
+            follower_goal=args.follower_goal,
+            cast=cast_tuple,
+        )
+        renderer = WorldStageRenderer(
+            fps=args.fps,
+            world=world,
+            follower_count=args.follower_count,
+            follower_goal=args.follower_goal,
+            show_title=args.title,
+            cast=cast_tuple,
+        )
+    else:
+        renderer = HeadlessStageRenderer(
+            fps=args.fps,
+            follower_count=args.follower_count,
+            follower_goal=args.follower_goal,
+            show_title=args.title,
+            cast=cast_tuple,
+        )
     mixer = SyntheticAudioMixer(
         fps=args.fps,
         bgm_path=Path(args.bgm_path) if args.bgm_path else None,
@@ -299,6 +332,7 @@ async def run_headless_live(
         audio_mixer=mixer,
         director=director,
         controller=controller,
+        world=world,
         fps=args.fps,
         status_callback=cb,
     )

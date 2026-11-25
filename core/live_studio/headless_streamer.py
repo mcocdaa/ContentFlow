@@ -31,7 +31,10 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Callable, Deque, Dict, Final, List, Literal, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, Final, List, Literal, Optional, Sequence, Tuple
+
+if TYPE_CHECKING:
+    from core.live_studio.world_engine import LiveAgentWorld
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
@@ -1321,27 +1324,33 @@ class SyntheticAudioMixer:
             return synthesize_offline_fallback_pcm("欢迎来到双AI直播间", turn.speaker_id, sample_rate=self.sample_rate)
 
         if self.use_edge_tts:
-            try:
-                import edge_tts
+            last_exc: Optional[Exception] = None
+            for attempt in range(2):
+                try:
+                    import edge_tts
 
-                voice = VOICE_MAP.get(turn.speaker_id, VOICE_MAP["dafeiyu"])
-                rate, pitch = VOICE_STYLE_MAP.get(turn.speaker_id, ("+0%", "+0Hz"))
-                comm = edge_tts.Communicate(text=safe_text, voice=voice, rate=rate, pitch=pitch)
-                mp3_buf = io.BytesIO()
-                async with asyncio.timeout(12.0):
-                    async for chunk in comm.stream():
-                        if chunk.get("type") == "audio":
-                            data = chunk.get("data")
-                            if isinstance(data, (bytes, bytearray)):
-                                mp3_buf.write(data)
-                decoded = await self._decode_mp3_bytes_to_stereo(mp3_buf.getvalue())
-                if decoded is not None and len(decoded) > self.samples_per_frame:
-                    return decoded
-            except Exception as exc:
+                    voice = VOICE_MAP.get(turn.speaker_id, VOICE_MAP["dafeiyu"])
+                    rate, pitch = VOICE_STYLE_MAP.get(turn.speaker_id, ("+0%", "+0Hz"))
+                    comm = edge_tts.Communicate(text=safe_text, voice=voice, rate=rate, pitch=pitch)
+                    mp3_buf = io.BytesIO()
+                    async with asyncio.timeout(8.0):
+                        async for chunk in comm.stream():
+                            if chunk.get("type") == "audio":
+                                data = chunk.get("data")
+                                if isinstance(data, (bytes, bytearray)):
+                                    mp3_buf.write(data)
+                    decoded = await self._decode_mp3_bytes_to_stereo(mp3_buf.getvalue())
+                    if decoded is not None and len(decoded) > self.samples_per_frame:
+                        return decoded
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt == 0:
+                        await asyncio.sleep(0.25)
+            if last_exc is not None:
                 logger.info(
                     "edge-tts unavailable for %s (%s); using pure-NumPy melodic fallback",
                     turn.speaker_id,
-                    type(exc).__name__,
+                    type(last_exc).__name__,
                 )
 
         return synthesize_offline_fallback_pcm(safe_text, turn.speaker_id, sample_rate=self.sample_rate)
@@ -1437,10 +1446,11 @@ class HeadlessLiveStreamer:
     def __init__(
         self,
         *,
-        renderer: Optional[HeadlessStageRenderer] = None,
+        renderer: Optional[Any] = None,
         audio_mixer: Optional[SyntheticAudioMixer] = None,
         director: Optional[DualAILiveDirector] = None,
         controller: Optional[BilibiliLiveController] = None,
+        world: Optional["LiveAgentWorld"] = None,
         ffmpeg_bin: str = "ffmpeg",
         video_encoder: Optional[Literal["h264_nvenc", "libx264"]] = None,
         fps: int = DEFAULT_FPS,
@@ -1452,6 +1462,7 @@ class HeadlessLiveStreamer:
         self.audio_mixer = audio_mixer or SyntheticAudioMixer(fps=self.fps, ffmpeg_bin=self.ffmpeg_bin)
         self.director = director or DualAILiveDirector()
         self.controller = controller
+        self.world = world
         self.video_encoder: Literal["h264_nvenc", "libx264"] = video_encoder or detect_video_encoder(self.ffmpeg_bin)
         self.status_callback = status_callback
 
@@ -1653,6 +1664,13 @@ class HeadlessLiveStreamer:
         thread.start()
         return thread
 
+    @staticmethod
+    def _write_json_atomic(path: Path, payload: Dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(f"{path.suffix}.tmp.{os.getpid()}")
+        tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp_path, path)
+
     async def _run_av_pipeline(
         self,
         *,
@@ -1661,6 +1679,9 @@ class HeadlessLiveStreamer:
         output_mp4: Optional[Path] = None,
         rtmp_url: Optional[str] = None,
         record_path: Optional[Path] = None,
+        record_dir: Optional[Path] = None,
+        telemetry_ctrl: Optional[BilibiliLiveController] = None,
+        telemetry_room_id: Optional[int] = None,
         realtime_pacing: bool = False,
         frame_dump_path: Optional[Path] = None,
         danmaku_source: Optional[Any] = None,
@@ -1673,6 +1694,8 @@ class HeadlessLiveStreamer:
             output_mp4.parent.mkdir(parents=True, exist_ok=True)
         if record_path is not None:
             record_path.parent.mkdir(parents=True, exist_ok=True)
+        if record_dir is not None:
+            record_dir.mkdir(parents=True, exist_ok=True)
         if frame_dump_path is not None:
             frame_dump_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1688,6 +1711,7 @@ class HeadlessLiveStreamer:
         writer_threads: List[threading.Thread] = []
         stderr_thread: Optional[threading.Thread] = None
         danmaku_task: Optional[asyncio.Task[None]] = None
+        control_task: Optional[asyncio.Task[None]] = None
         synth_task: Optional[asyncio.Task[Tuple[PersonaTurn, np.ndarray]]] = None
 
         frames_written = 0
@@ -1706,13 +1730,98 @@ class HeadlessLiveStreamer:
                 async for ev in danmaku_source.events():
                     if self._stop_event.is_set():
                         break
-                    self.director.enqueue_event(ev)
+                    sanitized = self.director.enqueue_event(ev)
+                    if sanitized is None:
+                        continue
+                    if self.world is not None:
+                        self.world.handle_danmaku_event(sanitized)
+                    if record_dir is not None:
+                        inbox_path = record_dir / "danmaku_inbox.jsonl"
+                        inbox_row = {
+                            "timestamp": sanitized.timestamp,
+                            "event_type": sanitized.event_type,
+                            "user_alias": sanitized.user_alias,
+                            "text": sanitized.text,
+                            "gift_name": sanitized.gift_name,
+                            "gift_count": sanitized.gift_count,
+                        }
+                        with inbox_path.open("a", encoding="utf-8") as fh:
+                            fh.write(json.dumps(inbox_row, ensure_ascii=False) + "\n")
             except asyncio.CancelledError:
                 return
             except Exception as exc:
                 logger.warning(
                     "Background danmaku reader ended (%s): %s", type(exc).__name__, scrub_rtmp_secrets(str(exc))
                 )
+
+        async def _world_control_and_telemetry_loop() -> None:
+            cmd_offset = 0
+            last_state_write = 0.0
+            last_telemetry_poll = -30.0
+            cmd_path = (record_dir / "agent_commands.jsonl") if record_dir is not None else None
+            state_path = (record_dir / "world_state.json") if record_dir is not None else None
+            try:
+                while not self._stop_event.is_set():
+                    now = time.monotonic()
+                    # 1) Consume Agent bridge commands incrementally
+                    if self.world is not None and cmd_path is not None and cmd_path.is_file():
+                        try:
+                            with cmd_path.open("r", encoding="utf-8") as fh:
+                                fh.seek(cmd_offset)
+                                raw_lines = fh.readlines()
+                                cmd_offset = fh.tell()
+                            for line in raw_lines:
+                                stripped = line.strip()
+                                if not stripped:
+                                    continue
+                                try:
+                                    cmd_obj = json.loads(stripped)
+                                except json.JSONDecodeError:
+                                    continue
+                                res = self.world.apply_agent_command(cmd_obj)
+                                speech_req = res.get("speech_request")
+                                if isinstance(speech_req, tuple) and len(speech_req) == 3:
+                                    self.director.enqueue_agent_speech(speech_req[0], speech_req[1], speech_req[2])
+                                if self.world.stop_requested:
+                                    self.request_stop()
+                                    break
+                        except Exception as exc:
+                            logger.debug("Agent command bridge poll skipped (%s)", type(exc).__name__)
+
+                    # 2) Poll Bilibili live telemetry every 30s during go-live
+                    if (
+                        mode == "go-live"
+                        and telemetry_ctrl is not None
+                        and telemetry_room_id is not None
+                        and telemetry_room_id > 0
+                        and (now - last_telemetry_poll) >= 30.0
+                    ):
+                        last_telemetry_poll = now
+                        try:
+                            tel = await asyncio.to_thread(telemetry_ctrl.get_live_telemetry, telemetry_room_id)
+                            if tel.get("ok"):
+                                att = int(tel.get("attention") or 0)
+                                if att > self.director.follower_count:
+                                    self.director.notify_follower_count(att)
+                                if self.world is not None:
+                                    self.world.update_telemetry(
+                                        online=tel.get("online"),
+                                        watched_num=tel.get("watched_num"),
+                                        watched_text=tel.get("watched_text"),
+                                        follower_count=att if att > 0 else None,
+                                    )
+                        except Exception as exc:
+                            logger.debug("Telemetry poll skipped (%s)", type(exc).__name__)
+
+                    # 3) Write atomic world_state.json every 2.0s
+                    if self.world is not None and state_path is not None and (now - last_state_write) >= 2.0:
+                        last_state_write = now
+                        with contextlib.suppress(Exception):
+                            self._write_json_atomic(state_path, self.world.export_state_dict())
+
+                    await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                return
 
         async def _prepare_next_turn() -> Tuple[PersonaTurn, np.ndarray]:
             turn = await self.director.next_turn(wait_timeout=0.0)
@@ -1742,28 +1851,49 @@ class HeadlessLiveStreamer:
         try:
             # Seed initial rehearsal danmaku + live poll votes in dry-stream so stage widgets are immediately lively
             if mode == "dry-stream":
-                dry_seed_events = [
-                    DanmakuEvent(event_type="enter", user_alias="熬夜写代码的小蓝", text="进入了直播间"),
-                    DanmakuEvent(event_type="danmaku", user_alias="鱼粉一号", text="扣1 支持大肥鱼继续吐槽24G内存！"),
-                    DanmakuEvent(event_type="danmaku", user_alias="封面颜控", text="扣2 Gemini娘4.9星高明度封面必胜！"),
-                    DanmakuEvent(
-                        event_type="danmaku",
-                        user_alias="财务旁听生",
-                        text="扣3 弱音大姐头冷面查账太好笑了，快评评理！",
-                    ),
-                    DanmakuEvent(
-                        event_type="gift",
-                        user_alias="机房投喂官",
-                        text="投喂了 小心心 x3",
-                        gift_name="小心心",
-                        gift_count=3,
-                    ),
-                ]
+                if self.world is not None:
+                    dry_seed_events = [
+                        DanmakuEvent(event_type="enter", user_alias="熬夜写代码的小蓝", text="进入了直播间"),
+                        DanmakuEvent(event_type="danmaku", user_alias="早八工友", text="开工"),
+                        DanmakuEvent(event_type="danmaku", user_alias="摸鱼架构师", text="写代码"),
+                        DanmakuEvent(event_type="danmaku", user_alias="灵感提供者", text="建议 加个夜间霓虹模式"),
+                        DanmakuEvent(
+                            event_type="gift",
+                            user_alias="机房投喂官",
+                            text="投喂了 小心心 x2",
+                            gift_name="小心心",
+                            gift_count=2,
+                        ),
+                    ]
+                else:
+                    dry_seed_events = [
+                        DanmakuEvent(event_type="enter", user_alias="熬夜写代码的小蓝", text="进入了直播间"),
+                        DanmakuEvent(
+                            event_type="danmaku", user_alias="鱼粉一号", text="扣1 支持大肥鱼继续吐槽24G内存！"
+                        ),
+                        DanmakuEvent(
+                            event_type="danmaku", user_alias="封面颜控", text="扣2 Gemini娘4.9星高明度封面必胜！"
+                        ),
+                        DanmakuEvent(
+                            event_type="danmaku",
+                            user_alias="财务旁听生",
+                            text="扣3 弱音大姐头冷面查账太好笑了，快评评理！",
+                        ),
+                        DanmakuEvent(
+                            event_type="gift",
+                            user_alias="机房投喂官",
+                            text="投喂了 小心心 x3",
+                            gift_name="小心心",
+                            gift_count=3,
+                        ),
+                    ]
                 seed_source = MockDanmakuSource(
                     interval_sec=0.0, max_events=len(dry_seed_events), custom_events=dry_seed_events
                 )
                 async for ev in seed_source.events():
-                    self.director.enqueue_event(ev)
+                    enq = self.director.enqueue_event(ev)
+                    if enq is not None and self.world is not None:
+                        self.world.handle_danmaku_event(enq)
                 await seed_source.close()
 
             # Pre-synthesize opening turn before spawning ffmpeg so frame 0 starts speaking immediately
@@ -1806,6 +1936,8 @@ class HeadlessLiveStreamer:
 
             if danmaku_source is not None:
                 danmaku_task = asyncio.create_task(_danmaku_pump(), name="headless-danmaku-pump")
+            if self.world is not None or (mode == "go-live" and telemetry_ctrl is not None and telemetry_room_id):
+                control_task = asyncio.create_task(_world_control_and_telemetry_loop(), name="headless-world-control")
 
             # Pre-fill audio lead (~20 frames = 128 KiB) so FFmpeg opens rawvideo + s16le with zero pipe deadlock
             for _ in range(prefill_audio_frames):
@@ -1831,6 +1963,9 @@ class HeadlessLiveStreamer:
                 if frame_turn is not None:
                     current_turn = frame_turn
                     active_speaker = frame_turn.speaker_id
+
+                if self.world is not None:
+                    self.world.tick(1.0 / float(self.fps))
 
                 frame_rgb = self.renderer.render_frame(
                     frame_index=frame_idx,
@@ -1875,6 +2010,15 @@ class HeadlessLiveStreamer:
                 dumped_frame = True
 
         finally:
+            if control_task is not None:
+                control_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await control_task
+
+            if self.world is not None and record_dir is not None:
+                with contextlib.suppress(Exception):
+                    self._write_json_atomic(record_dir / "world_state.json", self.world.export_state_dict())
+
             if synth_task is not None:
                 synth_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -1971,14 +2115,16 @@ class HeadlessLiveStreamer:
         realtime_pacing: bool = False,
     ) -> Dict[str, Any]:
         """Run a full headless zero-mic dry stream writing directly to a local `.mp4`."""
+        rec_path = Path(record_dir) if record_dir is not None else None
         stats = await self._run_av_pipeline(
             mode="dry-stream",
             duration_sec=duration_sec,
             output_mp4=Path(output_mp4),
+            record_dir=rec_path,
             realtime_pacing=realtime_pacing,
             frame_dump_path=frame_dump_path,
         )
-        clip_plan_path, clip_plan_count = self._export_highlights(record_dir, str(output_mp4))
+        clip_plan_path, clip_plan_count = self._export_highlights(rec_path, str(output_mp4))
         result: Dict[str, Any] = {
             "ok": True,
             "mode": "dry-stream",
@@ -2037,10 +2183,11 @@ class HeadlessLiveStreamer:
             self._emit_status("LIVE_ERROR", payload)
             return payload
 
+        rec_dir_path: Optional[Path] = Path(record_dir) if record_dir is not None else None
         record_mkv: Optional[Path] = None
-        if record_dir is not None:
-            Path(record_dir).mkdir(parents=True, exist_ok=True)
-            record_mkv = Path(record_dir) / "live_recording.mkv"
+        if rec_dir_path is not None:
+            rec_dir_path.mkdir(parents=True, exist_ok=True)
+            record_mkv = rec_dir_path / "live_recording.mkv"
 
         self._emit_status(
             "LIVE_STARTED",
@@ -2050,6 +2197,7 @@ class HeadlessLiveStreamer:
                 "status": "live",
                 "room_id": REDACTED_TOKEN,
                 "rtmp_url": REDACTED_RTMP_TOKEN,
+                "has_live_key": bool(start_res.live_key),
                 "area_id": area_id,
                 "encoder": self.video_encoder,
                 "record_path": str(record_mkv) if record_mkv else None,
@@ -2057,10 +2205,26 @@ class HeadlessLiveStreamer:
             },
         )
 
+        def _on_room_stats(stat_ev: Dict[str, Any]) -> None:
+            if self.world is None:
+                return
+            st_type = stat_ev.get("type")
+            if st_type == "watched":
+                self.world.update_telemetry(
+                    watched_num=stat_ev.get("watched_num"),
+                    watched_text=stat_ev.get("watched_text"),
+                )
+            elif st_type == "online":
+                self.world.update_telemetry(online=stat_ev.get("online"))
+
         danmaku_source = (
             danmaku_client_factory(room_id)
             if danmaku_client_factory is not None
-            else BilibiliDanmakuClient(room_id=room_id, cookies=ctrl.vault.load_bilibili_cookies())
+            else BilibiliDanmakuClient(
+                room_id=room_id,
+                cookies=ctrl.vault.load_bilibili_cookies(),
+                stats_callback=_on_room_stats,
+            )
         )
         stream_stats: Dict[str, Any] = {
             "frames_written": 0,
@@ -2075,6 +2239,7 @@ class HeadlessLiveStreamer:
         }
         stream_error: Optional[str] = None
         stop_result: Dict[str, Any] = {"ok": False, "room_id": REDACTED_TOKEN}
+        stop_live_data: Dict[str, Any] = {}
         clip_plan_path: Optional[Path] = None
         clip_plan_count = 0
 
@@ -2084,6 +2249,9 @@ class HeadlessLiveStreamer:
                 duration_sec=duration_sec,
                 rtmp_url=start_res.rtmp_url,
                 record_path=record_mkv,
+                record_dir=rec_dir_path,
+                telemetry_ctrl=ctrl,
+                telemetry_room_id=room_id,
                 realtime_pacing=realtime_pacing,
                 frame_dump_path=frame_dump_path,
                 danmaku_source=danmaku_source,
@@ -2093,10 +2261,29 @@ class HeadlessLiveStreamer:
             logger.error("Headless live stream interrupted (%s): %s", type(exc).__name__, stream_error)
         finally:
             stop_result = ctrl.stop_live(room_id)
+            if start_res.live_key:
+                stop_live_data = ctrl.get_stop_live_data(start_res.live_key)
             clip_plan_path, clip_plan_count = self._export_highlights(
-                Path(record_dir) if record_dir is not None else None,
+                rec_dir_path,
                 str(record_mkv or "live_recording.mkv"),
             )
+            if rec_dir_path is not None:
+                session_report: Dict[str, Any] = {
+                    "ok": stream_error is None,
+                    "duration_sec": stream_stats.get("duration_sec", 0.0),
+                    "encoder": stream_stats.get("encoder"),
+                    "turns_emitted": stream_stats.get("turns_emitted", 0),
+                    "danmaku_count": stream_stats.get("danmaku_count", 0),
+                    "gift_count": stream_stats.get("gift_count", 0),
+                    "clip_plan_path": str(clip_plan_path) if clip_plan_path else None,
+                    "stop_result": stop_result,
+                    "cover_result": cover_result,
+                    "stop_live_data": stop_live_data,
+                    "world_summary": self.world.export_state_dict() if self.world is not None else None,
+                }
+                with contextlib.suppress(Exception):
+                    self._write_json_atomic(rec_dir_path / "live_session_report.json", session_report)
+
             self._emit_status(
                 "LIVE_STOPPED",
                 {
@@ -2110,6 +2297,7 @@ class HeadlessLiveStreamer:
                     "error": stream_error,
                     "clip_plan_path": str(clip_plan_path) if clip_plan_path else None,
                     "clip_plan_count": clip_plan_count,
+                    "stop_live_data": stop_live_data,
                     **stream_stats,
                 },
             )
@@ -2122,6 +2310,7 @@ class HeadlessLiveStreamer:
             "rtmp_url": REDACTED_RTMP_TOKEN,
             "area_id": area_id,
             "stop_result": stop_result,
+            "stop_live_data": stop_live_data,
             "cover_result": cover_result,
             "error": stream_error,
             "clip_plan_path": str(clip_plan_path) if clip_plan_path else None,

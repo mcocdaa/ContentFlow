@@ -16,7 +16,7 @@ import time
 import urllib.parse
 import zlib
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, Final, List, Literal, Optional, Sequence, Tuple
+from typing import Any, AsyncIterator, Callable, Dict, Final, List, Literal, Optional, Sequence, Tuple
 
 import aiohttp
 from pydantic import BaseModel, Field
@@ -313,6 +313,36 @@ def parse_bilibili_command(payload: Dict[str, Any], *, now: Optional[float] = No
     return None
 
 
+def parse_room_stats_command(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Extract live room telemetry deltas (`WATCHED_CHANGE` / `ONLINE_RANK_COUNT`) with zero PII."""
+    if not isinstance(payload, dict):
+        return None
+    cmd = str(payload.get("cmd", ""))
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None
+
+    if cmd == "WATCHED_CHANGE":
+        try:
+            watched_num = max(0, int(data.get("num") or 0))
+        except (TypeError, ValueError):
+            watched_num = 0
+        watched_text = str(data.get("text_large") or data.get("text_small") or f"{watched_num}人看过").strip()
+        return {"type": "watched", "watched_num": watched_num, "watched_text": watched_text}
+
+    if cmd == "ONLINE_RANK_COUNT":
+        raw_count = data.get("count")
+        if raw_count is None:
+            raw_count = data.get("online_count", 0)
+        try:
+            online = max(0, int(raw_count or 0))
+        except (TypeError, ValueError):
+            online = 0
+        return {"type": "online", "online": online}
+
+    return None
+
+
 def _compute_wbi_params(
     params: Dict[str, Any],
     img_url: str,
@@ -350,6 +380,7 @@ class BilibiliDanmakuClient:
         cookies: Optional[Dict[str, str]] = None,
         uid: Optional[int] = None,
         buvid: str = "",
+        stats_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> None:
         if room_id <= 0:
             raise ValueError("room_id must be a positive integer")
@@ -376,6 +407,7 @@ class BilibiliDanmakuClient:
         self._closed = False
         self.popularity: int = 0
         self.authenticated: bool = False
+        self.stats_callback = stats_callback
 
     def __repr__(self) -> str:
         return f"BilibiliDanmakuClient(room_id='<REDACTED>', authenticated={self.authenticated!r})"
@@ -525,6 +557,13 @@ class BilibiliDanmakuClient:
                         elif pkt.operation == OP_HEARTBEAT_REPLY and pkt.popularity is not None:
                             self.popularity = pkt.popularity
                         elif pkt.operation == OP_MESSAGE and pkt.json_payload is not None:
+                            if self.stats_callback is not None:
+                                room_stat = parse_room_stats_command(pkt.json_payload)
+                                if room_stat is not None:
+                                    try:
+                                        self.stats_callback(room_stat)
+                                    except Exception as cb_exc:
+                                        logger.debug("stats_callback skipped (%s)", type(cb_exc).__name__)
                             event = parse_bilibili_command(pkt.json_payload)
                             if event is not None:
                                 yield event
