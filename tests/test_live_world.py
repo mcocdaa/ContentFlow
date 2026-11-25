@@ -19,6 +19,7 @@ from core.auth_vault import AuthVault
 from core.live_studio import (
     AI_DISCLOSURE_BANNER,
     TRIO_CAST,
+    AmbientBotActor,
     AutonomousWorldBrain,
     BilibiliLiveController,
     DanmakuEvent,
@@ -34,7 +35,8 @@ from core.live_studio import (
     WorldStageRenderer,
     scrub_rtmp_secrets,
 )
-from core.live_studio.danmaku import parse_room_stats_command
+from core.live_studio.danmaku import parse_bilibili_command, parse_room_stats_command
+from core.live_studio.world_engine import CORRIDOR_Y, CRISIS_COOLDOWN_SEC, STATIONS
 from scripts import launch_headless_live, live_agent_ctl
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -734,3 +736,90 @@ def test_zero_burn_cli_defaults_smart_cache_female_voice_and_call_caps(
             assert brain_hits == 1
 
     asyncio.run(_run_caps())
+
+
+def test_world_crisis_cooldown_corridor_bots_and_visitor_icebreaker(tmp_path: Path) -> None:
+    """Verify crisis cooldown reset, corridor pathing, ambient bots, join shortcuts, and icebreaker."""
+    world = LiveAgentWorld(memory_path=tmp_path / "opt_world_mem.json")
+
+    # 1. Resolving a crisis via host action or viewer danmaku resets cooldown cleanly
+    world.world_time_sec = 400.0
+    world.active_event = {"title": "24G内存告警", "desc": "模拟故障"}
+    world._next_crisis_at_sec = 300.0
+    resolved = world.apply_agent_command({"cmd": "world_action", "action": "resolve_event"})
+    assert resolved["ok"] is True
+    assert world.active_event is None
+    assert world._next_crisis_at_sec >= 400.0 + CRISIS_COOLDOWN_SEC - 0.01
+    world.tick(60.0)
+    assert world.active_event is None
+
+    world.world_time_sec = 900.0
+    world.active_event = {"title": "电饭煲断电预警", "desc": "模拟断电"}
+    world._next_crisis_at_sec = 700.0
+    fix_res = world.handle_danmaku_event(
+        DanmakuEvent(event_type="danmaku", user_alias="热心观众", text="修Bug", timestamp=time.time())
+    )
+    assert fix_res["kind"] == "fix_bug"
+    assert world.active_event is None
+    assert world._next_crisis_at_sec >= 900.0 + CRISIS_COOLDOWN_SEC - 0.01
+    world.tick(60.0)
+    assert world.active_event is None
+
+    # 2. Fresh empty room: 2 labeled AI bots, honest 0 viewer counts, and corridor pathing around stations
+    empty_world = LiveAgentWorld(memory_path=tmp_path / "empty_room_mem.json")
+    assert CORRIDOR_Y > 214.0
+    assert len(empty_world.ambient_bots) == 2
+    assert all(isinstance(b, AmbientBotActor) for b in empty_world.ambient_bots)
+    snap0 = empty_world.export_state_dict()
+    assert snap0["world"]["active_worker_count"] == 0
+    assert snap0["world"]["total_known_viewers"] == 0
+    assert len(snap0["world"]["ambient_bots"]) == 2
+
+    initial_host_coords = {sid: (h.x, h.y) for sid, h in empty_world.host_actors.items()}
+    for _ in range(90):
+        empty_world.tick(0.5)
+        for actor in (*empty_world.host_actors.values(), *empty_world.ambient_bots):
+            for sx, sy, _, _ in STATIONS.values():
+                inside_station = (sx - 82 <= actor.x <= sx + 82) and (sy - 40 <= actor.y <= sy + 38)
+                assert not inside_station, f"Actor {actor.name} entered station box at ({actor.x}, {actor.y})"
+    assert any((h.x, h.y) != initial_host_coords[sid] for sid, h in empty_world.host_actors.items())
+
+    # 3. Low-friction "1" and "打卡" shortcuts join workers honestly
+    r1 = empty_world.handle_danmaku_event(
+        DanmakuEvent(event_type="danmaku", user_alias="小一", text="1", timestamp=time.time())
+    )
+    r2 = empty_world.handle_danmaku_event(
+        DanmakuEvent(event_type="danmaku", user_alias="打卡君", text="打卡", timestamp=time.time())
+    )
+    assert r1["kind"] == "join"
+    assert r2["kind"] == "join"
+    assert empty_world.export_state_dict()["world"]["active_worker_count"] == 2
+
+    # 4. Real-visitor arrival triggers cacheable dafeiyu female icebreaker with 45s cooldown
+    empty_world.update_telemetry(watched_num=1)
+    ice1 = empty_world.consume_visitor_icebreaker()
+    assert ice1 is not None
+    assert ice1[0] == "dafeiyu"
+    assert ice1[2] == "lively"
+    assert "数字1" in ice1[1]
+    assert "欢迎新伙伴进房" in empty_world.banner_text
+    assert empty_world.consume_visitor_icebreaker() is None
+
+    empty_world.update_telemetry(watched_num=2)
+    assert empty_world.consume_visitor_icebreaker() is None
+
+    # 5. ENTRY_EFFECT parsing and unbounded DualAILiveDirector.total_turns_emitted
+    entry_ev = parse_bilibili_command({"cmd": "ENTRY_EFFECT", "data": {"copy_writing": "<%热心鱼友%> 进入了直播间"}})
+    assert entry_ev is not None
+    assert entry_ev.event_type == "enter"
+    assert entry_ev.user_alias == "热心鱼友"
+
+    async def _run_20_turns() -> DualAILiveDirector:
+        director = DualAILiveDirector(responder=OfflineBanterResponder())
+        for _ in range(20):
+            await director.next_turn()
+        return director
+
+    d20 = asyncio.run(_run_20_turns())
+    assert len(d20.history) == 16
+    assert d20.total_turns_emitted == 20

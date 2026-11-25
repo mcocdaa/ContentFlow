@@ -557,7 +557,7 @@ _IDLE_BANTER_BY_SPEAKER: Final[Dict[SpeakerId, Tuple[Tuple[SpeakerId, str, str, 
 _WORLD_IDLE_BANTER_BANK: Final[Tuple[Tuple[SpeakerId, str, str, str], ...]] = (
     (
         "dafeiyu",
-        "AI活工坊已升到Lv.{level}{level_name}！现在发「开工」直接给你生成像素小人，发「写代码」还能全员续命，目前{followers}/{goal}粉！",
+        "AI活工坊已升到Lv.{level}{level_name}！现在发个数字1或「开工」直接给你生成像素小人，发「写代码」还能全员续命，目前{followers}/{goal}粉！",
         "lively",
         "script_pitch",
     ),
@@ -1141,6 +1141,10 @@ class DualAILiveDirector:
 
         self.danmaku_count = 0
         self.gift_count = 0
+
+    @property
+    def total_turns_emitted(self) -> int:
+        return self._turn_counter
 
     def notify_follower_count(self, new_count: int, *, now: Optional[float] = None) -> Optional[str]:
         """Update follower count; when followers increase, activate celebration banner & queue high-priority turn."""

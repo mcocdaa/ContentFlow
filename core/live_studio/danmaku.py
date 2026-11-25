@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import struct
 import time
 import urllib.parse
@@ -307,6 +308,20 @@ def parse_bilibili_command(payload: Dict[str, Any], *, now: Optional[float] = No
             event_type="enter",
             user_alias=user_alias,
             text=action_text,
+            timestamp=ts,
+        )
+
+    if cmd == "ENTRY_EFFECT":
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return None
+        raw_copy = str(data.get("copy_writing") or data.get("copy_writing_v2") or "")
+        match = re.search(r"<%([^%>]+)%>", raw_copy)
+        user_alias = match.group(1).strip() if match else "路过小伙伴"
+        return DanmakuEvent(
+            event_type="enter",
+            user_alias=user_alias,
+            text="炫酷进入了直播间",
             timestamp=ts,
         )
 

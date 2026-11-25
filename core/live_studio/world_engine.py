@@ -65,6 +65,8 @@ DEFAULT_MEMORY_PATH: Final[Path] = REPO_ROOT / "output" / "live_world" / "viewer
 
 WORLD_WIDTH: Final[int] = 1286
 WORLD_HEIGHT: Final[int] = 536
+CORRIDOR_Y: Final[float] = 278.0
+CRISIS_COOLDOWN_SEC: Final[float] = 300.0
 
 PIPELINE_STAGES: Final[Tuple[str, ...]] = ("① 读建议", "② 改世界", "③ 跑验证", "④ 播报")
 
@@ -276,6 +278,48 @@ class ViewerMemoryStore:
             return len(self._viewers)
 
 
+def _plan_corridor_waypoints(x0: float, y0: float, x1: float, y1: float) -> List[Tuple[float, float]]:
+    """Route horizontal moves along the open `CORRIDOR_Y` aisle so actors avoid station boxes."""
+    if abs(x1 - x0) <= 60.0:
+        return [(x1, y1)]
+    pts: List[Tuple[float, float]] = []
+    if abs(y0 - CORRIDOR_Y) > 6.0:
+        pts.append((x0, CORRIDOR_Y))
+    if abs(y1 - CORRIDOR_Y) > 6.0 or abs(x1 - x0) > 6.0:
+        pts.append((x1, CORRIDOR_Y))
+    pts.append((x1, y1))
+    return pts
+
+
+def _step_along_waypoints(
+    x: float,
+    y: float,
+    waypoints: List[Tuple[float, float]],
+    max_step: float,
+) -> Tuple[float, float]:
+    """Advance `(x, y)` up to `max_step` pixels along queued corridor waypoints."""
+    rem = max_step
+    cur_x, cur_y = x, y
+    while waypoints and rem > 0.0:
+        wx, wy = waypoints[0]
+        dx = wx - cur_x
+        dy = wy - cur_y
+        dist = math.hypot(dx, dy)
+        if dist <= 2.0:
+            cur_x, cur_y = wx, wy
+            waypoints.pop(0)
+            continue
+        if dist <= rem:
+            cur_x, cur_y = wx, wy
+            rem -= dist
+            waypoints.pop(0)
+        else:
+            cur_x += (dx / dist) * rem
+            cur_y += (dy / dist) * rem
+            rem = 0.0
+    return cur_x, cur_y
+
+
 @dataclass
 class HostActor:
     """Autonomous AI host character roaming inside the 2D workshop map."""
@@ -289,6 +333,27 @@ class HostActor:
     target_y: float
     action_label: str
     phase: float = 0.0
+    waypoints: List[Tuple[float, float]] = field(default_factory=list)
+
+
+@dataclass
+class AmbientBotActor:
+    """Built-in clearly labeled AI helper bot keeping the workshop lively (never counted as real viewer)."""
+
+    bot_id: str
+    name: str
+    x: float
+    y: float
+    target_x: float
+    target_y: float
+    station: str
+    action_label: str
+    color: Tuple[int, int, int]
+    phase: float = 0.0
+    next_hop_sec: float = 16.0
+    next_popup_sec: float = 10.0
+    route_step: int = 0
+    waypoints: List[Tuple[float, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -362,10 +427,15 @@ class LiveAgentWorld:
         # Active crisis mini-event
         self.active_event: Optional[Dict[str, str]] = None
         self._crisis_cursor: int = 0
-        self._next_crisis_at_sec: float = 240.0
+        self._next_crisis_at_sec: float = CRISIS_COOLDOWN_SEC
+
+        # Real-time visitor arrival ice-breaker
+        self._last_icebreaker_ts: float = 0.0
+        self.icebreaker_cooldown_sec: float = 45.0
+        self._pending_visitor_welcome: Optional[int] = None
 
         # Real-time Agent Workbench
-        self.active_task: str = "巡查工坊，等待弹幕「开工」与「建议」"
+        self.active_task: str = "巡查工坊，等待弹幕「1」或「开工」与「建议」"
         self.pipeline_stage: int = 0
         self.work_log: Deque[Dict[str, str]] = deque(maxlen=8)
         self._push_log_locked("AGENT", "AI 主控已上线：2D 共建工坊与实时弹幕网关运行中")
@@ -381,6 +451,40 @@ class LiveAgentWorld:
         self.recent_danmaku: Deque[Dict[str, Any]] = deque(maxlen=16)
         self.popups: List[FloatingPopup] = []
         self.viewer_actors: Dict[str, ViewerActor] = {}
+        self.ambient_bots: List[AmbientBotActor] = [
+            AmbientBotActor(
+                bot_id="ai_coder",
+                name="AI巡检小鱼",
+                x=465.0,
+                y=286.0,
+                target_x=165.0,
+                target_y=286.0,
+                station="代码工位",
+                action_label="自动写代码",
+                color=(14, 165, 233),
+                phase=0.4,
+                next_hop_sec=16.0,
+                next_popup_sec=9.0,
+                route_step=0,
+                waypoints=_plan_corridor_waypoints(465.0, 286.0, 165.0, 286.0),
+            ),
+            AmbientBotActor(
+                bot_id="ai_rice",
+                name="AI电饭煲助手",
+                x=1170.0,
+                y=286.0,
+                target_x=865.0,
+                target_y=432.0,
+                station="电饭煲补给",
+                action_label="淘米煮饭",
+                color=(245, 158, 11),
+                phase=1.8,
+                next_hop_sec=19.0,
+                next_popup_sec=14.0,
+                route_step=0,
+                waypoints=_plan_corridor_waypoints(1170.0, 286.0, 865.0, 432.0),
+            ),
+        ]
 
         station_names = list(STATIONS.keys())
         default_actions = {
@@ -531,18 +635,18 @@ class LiveAgentWorld:
             drain_rate = 2.0 if self.active_event is not None else 1.0
             self.countdown_sec = max(0.0, self.countdown_sec - step * drain_rate)
 
-            # Periodic interactive crisis event (~every 4 minutes when idle)
+            # Periodic interactive crisis event (~every 5 minutes when idle)
             if self.active_event is None and self.world_time_sec >= self._next_crisis_at_sec:
                 title, desc = _CRISIS_PRESETS[self._crisis_cursor % len(_CRISIS_PRESETS)]
                 self._crisis_cursor += 1
                 self.active_event = {"title": title, "desc": desc}
-                self._next_crisis_at_sec = self.world_time_sec + 240.0
+                self._next_crisis_at_sec = self.world_time_sec + CRISIS_COOLDOWN_SEC
                 self._push_log_locked("ALERT", f"触发突发事件：{title}（等待弹幕「修Bug」或巡检处理）")
 
             station_keys = tuple(STATIONS.keys())
             for idx, (sid, host) in enumerate(self.host_actors.items()):
                 host.phase += step
-                # Re-target host between stations smoothly every ~11s
+                # Re-target host between stations smoothly every ~11s via corridor waypoints
                 if int((self.world_time_sec + idx * 3.5) / 11.0) != int(
                     (self.world_time_sec - step + idx * 3.5) / 11.0
                 ):
@@ -555,6 +659,7 @@ class LiveAgentWorld:
                     host.target_station = next_st
                     host.target_x = max(90.0, min(WORLD_WIDTH - 90.0, float(sx + ox)))
                     host.target_y = max(125.0, min(WORLD_HEIGHT - 74.0, float(sy + oy)))
+                    host.waypoints = _plan_corridor_waypoints(host.x, host.y, host.target_x, host.target_y)
                     if sid == "dafeiyu":
                         host.action_label = f"巡查{next_st[:2]}"
                     elif sid == "yowane":
@@ -562,13 +667,40 @@ class LiveAgentWorld:
                     else:
                         host.action_label = st_desc[:8]
 
-                dx = host.target_x - host.x
-                dy = host.target_y - host.y
-                dist = math.hypot(dx, dy)
-                if dist > 2.0:
-                    move = min(dist, 58.0 * step)
-                    host.x += (dx / dist) * move
-                    host.y += (dy / dist) * move
+                if not host.waypoints and math.hypot(host.target_x - host.x, host.target_y - host.y) > 2.0:
+                    host.waypoints = _plan_corridor_waypoints(host.x, host.y, host.target_x, host.target_y)
+                if host.waypoints:
+                    host.x, host.y = _step_along_waypoints(host.x, host.y, host.waypoints, 58.0 * step)
+
+            bot_routes: Dict[str, Tuple[Tuple[float, float, str, str], ...]] = {
+                "ai_coder": (
+                    (165.0, 286.0, "代码工位", "自动写代码"),
+                    (465.0, 286.0, "算力机柜", "巡检24G算力"),
+                ),
+                "ai_rice": (
+                    (1170.0, 286.0, "电饭煲补给", "淘米煮饭中"),
+                    (865.0, 432.0, "弹幕公告塔", "整理建议墙"),
+                ),
+            }
+            for bot in self.ambient_bots:
+                bot.phase += step
+                if self.world_time_sec >= bot.next_hop_sec:
+                    bot.next_hop_sec = self.world_time_sec + 18.0
+                    stops = bot_routes.get(bot.bot_id)
+                    if stops:
+                        bot.route_step = (bot.route_step + 1) % len(stops)
+                        tx, ty, st_lbl, act_lbl = stops[bot.route_step]
+                        bot.target_x = tx
+                        bot.target_y = ty
+                        bot.station = st_lbl
+                        bot.action_label = act_lbl
+                        bot.waypoints = _plan_corridor_waypoints(bot.x, bot.y, tx, ty)
+                if self.world_time_sec >= bot.next_popup_sec:
+                    bot.next_popup_sec = self.world_time_sec + 24.0
+                    pop_msg = "AI码字 +1" if bot.bot_id == "ai_coder" else "米饭飘香中~"
+                    self._add_popup_locked(pop_msg, bot.x, bot.y - 42, bot.color)
+                if bot.waypoints:
+                    bot.x, bot.y = _step_along_waypoints(bot.x, bot.y, bot.waypoints, 42.0 * step)
 
             for actor in self.viewer_actors.values():
                 dx = actor.target_x - actor.x
@@ -597,17 +729,21 @@ class LiveAgentWorld:
     ) -> int:
         """Update real-time Bilibili room online/watched/follower metrics; returns follower delta."""
         delta_followers = 0
+        now_ts = time.time()
         with self._lock:
             if online is not None:
                 val = max(0, int(online))
                 self.online = val
                 self.max_online = max(self.max_online, val)
             if watched_num is not None:
+                prev_watched = self.watched_num
                 wval = max(0, int(watched_num))
                 self.watched_num = wval
                 self.max_watched_num = max(self.max_watched_num, wval)
                 if watched_text is None:
                     self.watched_text = f"{wval}人看过"
+                if wval > prev_watched and (now_ts - self._last_icebreaker_ts) >= self.icebreaker_cooldown_sec:
+                    self._pending_visitor_welcome = wval
             if watched_text is not None:
                 clean_wt = redact_pii(str(watched_text)).replace("@", "").strip()[:24]
                 if clean_wt:
@@ -618,10 +754,33 @@ class LiveAgentWorld:
                     delta_followers = fval - self.follower_count
                     msg = f"涨粉喜报！粉丝突破 {fval} 啦！继续冲向 {self.follower_goal} 粉！"
                     self.banner_text = msg
-                    self._banner_until_ts = time.time() + 10.0
+                    self._banner_until_ts = now_ts + 10.0
                     self._push_log_locked("LIVE", msg)
                 self.follower_count = fval
         return delta_followers
+
+    def consume_visitor_icebreaker(self, *, now: Optional[float] = None) -> Optional[Tuple[SpeakerId, str, str]]:
+        """Consume a pending real-visitor arrival event into a cacheable female welcome line."""
+        ts = time.time() if now is None else float(now)
+        with self._lock:
+            if self._pending_visitor_welcome is None:
+                return None
+            watched_total = self._pending_visitor_welcome
+            self._pending_visitor_welcome = None
+            if (ts - self._last_icebreaker_ts) < self.icebreaker_cooldown_sec:
+                return None
+            self._last_icebreaker_ts = ts
+            self.banner_text = "欢迎新伙伴进房！发个「1」或「开工」3秒生成你的专属小人！"
+            self._banner_until_ts = ts + 12.0
+            self._push_log_locked(
+                "ENTER",
+                f"检测到新观众进房（累计 {watched_total} 人看过），触发女声迎宾破冰！",
+            )
+            return (
+                "dafeiyu",
+                "呀，检测到新小伙伴进直播间啦！发个数字1或者开工，三秒就能把你的专属像素小人放进地图里，觉得哪里还能改直接发弹幕告诉我！",
+                "lively",
+            )
 
     def handle_danmaku_event(self, ev: DanmakuEvent) -> Dict[str, Any]:
         """Process viewer danmaku/gift/enter into immediate 2D world updates & viewer memory."""
@@ -750,6 +909,7 @@ class LiveAgentWorld:
                 crisis_title = self.active_event["title"] if self.active_event else ""
                 if resolved_crisis:
                     self.active_event = None
+                    self._next_crisis_at_sec = self.world_time_sec + CRISIS_COOLDOWN_SEC
                     add_sec, pts = 300.0, 30
                     label = "抢修成功+300s"
                     pop_txt = f"抢修{crisis_title}! +300s"
@@ -795,7 +955,12 @@ class LiveAgentWorld:
                 self.recent_danmaku.append({"event_type": "danmaku", "user_alias": safe_alias, "text": clean_text[:48]})
             return {"handled": True, "kind": "build", "alias": safe_alias}
 
-        if any(k in lowered for k in ("开工", "打工", "加入")):
+        if any(k in lowered for k in ("开工", "打工", "加入", "打卡", "报到")) or lowered.strip("！!。. ~～") in (
+            "1",
+            "来",
+            "来了",
+            "在",
+        ):
             mem = self.memory.record_action(safe_alias, points=10, action_delta=1, message=True, now=now)
             with self._lock:
                 self.countdown_sec += 120.0
@@ -926,6 +1091,7 @@ class LiveAgentWorld:
                 if action == "resolve_event":
                     prev = self.active_event["title"] if self.active_event else "例行巡检"
                     self.active_event = None
+                    self._next_crisis_at_sec = self.world_time_sec + CRISIS_COOLDOWN_SEC
                     self.countdown_sec += 300.0
                     self.compute_pts += 20
                     self.build_xp += 20
@@ -1022,6 +1188,15 @@ class LiveAgentWorld:
                     "active_banner": self.get_active_banner(),
                     "active_worker_count": len(self.viewer_actors),
                     "total_known_viewers": self.memory.total_viewers(),
+                    "ambient_bots": [
+                        {
+                            "bot_id": b.bot_id,
+                            "name": b.name,
+                            "station": b.station,
+                            "action": b.action_label,
+                        }
+                        for b in self.ambient_bots
+                    ],
                     "workers": [
                         {
                             "alias": v.alias,
@@ -1310,6 +1485,10 @@ class WorldStageRenderer:
         self._viewer_tokens: Dict[int, Image.Image] = {
             idx: self._build_viewer_token(rgb, size=40) for idx, rgb in enumerate(_VIEWER_AVATAR_COLORS)
         }
+        self._bot_tokens: Dict[Tuple[int, int, int], Image.Image] = {
+            (14, 165, 233): self._build_bot_token((14, 165, 233), size=38),
+            (245, 158, 11): self._build_bot_token((245, 158, 11), size=38),
+        }
         self._static_bg: Image.Image = self._build_static_canvas()
         self._world_level_layers: Dict[int, Image.Image] = {}
 
@@ -1398,6 +1577,22 @@ class WorldStageRenderer:
         d.ellipse([(cx + 2, 11), (cx + 5, 14)], fill=(15, 23, 42, 255))
         return out
 
+    def _build_bot_token(self, rgb: Tuple[int, int, int], *, size: int = 38) -> Image.Image:
+        out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        d = ImageDraw.Draw(out)
+        cx = size // 2
+        d.ellipse([(4, size - 9), (size - 5, size - 1)], fill=(15, 23, 42, 65))
+        d.line([(cx, 1), (cx, 7)], fill=(71, 85, 105, 255), width=2)
+        d.ellipse([(cx - 3, 0), (cx + 3, 6)], fill=(*rgb, 255))
+        d.rounded_rectangle([(8, 7), (size - 9, 23)], radius=6, fill=(241, 245, 249, 255), outline=(*rgb, 255), width=2)
+        d.rounded_rectangle([(11, 11), (size - 12, 18)], radius=3, fill=(15, 23, 42, 255))
+        d.ellipse([(cx - 5, 13), (cx - 2, 16)], fill=(56, 189, 248, 255))
+        d.ellipse([(cx + 2, 13), (cx + 5, 16)], fill=(56, 189, 248, 255))
+        d.rounded_rectangle(
+            [(10, 23), (size - 11, size - 4)], radius=5, fill=(*rgb, 255), outline=(255, 255, 255, 255), width=2
+        )
+        return out
+
     def _build_static_canvas(self) -> Image.Image:
         bg_path = self._find_asset(DEFAULT_STUDIO_BG_REL)
         if bg_path is not None:
@@ -1460,7 +1655,7 @@ class WorldStageRenderer:
         draw.text((1370, 120), "3秒参与玩法", font=self._font_sm, fill=(255, 255, 255, 255))
         draw.text((1504, 120), "无门槛弹幕直接操控世界", font=self._font_sm, fill=(30, 64, 175, 255))
         draw.text(
-            (1358, 152), "发「开工 / 写代码 / 修Bug / 投喂」生小人续命！", font=self._font_sm, fill=(15, 23, 42, 255)
+            (1358, 152), "发「1」或「开工 / 修Bug / 投喂」3秒出小人续命！", font=self._font_sm, fill=(15, 23, 42, 255)
         )
         draw.text(
             (1358, 180), "发「建议 你的点子」直接交给后台 Agent 执行！", font=self._font_sm, fill=(124, 58, 237, 255)
@@ -1711,16 +1906,23 @@ class WorldStageRenderer:
         draw.rounded_rectangle(
             [(0, 0), (pw - 1, 198)], radius=16, fill=(248, 250, 252, 238), outline=(148, 163, 184, 185), width=2
         )
+        known_viewers = int(ws["world"]["total_known_viewers"])
+        board_title = (
+            "今日共建榜 · 抢占第 1 席！" if known_viewers == 0 else f"今日共建榜 · 记住 {known_viewers} 位小伙伴"
+        )
         draw.text(
             (16, 10),
-            f"今日共建榜 · 记住 {ws['world']['total_known_viewers']} 位小伙伴",
+            board_title,
             font=self._font_md,
             fill=(15, 23, 42, 255),
         )
         y = 42
         if not builders:
             draw.text(
-                (18, 68), "虚位以待！发「开工」成为工坊第 1 号建设者", font=self._font_sm, fill=(100, 116, 139, 255)
+                (18, 62), "发个数字「1」或「开工」生成你的像素小人，", font=self._font_sm, fill=(37, 99, 235, 255)
+            )
+            draw.text(
+                (18, 92), "成为工坊首批共建元老，地图永久记住你的ID！", font=self._font_sm, fill=(100, 116, 139, 255)
             )
         else:
             for idx, b in enumerate(builders[:5], 1):
@@ -1766,8 +1968,14 @@ class WorldStageRenderer:
         dy = 430
         if not dm:
             draw.text(
-                (16, 466),
-                "弹幕监听已接通，发送「开工」试试 3 秒出小人！",
+                (16, 456),
+                "弹幕直连畅通！扣个「1」或「开工」立即响应：",
+                font=self._font_sm,
+                fill=(37, 99, 235, 255),
+            )
+            draw.text(
+                (16, 488),
+                "女声实时喊你进工坊 + 画面生成像素打工人！",
                 font=self._font_sm,
                 fill=(100, 116, 139, 255),
             )
@@ -1884,10 +2092,32 @@ class WorldStageRenderer:
         wdraw = ImageDraw.Draw(world_canvas)
         with self.world._lock:
             hosts_snapshot = [(sid, h.x, h.y, h.action_label, h.phase) for sid, h in self.world.host_actors.items()]
+            bots_snapshot = [(b.name, b.x, b.y, b.action_label, b.color, b.phase) for b in self.world.ambient_bots]
             viewers_snapshot = [
                 (v.alias, v.x, v.y, v.action_label, v.color_idx, v.badge) for v in self.world.viewer_actors.values()
             ]
             popups_snapshot = [(p.text, p.x, p.y, p.color) for p in self.world.popups]
+
+        # Draw resident AI helper bots (keeps empty workshop lively, never counted as real viewers)
+        for bname, bx, by, bact, bcol, bphase in bots_snapshot:
+            bob = int(round(2.5 * abs(math.sin(t * 4.5 + bphase))))
+            btok = self._bot_tokens.get(bcol)
+            if btok is None:
+                btok = self._build_bot_token(bcol, size=38)
+                self._bot_tokens[bcol] = btok
+            px = int(round(bx - btok.width / 2))
+            py = int(round(by - btok.height + 6 - bob))
+            world_canvas.paste(btok, (px, py), btok)
+            tag = f"{bname[:7]}·{bact[:5]}"
+            tw = int(wdraw.textlength(tag, font=self._font_xs)) + 12
+            tx0 = max(6, min(WORLD_WIDTH - tw - 6, int(round(bx - tw / 2))))
+            ty0 = max(78, py - 21)
+            wdraw.rounded_rectangle([(tx0, ty0), (tx0 + tw, ty0 + 20)], radius=8, fill=(30, 41, 59, 215))
+            wdraw.text((tx0 + 6, ty0 + 2), tag, font=self._font_xs, fill=(224, 242, 254, 255))
+            b_lbl = "AI助手"
+            bw = int(wdraw.textlength(b_lbl, font=self._font_xs)) + 8
+            wdraw.rounded_rectangle([(tx0, ty0 - 17), (tx0 + bw, ty0 - 1)], radius=6, fill=(*bcol, 235))
+            wdraw.text((tx0 + 4, ty0 - 16), b_lbl, font=self._font_xs, fill=(255, 255, 255, 255))
 
         # Draw viewer pixel workers
         for alias, vx, vy, vact, cidx, vbadge in viewers_snapshot:
@@ -1994,12 +2224,16 @@ class WorldStageRenderer:
 
 
 __all__ = [
+    "CORRIDOR_Y",
+    "CRISIS_COOLDOWN_SEC",
     "DEFAULT_MEMORY_PATH",
     "LEVEL_THRESHOLDS",
     "PIPELINE_STAGES",
     "STATIONS",
     "WORLD_HEIGHT",
     "WORLD_WIDTH",
+    "AmbientBotActor",
+    "AutonomousWorldBrain",
     "FloatingPopup",
     "HostActor",
     "LiveAgentWorld",

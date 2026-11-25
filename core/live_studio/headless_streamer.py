@@ -2047,6 +2047,9 @@ class HeadlessLiveStreamer:
                                         watched_text=tel.get("watched_text"),
                                         follower_count=att if att > 0 else None,
                                     )
+                                    ice = self.world.consume_visitor_icebreaker()
+                                    if ice is not None:
+                                        self.director.enqueue_agent_speech(ice[0], ice[1], ice[2])
                         except Exception as exc:
                             logger.debug("Telemetry poll skipped (%s)", type(exc).__name__)
 
@@ -2312,7 +2315,7 @@ class HeadlessLiveStreamer:
             "frames_written": frames_written,
             "duration_sec": round(frames_written / float(self.fps), 2),
             "encoder": self.video_encoder,
-            "turns_emitted": len(self.director.history),
+            "turns_emitted": self.director.total_turns_emitted,
             "danmaku_count": self.director.danmaku_count,
             "gift_count": self.director.gift_count,
             "cast": list(self.director.cast),
@@ -2458,6 +2461,9 @@ class HeadlessLiveStreamer:
                     watched_num=stat_ev.get("watched_num"),
                     watched_text=stat_ev.get("watched_text"),
                 )
+                ice = self.world.consume_visitor_icebreaker()
+                if ice is not None:
+                    self.director.enqueue_agent_speech(ice[0], ice[1], ice[2])
             elif st_type == "online":
                 self.world.update_telemetry(online=stat_ev.get("online"))
 
