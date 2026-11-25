@@ -2,7 +2,8 @@
 
 Provides a unified, zero-key-safe routing abstraction for:
 - Expressive Speech (TTS) & Canonical Character Voice Profiles (K6):
-  `minimax_speech` (MINIMAX_API_KEY) -> `fish_audio` (FISH_AUDIO_API_KEY) -> `local_kokoro` (LocalNeuralTTS)
+  `minimax_speech` (MINIMAX_API_KEY) -> `fish_audio` (FISH_AUDIO_API_KEY)
+  -> `deepseek_tts` (DEEPSEEK_API_KEY) -> `local_kokoro` (LocalNeuralTTS)
   Supports multi-character persona profiles (`dafeiyu`, `gemini_neko`, `yowane_haku`),
   cross-provider emotion normalization, natural zero-chipmunk speed bounds (`<= 1.18x`),
   and serial multi-character dialogue batch synthesis (`synthesize_dialogue`).
@@ -23,6 +24,7 @@ import json
 import logging
 import os
 import re
+import struct
 import subprocess
 import tempfile
 import time
@@ -37,6 +39,9 @@ import requests
 from config.settings import (
     AUDIO_MUSIC_PROVIDER_PRIORITY,
     AUDIO_SPEECH_PROVIDER_PRIORITY,
+    DEFAULT_DEEPSEEK_BASE_URL,
+    DEFAULT_DEEPSEEK_TTS_URL,
+    DEFAULT_DEEPSEEK_TTS_VOICE,
     DEFAULT_FISH_AUDIO_BASE_URL,
     DEFAULT_MINIMAX_BASE_URL,
     DEFAULT_MINIMAX_MUSIC_MODEL,
@@ -51,10 +56,12 @@ _PLACEHOLDER_VALUES = {
     "",
     "dummy_minimax_key",
     "dummy_fish_audio_key",
+    "dummy_deepseek_key",
     "dummy_suno_key",
     "your_api_key",
     "your_minimax_api_key",
     "your_fish_audio_api_key",
+    "your_deepseek_api_key",
     "your_suno_api_key",
     "changeme",
     "replace_me",
@@ -69,11 +76,13 @@ _SECRET_ENV_KEYS = (
     "FISH_AUDIO_REF_DAFEIYU",
     "FISH_AUDIO_REF_GEMINI_NEKO",
     "FISH_AUDIO_REF_YOWANE_HAKU",
+    "DEEPSEEK_API_KEY",
     "SUNO_API_KEY",
 )
 
 MIN_PROFILE_AUTO_SPEED = 0.80
 MAX_PROFILE_AUTO_SPEED = 1.18
+DEEPSEEK_TTS_VALID_VOICES: frozenset[str] = frozenset({"stella", "tide"})
 MINIMAX_VALID_EMOTIONS = frozenset({"happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral", "calm"})
 VERIFIED_FREE_EDGE_TTS_VOICES: frozenset[str] = frozenset(
     {
@@ -193,6 +202,7 @@ class CharacterVoiceProfile:
     local_kokoro_voice: str
     edge_tts_voice: str
     edge_tts_pitch: str = "+0Hz"
+    deepseek_tts_voice: str = DEFAULT_DEEPSEEK_TTS_VOICE
 
 
 CHARACTER_VOICE_PROFILES: Dict[str, CharacterVoiceProfile] = {
@@ -314,6 +324,22 @@ def _detect_wav_sample_rate(audio_bytes: bytes, default_sr: int) -> int:
         except Exception:
             return default_sr
     return default_sr
+
+
+def _fix_streaming_wav_header(audio_bytes: bytes) -> bytes:
+    """Patches streaming 0xFFFFFFFF RIFF/data chunk sizes so downstream tools read true duration."""
+    if len(audio_bytes) < 44 or audio_bytes[:4] != b"RIFF" or audio_bytes[8:12] != b"WAVE":
+        return audio_bytes
+    if audio_bytes[36:40] != b"data":
+        return audio_bytes
+    riff_size = struct.unpack("<I", audio_bytes[4:8])[0]
+    data_size = struct.unpack("<I", audio_bytes[40:44])[0]
+    if riff_size != 0xFFFFFFFF and data_size != 0xFFFFFFFF:
+        return audio_bytes
+    patched = bytearray(audio_bytes)
+    struct.pack_into("<I", patched, 4, max(36, len(patched) - 8))
+    struct.pack_into("<I", patched, 40, max(0, len(patched) - 44))
+    return bytes(patched)
 
 
 def _write_pcm16_wav(samples: Any, output_wav: Path, sample_rate: int) -> None:
@@ -524,6 +550,14 @@ class AudioGenerationRouter:
         fish_ok = self._has_secret("FISH_AUDIO_API_KEY")
         fish_url = _sanitize_endpoint(self._get_env("FISH_AUDIO_BASE_URL") or DEFAULT_FISH_AUDIO_BASE_URL)
 
+        deepseek_ok = self._has_secret("DEEPSEEK_API_KEY")
+        ds_explicit_tts_url = self._get_env("DEEPSEEK_TTS_URL")
+        if ds_explicit_tts_url:
+            deepseek_url = _sanitize_endpoint(ds_explicit_tts_url)
+        else:
+            ds_base = (self._get_env("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
+            deepseek_url = _sanitize_endpoint(f"{ds_base}/tools/tts" if ds_base else DEFAULT_DEEPSEEK_TTS_URL)
+
         return [
             ProviderStatus(
                 name="minimax_speech",
@@ -559,6 +593,24 @@ class AudioGenerationRouter:
                 active_model="fish-speech-v1",
                 endpoint=fish_url,
                 status="configured" if fish_ok else "not_configured",
+            ),
+            ProviderStatus(
+                name="deepseek_tts",
+                kind="speech",
+                configured=deepseek_ok,
+                available=deepseek_ok,
+                is_fallback=False,
+                required_env=["DEEPSEEK_API_KEY"],
+                optional_env=["DEEPSEEK_TTS_URL", "DEEPSEEK_BASE_URL", "DEEPSEEK_TTS_VOICE"],
+                env_configured={
+                    "DEEPSEEK_API_KEY": deepseek_ok,
+                    "DEEPSEEK_TTS_URL": self._get_env("DEEPSEEK_TTS_URL") is not None,
+                    "DEEPSEEK_BASE_URL": self._get_env("DEEPSEEK_BASE_URL") is not None,
+                    "DEEPSEEK_TTS_VOICE": self._get_env("DEEPSEEK_TTS_VOICE") is not None,
+                },
+                active_model="deepseek-tts-v1",
+                endpoint=deepseek_url,
+                status="configured" if deepseek_ok else "not_configured",
             ),
             ProviderStatus(
                 name="local_kokoro",
@@ -658,6 +710,7 @@ class AudioGenerationRouter:
                     "local_kokoro_voice": prof.local_kokoro_voice,
                     "edge_tts_voice": prof.edge_tts_voice,
                     "edge_tts_pitch": prof.edge_tts_pitch,
+                    "deepseek_tts_voice": prof.deepseek_tts_voice,
                 }
             )
         return profiles
@@ -692,6 +745,8 @@ class AudioGenerationRouter:
             return self._has_secret("MINIMAX_API_KEY")
         if provider == "fish_audio":
             return self._has_secret("FISH_AUDIO_API_KEY")
+        if provider == "deepseek_tts":
+            return self._has_secret("DEEPSEEK_API_KEY")
         if provider == "suno":
             return self._has_secret("SUNO_API_KEY")
         if provider in ("local_kokoro", "bilibili_bgm_hunter"):
@@ -864,6 +919,18 @@ class AudioGenerationRouter:
                 or self._get_env("FISH_AUDIO_REFERENCE_ID")
                 or ""
             ).strip()
+        elif provider == "deepseek_tts":
+            raw_voice = (
+                explicit_voice
+                or self._get_env("DEEPSEEK_TTS_VOICE")
+                or (profile.deepseek_tts_voice if profile is not None else None)
+                or DEFAULT_DEEPSEEK_TTS_VOICE
+            ).strip()
+            lowered_ds = raw_voice.lower()
+            if explicit_voice:
+                voice = lowered_ds if lowered_ds in DEEPSEEK_TTS_VALID_VOICES else raw_voice
+            else:
+                voice = lowered_ds if lowered_ds in DEEPSEEK_TTS_VALID_VOICES else DEFAULT_DEEPSEEK_TTS_VOICE
         elif provider == "local_kokoro":
             voice = (
                 explicit_voice or (profile.local_kokoro_voice if profile is not None else None) or "zf_001"
@@ -1015,6 +1082,96 @@ class AudioGenerationRouter:
             },
         )
 
+    def _synth_deepseek_tts(self, request: SpeechRequest, used_fallback: bool) -> SpeechResult:
+        api_key = self._get_env("DEEPSEEK_API_KEY")
+        if not _is_configured_secret(api_key):
+            raise RuntimeError("Provider 'deepseek_tts' is not configured (missing DEEPSEEK_API_KEY)")
+        assert api_key is not None
+
+        explicit_url = self._get_env("DEEPSEEK_TTS_URL")
+        if explicit_url:
+            url = explicit_url.rstrip("/")
+        else:
+            ds_base = (self._get_env("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
+            url = f"{ds_base}/tools/tts" if ds_base else DEFAULT_DEEPSEEK_TTS_URL
+
+        out_path = Path(request.output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        ext = out_path.suffix.lstrip(".").lower()
+        api_format = "pcm" if ext == "pcm" else "wav"
+
+        params_resolved = self._resolve_speech_params(request, "deepseek_tts")
+        emo_spec: EmotionSpec = params_resolved["emotion_spec"]
+        voice_id = str(params_resolved["voice"] or DEFAULT_DEEPSEEK_TTS_VOICE)
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload: Dict[str, Any] = {
+            "text": request.text,
+            "voice_id": voice_id,
+            "format": api_format,
+            "filter_markdown": True,
+        }
+
+        resp = self.session.post(url, headers=headers, json=payload, timeout=self.timeout_sec)
+        if getattr(resp, "status_code", 200) >= 400:
+            raise RuntimeError(f"deepseek_tts HTTP {resp.status_code}")
+        resp.raise_for_status()
+
+        raw_bytes = bytes(resp.content)
+        if not raw_bytes:
+            raise RuntimeError("deepseek_tts returned empty audio stream")
+
+        if api_format == "pcm":
+            if len(raw_bytes) < 64 or len(raw_bytes) % 2 != 0:
+                raise RuntimeError("deepseek_tts returned truncated or unaligned PCM stream")
+            audio_bytes = raw_bytes
+        else:
+            if len(raw_bytes) < 128 or raw_bytes[:4] != b"RIFF":
+                raise RuntimeError("deepseek_tts returned truncated or invalid WAV stream")
+            audio_bytes = _fix_streaming_wav_header(raw_bytes)
+
+        if ext in ("", "wav", "pcm"):
+            out_path.write_bytes(audio_bytes)
+        else:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_wav = Path(tmpdir) / "deepseek_tmp.wav"
+                tmp_wav.write_bytes(audio_bytes)
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-nostats",
+                        "-loglevel",
+                        "error",
+                        "-i",
+                        str(tmp_wav),
+                        str(out_path),
+                    ],
+                    check=True,
+                )
+
+        sr = 24000 if api_format == "pcm" else _detect_wav_sample_rate(audio_bytes, default_sr=24000)
+        return SpeechResult(
+            provider="deepseek_tts",
+            audio_path=out_path,
+            sample_rate=sr,
+            used_fallback=used_fallback,
+            metadata={
+                "character": params_resolved["character_id"],
+                "display_name": params_resolved["display_name"],
+                "model": "deepseek-tts-v1",
+                "voice": voice_id,
+                "emotion": emo_spec.canonical,
+                "raw_emotion": request.emotion or emo_spec.canonical,
+                "speed": float(params_resolved["speed"]),
+                "format": ext or api_format,
+                "bytes": len(audio_bytes),
+            },
+        )
+
     def _synth_local_kokoro(self, request: SpeechRequest, used_fallback: bool) -> SpeechResult:
         out_path = Path(request.output_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1122,6 +1279,8 @@ class AudioGenerationRouter:
                     res = self._synth_minimax_speech(request, used_fallback=used_fallback)
                 elif provider == "fish_audio":
                     res = self._synth_fish_audio(request, used_fallback=used_fallback)
+                elif provider == "deepseek_tts":
+                    res = self._synth_deepseek_tts(request, used_fallback=used_fallback)
                 elif provider == "local_kokoro":
                     res = self._synth_local_kokoro(request, used_fallback=used_fallback)
                 else:

@@ -71,6 +71,7 @@ from core.live_studio.stage_server import (
     create_stage_app,
 )
 from core.live_studio.world_engine import (
+    AutonomousWorldBrain,
     LiveAgentWorld,
     ViewerMemoryStore,
     WorldStageRenderer,
@@ -78,6 +79,7 @@ from core.live_studio.world_engine import (
 
 __all__ = [
     "AI_DISCLOSURE_BANNER",
+    "AutonomousWorldBrain",
     "BYTES_PER_VIDEO_FRAME",
     "CHARACTER_ASSETS",
     "DEFAULT_LIVE_AREA_V2",

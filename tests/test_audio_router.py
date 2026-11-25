@@ -144,7 +144,7 @@ def test_get_status_priority_and_secret_non_leakage() -> None:
     # 1. Zero keys -> local fallbacks active
     router_empty = AudioGenerationRouter(env={})
     status_empty = router_empty.get_status()
-    assert status_empty["speech"]["priority"] == ["minimax_speech", "fish_audio", "local_kokoro"]
+    assert status_empty["speech"]["priority"] == ["minimax_speech", "fish_audio", "deepseek_tts", "local_kokoro"]
     assert status_empty["speech"]["active_provider"] == "local_kokoro"
     assert status_empty["speech"]["using_fallback"] is True
     assert status_empty["music"]["priority"] == ["minimax_music", "suno", "bilibili_bgm_hunter"]
@@ -156,6 +156,7 @@ def test_get_status_priority_and_secret_non_leakage() -> None:
         env={
             "MINIMAX_API_KEY": "your_api_key",
             "FISH_AUDIO_API_KEY": "   ",
+            "DEEPSEEK_API_KEY": "dummy_deepseek_key",
             "SUNO_API_KEY": "dummy_suno_key",
         }
     )
@@ -164,17 +165,20 @@ def test_get_status_priority_and_secret_non_leakage() -> None:
     assert st_ph["music"]["active_provider"] == "bilibili_bgm_hunter"
     assert st_ph["speech"]["providers"]["minimax_speech"]["configured"] is False
     assert st_ph["speech"]["providers"]["fish_audio"]["configured"] is False
+    assert st_ph["speech"]["providers"]["deepseek_tts"]["configured"] is False
     assert st_ph["music"]["providers"]["suno"]["configured"] is False
 
     # 3. Secondary keys only -> fish_audio & suno active
     router_secondary = AudioGenerationRouter(
         env={
             "FISH_AUDIO_API_KEY": "fish_live_key_alpha",
+            "DEEPSEEK_API_KEY": "sk-deepseek-tertiary-gamma",
             "SUNO_API_KEY": "suno_live_key_beta",
         }
     )
     st_sec = router_secondary.get_status()
     assert st_sec["speech"]["active_provider"] == "fish_audio"
+    assert st_sec["speech"]["providers"]["deepseek_tts"]["configured"] is True
     assert st_sec["speech"]["using_fallback"] is False
     assert st_sec["music"]["active_provider"] == "suno"
     assert st_sec["music"]["using_fallback"] is False
@@ -187,6 +191,7 @@ def test_get_status_priority_and_secret_non_leakage() -> None:
         "MINIMAX_MUSIC_MODEL": "music-1.5",
         "FISH_AUDIO_API_KEY": "fish-ultra-secret-112233",
         "FISH_AUDIO_REFERENCE_ID": "ref-secret-voice-778899",
+        "DEEPSEEK_API_KEY": "sk-deepseek-ultra-secret-556677",
         "SUNO_API_KEY": "suno-ultra-secret-334455",
         "SUNO_BASE_URL": "https://user:pass-leak@suno.example.org/api?token=url-secret-000",
     }
@@ -203,6 +208,7 @@ def test_get_status_priority_and_secret_non_leakage() -> None:
         "grp-secret-445566",
         "fish-ultra-secret-112233",
         "ref-secret-voice-778899",
+        "sk-deepseek-ultra-secret-556677",
         "suno-ultra-secret-334455",
         "pass-leak",
         "url-secret-000",
@@ -639,6 +645,7 @@ def test_cli_audio_router_status_json_and_text(
     monkeypatch.setenv("MINIMAX_API_KEY", "sk-cli-minimax-secret-12345")
     monkeypatch.setenv("MINIMAX_GROUP_ID", "grp-cli-secret-67890")
     monkeypatch.delenv("FISH_AUDIO_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.setenv("SUNO_API_KEY", "suno-cli-secret-abcde")
 
     # 1. JSON mode
@@ -1080,6 +1087,7 @@ def test_cli_audio_router_profiles_and_synthesize_speech(
 ) -> None:
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
     monkeypatch.delenv("FISH_AUDIO_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("SUNO_API_KEY", raising=False)
     monkeypatch.setenv("FISH_AUDIO_REF_DAFEIYU", "secret-cli-fish-ref-999")
 
@@ -1128,3 +1136,106 @@ def test_cli_audio_router_profiles_and_synthesize_speech(
     assert synth_json["metadata"]["voice"] == "zf_001"
     assert out_wav.is_file()
     assert fake_tts.close_count == 1
+
+
+def test_speech_deepseek_tts_wav_pcm_streaming_header_and_fallback(tmp_path: Path) -> None:
+    import io as _io
+    import struct
+
+    # Build a synthetic streaming WAV payload (0xFFFFFFFF placeholder chunk sizes like live DeepSeek API)
+    pcm_body = b"\x10\x02\xf0\xfd" * 600  # 2400 bytes of 24kHz mono 16-bit PCM
+    buf = _io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(24000)
+        wf.writeframes(pcm_body)
+    streaming_wav = bytearray(buf.getvalue())
+    struct.pack_into("<I", streaming_wav, 4, 0xFFFFFFFF)
+    struct.pack_into("<I", streaming_wav, 40, 0xFFFFFFFF)
+
+    seen_calls: List[Dict[str, Any]] = []
+
+    def ok_handler(method: str, url: str, kwargs: Dict[str, Any]) -> _FakeResponse:
+        assert method == "POST"
+        assert url == "https://api.deepseek.com/v1/tools/tts"
+        assert kwargs["headers"]["Authorization"] == "Bearer sk-deepseek-mock-key-01"
+        body = kwargs["json"]
+        seen_calls.append(body)
+        if body["format"] == "pcm":
+            return _FakeResponse(
+                status_code=200,
+                content=pcm_body,
+                headers={"Content-Type": "audio/pcm; rate=24000"},
+            )
+        return _FakeResponse(status_code=200, content=bytes(streaming_wav), headers={"Content-Type": "audio/wav"})
+
+    fake_tts = _FakeLocalTTS()
+    router = AudioGenerationRouter(
+        env={"DEEPSEEK_API_KEY": "sk-deepseek-mock-key-01"},
+        session=_FakeSession(ok_handler),  # type: ignore[arg-type]
+        local_tts_factory=lambda: fake_tts,
+    )
+    st = router.get_status()
+    assert st["speech"]["active_provider"] == "deepseek_tts"
+    assert st["speech"]["using_fallback"] is False
+    assert "sk-deepseek-mock-key-01" not in json.dumps(st)
+
+    # 1. WAV synthesis repairs 0xFFFFFFFF header to exact duration
+    out_wav = tmp_path / "ds_stella.wav"
+    res_wav = router.synthesize_speech(
+        SpeechRequest(text="发开工就能生成像素小人！", output_path=out_wav, character="dafeiyu")
+    )
+    assert res_wav.provider == "deepseek_tts"
+    assert res_wav.used_fallback is False
+    assert res_wav.sample_rate == 24000
+    assert seen_calls[0]["voice_id"] == "stella"
+    assert seen_calls[0]["format"] == "wav"
+    assert seen_calls[0]["filter_markdown"] is True
+    with wave.open(str(out_wav), "rb") as wf:
+        assert wf.getframerate() == 24000
+        assert wf.getnframes() == len(pcm_body) // 2
+
+    # 2. Explicit voice=tide + .pcm output
+    out_pcm = tmp_path / "ds_tide.pcm"
+    res_pcm = router.synthesize_speech(
+        SpeechRequest(text="旁白切到暗潮音色", output_path=out_pcm, voice="tide", provider="deepseek_tts")
+    )
+    assert res_pcm.provider == "deepseek_tts"
+    assert seen_calls[1]["voice_id"] == "tide"
+    assert seen_calls[1]["format"] == "pcm"
+    assert out_pcm.read_bytes() == pcm_body
+    assert fake_tts.calls == []
+
+    # 3. HTTP 429 / 400 / truncated response gracefully falls back to local_kokoro & redacts key
+    for fail_resp in (
+        _FakeResponse(status_code=429, json_data={"error": "rate limit"}),
+        _FakeResponse(status_code=400, json_data={"error": "Content Exists Risk"}),
+        _FakeResponse(status_code=200, content=b"short", headers={"Content-Type": "audio/wav"}),
+    ):
+        fake_fb = _FakeLocalTTS()
+        r_fail = AudioGenerationRouter(
+            env={"DEEPSEEK_API_KEY": "sk-deepseek-secret-never-leak"},
+            session=_FakeSession(lambda *_a: fail_resp),  # type: ignore[arg-type]
+            local_tts_factory=lambda: fake_fb,
+        )
+        res_fb = r_fail.synthesize_speech(SpeechRequest(text="触发异常测试回退", output_path=tmp_path / "fb.wav"))
+        assert res_fb.provider == "local_kokoro"
+        assert res_fb.used_fallback is True
+        assert fake_fb.close_count == 1
+        assert "sk-deepseek-secret-never-leak" not in json.dumps(res_fb.to_dict(), ensure_ascii=False)
+
+    # 4. Upstream exception containing raw key redacts it cleanly in fallback metadata
+    def boom_handler(*_a: Any) -> _FakeResponse:
+        raise RuntimeError("Upstream 503 for token sk-deepseek-secret-boom-99")
+
+    fake_fb_boom = _FakeLocalTTS()
+    r_boom = AudioGenerationRouter(
+        env={"DEEPSEEK_API_KEY": "sk-deepseek-secret-boom-99"},
+        session=_FakeSession(boom_handler),  # type: ignore[arg-type]
+        local_tts_factory=lambda: fake_fb_boom,
+    )
+    res_boom = r_boom.synthesize_speech(SpeechRequest(text="异常脱敏测试", output_path=tmp_path / "fb_boom.wav"))
+    dumped_boom = json.dumps(res_boom.to_dict(), ensure_ascii=False)
+    assert "sk-deepseek-secret-boom-99" not in dumped_boom
+    assert "<REDACTED>" in dumped_boom

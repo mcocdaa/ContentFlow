@@ -37,6 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from config.settings import CONTENTFLOW_ROOT, _load_env_file
 from core.live_studio.bilibili_live_api import (
     DEFAULT_LIVE_AREA_V2,
     BilibiliLiveController,
@@ -49,6 +50,8 @@ from core.live_studio.director import (
     TRIO_CAST,
     DualAILiveDirector,
     HighlightTracker,
+    OfflineBanterResponder,
+    OpenAICompatibleResponder,
     SpeakerId,
 )
 from core.live_studio.headless_streamer import (
@@ -57,8 +60,14 @@ from core.live_studio.headless_streamer import (
     HeadlessStageRenderer,
     StatusCallback,
     SyntheticAudioMixer,
+    TtsBackendMode,
 )
-from core.live_studio.world_engine import DEFAULT_MEMORY_PATH, LiveAgentWorld, WorldStageRenderer
+from core.live_studio.world_engine import (
+    DEFAULT_MEMORY_PATH,
+    AutonomousWorldBrain,
+    LiveAgentWorld,
+    WorldStageRenderer,
+)
 
 logger = logging.getLogger("contentflow.headless_live")
 
@@ -226,9 +235,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional PNG path to capture a mid-stream stage frame for visual inspection.",
     )
     parser.add_argument(
+        "--tts-backend",
+        choices=("auto", "deepseek", "edge", "offline"),
+        default="auto",
+        help="TTS speech synthesis backend: auto (DeepSeek for lead + Edge for partners), deepseek, edge, or offline.",
+    )
+    parser.add_argument(
         "--no-edge-tts",
         action="store_true",
-        help="Force pure-NumPy melodic synthetic voice fallback without contacting edge-tts.",
+        help="Force pure-NumPy melodic synthetic voice fallback without contacting external TTS APIs.",
+    )
+    parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Disable DeepSeek/OpenAI LLM dialogue & AutonomousWorldBrain (use zero-key offline bank).",
+    )
+    parser.add_argument(
+        "--autonomous-interval-sec",
+        type=float,
+        default=75.0,
+        help="Seconds between AutonomousWorldBrain ticks in `--stage-mode world` (0 disables; default: 75).",
     )
     parser.add_argument(
         "--log-level",
@@ -252,6 +278,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--follower-count must be non-negative.")
     if args.follower_goal <= 0:
         parser.error("--follower-goal must be positive.")
+    if args.autonomous_interval_sec < 0:
+        parser.error("--autonomous-interval-sec must be >= 0.")
     try:
         args.parsed_poll_options = parse_poll_options(args.poll_options)
     except ValueError as exc:
@@ -274,6 +302,8 @@ async def run_headless_live(
             avail_mib,
         )
 
+    _load_env_file(CONTENTFLOW_ROOT / ".env")
+
     cast_tuple: Tuple[SpeakerId, ...] = getattr(args, "resolved_cast", resolve_cast(getattr(args, "cast", "trio")))
     poll_options: Tuple[str, ...] = getattr(
         args,
@@ -282,17 +312,6 @@ async def run_headless_live(
     )
     poll_topic: str = str(getattr(args, "poll_topic", DEFAULT_POLL_TOPIC) or DEFAULT_POLL_TOPIC)
 
-    record_dir = Path(args.record_dir) if args.record_dir else None
-    hl_jsonl = (record_dir / "live_highlights.jsonl") if record_dir is not None else None
-    tracker = HighlightTracker(jsonl_path=hl_jsonl)
-    director = DualAILiveDirector(
-        highlight_tracker=tracker,
-        follower_count=args.follower_count,
-        follower_goal=args.follower_goal,
-        cast=cast_tuple,
-        poll_topic=poll_topic,
-        poll_options=poll_options,
-    )
     stage_mode = str(getattr(args, "stage_mode", "trio_talk") or "trio_talk")
     world: Optional[LiveAgentWorld] = None
     renderer: Any
@@ -320,11 +339,48 @@ async def run_headless_live(
             show_title=args.title,
             cast=cast_tuple,
         )
+
+    world_context_provider = world.export_state_dict if world is not None else None
+    no_llm = bool(getattr(args, "no_llm", False))
+    responder: Any
+    if no_llm:
+        responder = OfflineBanterResponder(world_context_provider=world_context_provider)
+    else:
+        responder = OpenAICompatibleResponder(world_context_provider=world_context_provider)
+
+    record_dir = Path(args.record_dir) if args.record_dir else None
+    hl_jsonl = (record_dir / "live_highlights.jsonl") if record_dir is not None else None
+    tracker = HighlightTracker(jsonl_path=hl_jsonl)
+    director = DualAILiveDirector(
+        responder=responder,
+        highlight_tracker=tracker,
+        follower_count=args.follower_count,
+        follower_goal=args.follower_goal,
+        cast=cast_tuple,
+        poll_topic=poll_topic,
+        poll_options=poll_options,
+        world_context_provider=world_context_provider,
+    )
+
+    if bool(getattr(args, "no_edge_tts", False)):
+        effective_tts_backend: TtsBackendMode = "offline"
+    else:
+        raw_tts_backend = str(getattr(args, "tts_backend", "auto") or "auto").strip().lower()
+        effective_tts_backend = (
+            raw_tts_backend if raw_tts_backend in ("auto", "deepseek", "edge", "offline") else "auto"  # type: ignore[assignment]
+        )
+
     mixer = SyntheticAudioMixer(
         fps=args.fps,
         bgm_path=Path(args.bgm_path) if args.bgm_path else None,
-        use_edge_tts=not bool(args.no_edge_tts),
+        use_edge_tts=effective_tts_backend != "offline",
+        tts_backend=effective_tts_backend,
     )
+
+    brain_interval = float(getattr(args, "autonomous_interval_sec", 75.0))
+    world_brain: Optional[AutonomousWorldBrain] = None
+    if world is not None and not no_llm and brain_interval > 0.0:
+        world_brain = AutonomousWorldBrain(interval_sec=brain_interval)
 
     cb = status_callback if status_callback is not None else emit_status_line
     streamer = HeadlessLiveStreamer(
@@ -333,6 +389,7 @@ async def run_headless_live(
         director=director,
         controller=controller,
         world=world,
+        world_brain=world_brain,
         fps=args.fps,
         status_callback=cb,
     )

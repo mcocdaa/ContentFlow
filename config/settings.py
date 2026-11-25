@@ -81,6 +81,10 @@ AUDIO_ROUTER_ENV_VARS = {
     "fish_audio_ref_dafeiyu": "FISH_AUDIO_REF_DAFEIYU",
     "fish_audio_ref_gemini_neko": "FISH_AUDIO_REF_GEMINI_NEKO",
     "fish_audio_ref_yowane_haku": "FISH_AUDIO_REF_YOWANE_HAKU",
+    "deepseek_api_key": "DEEPSEEK_API_KEY",
+    "deepseek_base_url": "DEEPSEEK_BASE_URL",
+    "deepseek_tts_url": "DEEPSEEK_TTS_URL",
+    "deepseek_tts_voice": "DEEPSEEK_TTS_VOICE",
     "suno_api_key": "SUNO_API_KEY",
     "suno_base_url": "SUNO_BASE_URL",
 }
@@ -90,7 +94,10 @@ DEFAULT_MINIMAX_SPEECH_MODEL = "speech-02-hd"
 DEFAULT_MINIMAX_SPEECH_VOICE = "female-shaonv"
 DEFAULT_MINIMAX_MUSIC_MODEL = "music-01"
 DEFAULT_FISH_AUDIO_BASE_URL = "https://api.fish.audio"
+DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+DEFAULT_DEEPSEEK_TTS_URL = "https://api.deepseek.com/v1/tools/tts"
+DEFAULT_DEEPSEEK_TTS_VOICE = "stella"
 DEFAULT_SUNO_BASE_URL = "https://api.sunoapi.org"
 
-AUDIO_SPEECH_PROVIDER_PRIORITY = ("minimax_speech", "fish_audio", "local_kokoro")
+AUDIO_SPEECH_PROVIDER_PRIORITY = ("minimax_speech", "fish_audio", "deepseek_tts", "local_kokoro")
 AUDIO_MUSIC_PROVIDER_PRIORITY = ("minimax_music", "suno", "bilibili_bgm_hunter")

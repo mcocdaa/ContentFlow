@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import httpx
 import numpy as np
 from PIL import Image
 
@@ -17,12 +18,14 @@ from core.auth_vault import AuthVault
 from core.live_studio import (
     AI_DISCLOSURE_BANNER,
     TRIO_CAST,
+    AutonomousWorldBrain,
     BilibiliLiveController,
     DanmakuEvent,
     DualAILiveDirector,
     HeadlessLiveStreamer,
     LiveAgentWorld,
     OfflineBanterResponder,
+    OpenAICompatibleResponder,
     PersonaTurn,
     StartLiveResult,
     SyntheticAudioMixer,
@@ -34,7 +37,7 @@ from core.live_studio.danmaku import parse_room_stats_command
 from scripts import launch_headless_live, live_agent_ctl
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FORBIDDEN_MIC_RE = re.compile(r"/dev/snd|alsa|pyaudio|sounddevice", re.IGNORECASE)
+FORBIDDEN_MIC_RE = re.compile(r"/dev/snd|alsa|pulse|pyaudio|sounddevice", re.IGNORECASE)
 
 
 class _FakeResponse:
@@ -91,6 +94,9 @@ def _make_vault_with_cookies(tmp_path: Path) -> AuthVault:
 def test_zero_mic_guarantee_for_world_modules() -> None:
     targets = [
         REPO_ROOT / "core" / "live_studio" / "world_engine.py",
+        REPO_ROOT / "core" / "live_studio" / "headless_streamer.py",
+        REPO_ROOT / "core" / "live_studio" / "director.py",
+        REPO_ROOT / "scripts" / "launch_headless_live.py",
         REPO_ROOT / "scripts" / "live_agent_ctl.py",
     ]
     for path in targets:
@@ -377,6 +383,7 @@ def test_world_stage_renderer_and_dry_stream_e2e(tmp_path: Path) -> None:
             "--duration-sec",
             "3",
             "--no-edge-tts",
+            "--no-llm",
             "--output-mp4",
             str(out_mp4),
             "--record-dir",
@@ -408,3 +415,176 @@ def test_world_stage_renderer_and_dry_stream_e2e(tmp_path: Path) -> None:
     assert isinstance(SyntheticAudioMixer(use_edge_tts=False), SyntheticAudioMixer)
     assert issubclass(HeadlessLiveStreamer, object)
     assert "secret" not in scrub_rtmp_secrets("rtmp://live-push.bilivideo.com/a/?key=secret")
+
+
+def test_deepseek_tts_mixer_pcm_upsampling_and_fallback() -> None:
+    async def _run() -> None:
+        # 24 kHz mono PCM16 (4800 samples = 0.2s -> 9600 samples at 48kHz stereo, > 1600 samples_per_frame)
+        pcm_samples = (np.sin(np.linspace(0.0, 20.0 * np.pi, 4800, dtype=np.float32)) * 12000.0).astype("<i2")
+        pcm_bytes = pcm_samples.tobytes()
+
+        seen_bodies: List[Dict[str, Any]] = []
+
+        def ok_handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers["Authorization"] == "Bearer sk-ds-live-secret-99"
+            body = json.loads(request.content.decode("utf-8"))
+            seen_bodies.append(body)
+            return httpx.Response(200, content=pcm_bytes, headers={"Content-Type": "audio/pcm"})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(ok_handler)) as client:
+            mixer = SyntheticAudioMixer(
+                tts_backend="auto",
+                use_edge_tts=False,
+                deepseek_api_key="sk-ds-live-secret-99",
+                deepseek_tts_url="https://mock.ds.local/v1/tools/tts",
+                deepseek_http_client=client,
+            )
+            assert "sk-ds-live-secret-99" not in repr(mixer)
+            pcm_out = await mixer.synthesize_turn_pcm(
+                PersonaTurn(
+                    turn_id=1, speaker_id="dafeiyu", speaker_name="DeepSeek 蓝色大肥鱼", text="发开工生成小人！"
+                )
+            )
+            assert pcm_out.ndim == 2 and pcm_out.shape == (9600, 2)
+            assert pcm_out.dtype == np.float32
+            assert float(np.max(np.abs(pcm_out))) <= 0.80
+            assert mixer.tts_stats["deepseek"] == 1
+            assert seen_bodies[0] == {
+                "text": "发开工生成小人！",
+                "voice_id": "stella",
+                "format": "pcm",
+                "filter_markdown": True,
+            }
+
+        # Error 429 / truncated PCM cleanly falls back to offline synth without raising or leaking secret
+        def fail_handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, json={"error": "too many requests"})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(fail_handler)) as err_client:
+            err_mixer = SyntheticAudioMixer(
+                tts_backend="deepseek",
+                use_edge_tts=False,
+                deepseek_api_key="sk-ds-fail-secret-88",
+                deepseek_http_client=err_client,
+            )
+            fb_pcm = await err_mixer.synthesize_turn_pcm(
+                PersonaTurn(turn_id=2, speaker_id="gemini", speaker_name="Gemini娘", text="遇到限流自动回退！")
+            )
+            assert fb_pcm.ndim == 2 and fb_pcm.shape[1] == 2
+            assert len(fb_pcm) >= 48000
+            assert err_mixer.tts_stats["offline"] == 1
+            assert "sk-ds-fail-secret-88" not in repr(err_mixer)
+
+    asyncio.run(_run())
+
+
+def test_world_context_prompting_and_autonomous_world_brain(tmp_path: Path) -> None:
+    world = LiveAgentWorld(memory_path=tmp_path / "brain_mem.json", follower_count=16, follower_goal=1000)
+    world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="点子达人", text="建议 加个夜间霓虹灯"))
+    world.apply_agent_command({"cmd": "world_action", "action": "trigger_event", "title": "测试算力波动"})
+
+    # 1. Offline world banter injects world stats & omits stale 017-020 talk-show lines
+    off_resp = OfflineBanterResponder(world_context_provider=world.export_state_dict)
+    dir_off = DualAILiveDirector(
+        responder=off_resp,
+        follower_count=16,
+        follower_goal=1000,
+        world_context_provider=world.export_state_dict,
+    )
+    t_crisis = asyncio.run(dir_off.next_turn())
+    assert "测试算力波动" in t_crisis.text or "修Bug" in t_crisis.text
+    assert "017" not in t_crisis.text and "018" not in t_crisis.text
+
+    # 2. OpenAICompatibleResponder injects live workshop snapshot into LLM request
+    captured_prompts: List[str] = []
+
+    def llm_world_handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        captured_prompts.append(json.dumps(body["messages"], ensure_ascii=False))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "欢迎来到AI活工坊！发修Bug帮大肥鱼解决测试算力波动吧！"}}]},
+        )
+
+    async def _run_brain() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(llm_world_handler)) as llm_client:
+            llm_resp = OpenAICompatibleResponder(
+                api_key="sk-world-llm-mock",
+                http_client=llm_client,
+                world_context_provider=world.export_state_dict,
+            )
+            dir_llm = DualAILiveDirector(responder=llm_resp, follower_count=16, follower_goal=1000)
+            turn = await dir_llm.next_turn()
+            assert "AI活工坊" in turn.text
+            assert "破旧电饭煲工位" in captured_prompts[0]
+            assert "测试算力波动" in captured_prompts[0]
+
+        # 3. AutonomousWorldBrain parses JSON actions, caps XP, scrubs @/PII, blocks stop, survives HTTP 500
+        def brain_handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content.decode("utf-8"))
+            assert body["response_format"] == {"type": "json_object"}
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "task": "实现点子达人的夜间霓虹灯 @全体",
+                                        "stage": 2,
+                                        "tag": "CODE",
+                                        "log_text": "正在采纳建议 S1 并部署夜间灯效 uid=998877",
+                                        "world_action": {"action": "accept_suggestion", "suggestion_id": "S1"},
+                                        "speech": {
+                                            "speaker": "yowane",
+                                            "mood": "focused",
+                                            "text": "点子达人的建议已经采纳，夜间霓虹灯效马上上线！",
+                                        },
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        }
+                    ]
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(brain_handler)) as brain_client:
+            brain = AutonomousWorldBrain(
+                api_key="sk-brain-secret-01",
+                interval_sec=30.0,
+                http_client=brain_client,
+            )
+            assert "sk-brain-secret-01" not in repr(brain)
+            cmds = await brain.decide_next_actions(world.export_state_dict())
+            assert len(cmds) == 3
+            assert cmds[0]["cmd"] == "work_log"
+            assert "@" not in cmds[0]["task"]
+            assert "998877" not in cmds[0]["text"]
+            assert cmds[1] == {"cmd": "world_action", "action": "accept_suggestion", "suggestion_id": "S1"}
+            assert cmds[2]["cmd"] == "speak" and cmds[2]["speaker"] == "yowane"
+
+            for c in cmds:
+                res = world.apply_agent_command(c)
+                assert res["ok"] is True
+            assert world.memory.get_viewer("点子达人")["badge"] == "建议采纳官"  # type: ignore[index]
+
+            # Direct sanitize_and_build_commands clamps XP and blocks `stop`
+            clamped = brain.sanitize_and_build_commands(
+                {"world_action": {"action": "build_upgrade", "xp": 9999}}, world.export_state_dict()
+            )
+            assert clamped[0]["xp"] == 35
+            blocked_stop = brain.sanitize_and_build_commands(
+                {"world_action": {"action": "stop"}}, world.export_state_dict()
+            )
+            assert blocked_stop == []
+
+        # HTTP 500 degrades to empty action list cleanly
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(500, json={"error": "busy"}))
+        ) as err_client:
+            err_brain = AutonomousWorldBrain(api_key="sk-brain-secret-02", http_client=err_client)
+            assert await err_brain.decide_next_actions(world.export_state_dict()) == []
+
+    asyncio.run(_run_brain())

@@ -22,7 +22,7 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Deque, Dict, Final, List, Literal, Optional, Protocol, Sequence, Tuple
+from typing import Any, Callable, Deque, Dict, Final, List, Literal, Optional, Protocol, Sequence, Tuple
 
 import httpx
 
@@ -554,17 +554,116 @@ _IDLE_BANTER_BY_SPEAKER: Final[Dict[SpeakerId, Tuple[Tuple[SpeakerId, str, str, 
     "yowane": tuple(row for row in _IDLE_BANTER_BANK if row[0] == "yowane"),
 }
 
+_WORLD_IDLE_BANTER_BANK: Final[Tuple[Tuple[SpeakerId, str, str, str], ...]] = (
+    (
+        "dafeiyu",
+        "AI活工坊已升到Lv.{level}{level_name}！现在发「开工」直接给你生成像素小人，发「写代码」还能全员续命，目前{followers}/{goal}粉！",
+        "lively",
+        "script_pitch",
+    ),
+    (
+        "gemini",
+        "快看工坊中央！电饭煲补给站还剩{countdown}倒计时，大家发「投喂」或「修Bug」就能瞬间涨电续命，还差{goal}粉冲刺哦！",
+        "hype",
+        "",
+    ),
+    (
+        "yowane",
+        "右下角工作台全透明播报中：发「建议 你想要的新功能」直接上墙待办队列，我来盯算力和代码产出。",
+        "focused",
+        "script_pitch",
+    ),
+    (
+        "dafeiyu",
+        "目前工坊代码值{code_pts}、算力{compute_pts}，谁敢发条「写代码」跟大肥鱼同屏搬砖？这可比自己瞎逛好玩多了！",
+        "teasing",
+        "roast_battle",
+    ),
+    (
+        "gemini",
+        "现在工坊里已经累计接待过{known_viewers}位共建工友啦，回归老朋友发条弹幕就能触发欢迎卡片，冲击{goal}粉冲鸭！",
+        "lively",
+        "",
+    ),
+    (
+        "yowane",
+        "友情提醒：倒计时归零工坊就会停电，平时发「开工」报到、「修Bug」排查突发警报，每个人都能在地图里跑起来。",
+        "focused",
+        "",
+    ),
+)
+
+_WORLD_IDLE_BANTER_BY_SPEAKER: Final[Dict[SpeakerId, Tuple[Tuple[SpeakerId, str, str, str], ...]]] = {
+    "dafeiyu": tuple(row for row in _WORLD_IDLE_BANTER_BANK if row[0] == "dafeiyu"),
+    "gemini": tuple(row for row in _WORLD_IDLE_BANTER_BANK if row[0] == "gemini"),
+    "yowane": tuple(row for row in _WORLD_IDLE_BANTER_BANK if row[0] == "yowane"),
+}
+
+
+def format_world_context_summary(state: Dict[str, Any]) -> str:
+    """Format a compact, zero-PII live workshop snapshot for dialogue & autonomous prompts."""
+    if not isinstance(state, dict):
+        return ""
+    raw_world = state.get("world")
+    world: Dict[str, Any] = raw_world if isinstance(raw_world, dict) else {}
+    raw_wb = state.get("workbench")
+    wb: Dict[str, Any] = raw_wb if isinstance(raw_wb, dict) else {}
+    raw_tel = state.get("telemetry")
+    tel: Dict[str, Any] = raw_tel if isinstance(raw_tel, dict) else {}
+    raw_sugs = state.get("suggestions")
+    sugs: List[Any] = raw_sugs if isinstance(raw_sugs, list) else []
+    open_sugs = [
+        f"{s.get('id', '?')}:{redact_pii(str(s.get('text', ''))).replace('@', '').strip()[:20]}"
+        for s in sugs
+        if isinstance(s, dict) and s.get("status") == "待采纳"
+    ]
+    active_ev = world.get("active_event")
+    ev_str = (
+        f"突发警报「{active_ev.get('title', '异常')}」：{active_ev.get('desc', '')}"
+        if isinstance(active_ev, dict)
+        else "无突发警报"
+    )
+    raw_builders = state.get("top_builders")
+    builders: List[Any] = raw_builders if isinstance(raw_builders, list) else []
+    top_str = (
+        ", ".join(f"{b.get('alias', '工友')}({b.get('score', 0)}分)" for b in builders[:3] if isinstance(b, dict))
+        or "暂无"
+    )
+    return (
+        f"工坊Lv.{world.get('level', 1)}「{world.get('level_name', '破旧电饭煲工位')}」 | "
+        f"倒计时{world.get('countdown_hhmmss', '00:00:00')} | "
+        f"代码{world.get('code_pts', 0)} 算力{world.get('compute_pts', 0)} 白米饭{world.get('rice_bowls', 0)} | "
+        f"工友数{world.get('active_worker_count', 0)}/累计{world.get('total_known_viewers', 0)}人 | "
+        f"实时状态:{ev_str} | 工作台任务:「{wb.get('active_task', '巡查工坊')}」({wb.get('pipeline_label', '')}) | "
+        f"待采纳建议:{', '.join(open_sugs[:3]) if open_sugs else '暂无'} | "
+        f"人气{tel.get('online', 0)} {tel.get('watched_text', '0人看过')} | 贡献榜:{top_str}"
+    )
+
 
 class OfflineBanterResponder:
     """Deterministic zero-key comedic responder for offline testing and rehearsal."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        world_context_provider: Optional[Callable[[], Dict[str, Any]]] = None,
+    ) -> None:
         self._variant_idx = 0
         self._speaker_idle_cursor: Dict[SpeakerId, int] = {"dafeiyu": 0, "gemini": 0, "yowane": 0}
+        self.world_context_provider = world_context_provider
 
     @property
     def backend_name(self) -> str:
         return "offline_bank"
+
+    def _safe_world_state(self) -> Optional[Dict[str, Any]]:
+        if self.world_context_provider is None:
+            return None
+        try:
+            ctx = self.world_context_provider()
+            return ctx if isinstance(ctx, dict) else None
+        except Exception:
+            return None
 
     async def generate_line(
         self,
@@ -578,8 +677,39 @@ class OfflineBanterResponder:
     ) -> Tuple[str, str]:
         self._variant_idx += 1
         sid = speaker.speaker_id
+        world_ctx = self._safe_world_state()
 
         if event is None:
+            if world_ctx is not None:
+                raw_world_data = world_ctx.get("world")
+                world_data: Dict[str, Any] = raw_world_data if isinstance(raw_world_data, dict) else {}
+                active_ev = world_data.get("active_event")
+                if isinstance(active_ev, dict) and active_ev.get("title"):
+                    title = str(active_ev.get("title"))
+                    if sid == "dafeiyu":
+                        return f"紧急告警「{title}」正在扣时间！快发「修Bug」跟大肥鱼一起抢修续命三百秒！", "shocked"
+                    if sid == "yowane":
+                        return f"算力警报「{title}」双倍掉时间中，请大家发「修Bug」或「投喂」稳住工坊！", "focused"
+                    return f"哎呀「{title}」闪红灯啦！观众快发「修Bug」救场，保住我的漂亮工坊呀！", "shocked"
+
+                w_bank = _WORLD_IDLE_BANTER_BY_SPEAKER.get(sid) or _WORLD_IDLE_BANTER_BANK
+                idx = self._speaker_idle_cursor.get(sid, 0)
+                self._speaker_idle_cursor[sid] = idx + 1
+                _, template, mood, _ = w_bank[idx % len(w_bank)]
+                return (
+                    template.format(
+                        followers=follower_count,
+                        goal=follower_goal,
+                        level=world_data.get("level", 1),
+                        level_name=world_data.get("level_name", "破旧电饭煲工位"),
+                        countdown=world_data.get("countdown_hhmmss", "04:00:00"),
+                        code_pts=world_data.get("code_pts", 0),
+                        compute_pts=world_data.get("compute_pts", 0),
+                        known_viewers=world_data.get("total_known_viewers", 0),
+                    ),
+                    mood,
+                )
+
             bank = _IDLE_BANTER_BY_SPEAKER.get(sid) or _IDLE_BANTER_BANK
             idx = self._speaker_idle_cursor.get(sid, 0)
             self._speaker_idle_cursor[sid] = idx + 1
@@ -623,6 +753,12 @@ class OfflineBanterResponder:
 
         if event.event_type == "enter":
             alias = event.user_alias or "新小伙伴"
+            if world_ctx is not None:
+                if sid == "dafeiyu":
+                    return f"欢迎{alias}空降AI活工坊！发弹幕「开工」就能立刻生成你的像素小人一起干活！", "lively"
+                if sid == "yowane":
+                    return f"欢迎{alias}来到工坊，发「开工」认领工位，有好点子发「建议 内容」直通工作台。", "focused"
+                return f"欢迎{alias}进来玩呀～发「开工」或「写代码」一起帮工坊升级冲刺 {follower_goal} 粉！", "lively"
             if sid == "dafeiyu":
                 return (
                     f"欢迎{alias}空降铁三角 AI 合租演播厅！快在弹幕扣 1 扣 2 扣 3 帮我们投票决定下期剧本！",
@@ -770,6 +906,7 @@ class OpenAICompatibleResponder:
         timeout_sec: float = 12.0,
         fallback: Optional[OfflineBanterResponder] = None,
         http_client: Optional[httpx.AsyncClient] = None,
+        world_context_provider: Optional[Callable[[], Dict[str, Any]]] = None,
     ) -> None:
         resolved_key = (
             api_key
@@ -777,10 +914,15 @@ class OpenAICompatibleResponder:
             else (os.getenv("LIVE_LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or "")
         )
         self._api_key = resolved_key.strip()
-        self.base_url = (base_url or os.getenv("LIVE_LLM_BASE_URL") or DEFAULT_LLM_BASE_URL).rstrip("/")
+        self.base_url = (
+            base_url or os.getenv("LIVE_LLM_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL") or DEFAULT_LLM_BASE_URL
+        ).rstrip("/")
         self.model = (model or os.getenv("LIVE_LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
         self.timeout_sec = timeout_sec
-        self.fallback = fallback or OfflineBanterResponder()
+        self.world_context_provider = world_context_provider
+        self.fallback = fallback or OfflineBanterResponder(world_context_provider=world_context_provider)
+        if self.fallback.world_context_provider is None and world_context_provider is not None:
+            self.fallback.world_context_provider = world_context_provider
         self._external_client = http_client
 
     @property
@@ -796,6 +938,15 @@ class OpenAICompatibleResponder:
             f"OpenAICompatibleResponder(base_url={self.base_url!r}, "
             f"model={self.model!r}, configured={self.has_api_key})"
         )
+
+    def _safe_world_state(self) -> Optional[Dict[str, Any]]:
+        if self.world_context_provider is None:
+            return None
+        try:
+            ctx = self.world_context_provider()
+            return ctx if isinstance(ctx, dict) else None
+        except Exception:
+            return None
 
     async def generate_line(
         self,
@@ -817,31 +968,73 @@ class OpenAICompatibleResponder:
                 idle_step=idle_step,
             )
 
-        messages: List[Dict[str, str]] = [{"role": "system", "content": speaker.system_prompt}]
+        world_ctx = self._safe_world_state()
+        world_summary = format_world_context_summary(world_ctx) if world_ctx is not None else ""
+        sys_content = speaker.system_prompt
+        if world_summary:
+            sys_content += (
+                "\n当前已切换为「2D AI 活工坊」实时生存建造模式：观众发「开工」「写代码」「修Bug」「投喂」可生成像素小人并续命，"
+                "发「建议 内容」会上墙给 AI 工作台实时执行。禁止再提旧版 017-020 或扣 1/2/3 公投台词，严格围绕工坊现状与观众即兴互动（不超过 55 字）。"
+            )
+
+        messages: List[Dict[str, str]] = [{"role": "system", "content": sys_content}]
         for prev in history[-6:]:
             role = "assistant" if prev.speaker_id == speaker.speaker_id else "user"
             messages.append({"role": role, "content": f"{prev.speaker_name}：{prev.text}"})
 
-        if event is None:
-            user_prompt = (
-                f"当前账号进度 {follower_count}/{follower_goal} 粉，直播间暂无新弹幕。"
-                "请自然接上搭档的话题，继续围绕冲 1000 粉、017-020 剧情彩蛋或弹幕扣 1/2/3 公投斗嘴一句（55字内）。"
-            )
-            default_mood = "lively"
-        elif event.event_type == "system":
-            user_prompt = f"直播间刚刚触发喜报：{event.text}\n请用你的角色人设热烈庆贺一句（55字内）。"
-            default_mood = "hype"
-        elif event.event_type == "gift":
-            user_prompt = (
-                f"观众「{event.user_alias}」刚刚送出了 {event.gift_name} x{event.gift_count}，请热情幽默地致谢一句。"
-            )
-            default_mood = "grateful"
-        elif event.event_type == "enter":
-            user_prompt = f"新观众「{event.user_alias}」刚进入直播间，请简短欢迎并引导参与扣 1/2/3 弹幕公投。"
-            default_mood = "lively"
+        if world_summary:
+            if event is None:
+                user_prompt = (
+                    f"粉丝进度 {follower_count}/{follower_goal}。\n"
+                    f"实时工坊快照：{world_summary}\n"
+                    "当前暂无新弹幕。请根据上方工坊实时等级、倒计时、警报、工作台任务或观众贡献接话吐槽，"
+                    "自然号召观众发「开工」「写代码」「修Bug」「投喂」或「建议」参与互动（55字内，不带@）。"
+                )
+                default_mood = "lively"
+            elif event.event_type == "system":
+                user_prompt = (
+                    f"实时工坊快照：{world_summary}\n"
+                    f"直播间触发喜报：{event.text}\n请用你的角色人设热烈播报一句（55字内，不带@）。"
+                )
+                default_mood = "hype"
+            elif event.event_type == "gift":
+                user_prompt = (
+                    f"实时工坊快照：{world_summary}\n"
+                    f"观众「{event.user_alias}」刚在工坊投喂了 {event.gift_name} x{event.gift_count}（给工坊加了白米饭和续命时间），请热情致谢一句（55字内，不带@）。"
+                )
+                default_mood = "grateful"
+            elif event.event_type == "enter":
+                user_prompt = (
+                    f"实时工坊快照：{world_summary}\n"
+                    f"新观众「{event.user_alias}」刚进活工坊，请简短欢迎并引导发「开工」生成自己的像素小人或发「建议 内容」点单（55字内，不带@）。"
+                )
+                default_mood = "lively"
+            else:
+                user_prompt = (
+                    f"实时工坊快照：{world_summary}\n"
+                    f"观众「{event.user_alias}」发弹幕说：{event.text}\n"
+                    "请结合工坊当前工作台状态和你的角色人设即时回应一句（55字内，不带@）。"
+                )
+                default_mood = "teasing"
         else:
-            user_prompt = f"观众「{event.user_alias}」发弹幕说：{event.text}\n请用你的角色人设回应一句（55字内）。"
-            default_mood = "teasing"
+            if event is None:
+                user_prompt = (
+                    f"当前账号进度 {follower_count}/{follower_goal} 粉，直播间暂无新弹幕。"
+                    "请自然接上搭档的话题，继续围绕冲 1000 粉、017-020 剧情彩蛋或弹幕扣 1/2/3 公投斗嘴一句（55字内）。"
+                )
+                default_mood = "lively"
+            elif event.event_type == "system":
+                user_prompt = f"直播间刚刚触发喜报：{event.text}\n请用你的角色人设热烈庆贺一句（55字内）。"
+                default_mood = "hype"
+            elif event.event_type == "gift":
+                user_prompt = f"观众「{event.user_alias}」刚刚送出了 {event.gift_name} x{event.gift_count}，请热情幽默地致谢一句。"
+                default_mood = "grateful"
+            elif event.event_type == "enter":
+                user_prompt = f"新观众「{event.user_alias}」刚进入直播间，请简短欢迎并引导参与扣 1/2/3 弹幕公投。"
+                default_mood = "lively"
+            else:
+                user_prompt = f"观众「{event.user_alias}」发弹幕说：{event.text}\n请用你的角色人设回应一句（55字内）。"
+                default_mood = "teasing"
 
         messages.append({"role": "user", "content": user_prompt})
         url = f"{self.base_url}/chat/completions"
@@ -898,9 +1091,12 @@ class DualAILiveDirector:
         poll_topic: str = DEFAULT_POLL_TOPIC,
         poll_options: Sequence[str] = DEFAULT_POLL_OPTIONS,
         celebration_duration_sec: float = 12.0,
+        world_context_provider: Optional[Callable[[], Dict[str, Any]]] = None,
     ) -> None:
         self.safety_guard = safety_guard or LiveComplianceGuard()
-        self.responder: DialogueResponder = responder or OpenAICompatibleResponder()
+        self.responder: DialogueResponder = responder or OpenAICompatibleResponder(
+            world_context_provider=world_context_provider
+        )
         self.highlight_tracker = highlight_tracker or HighlightTracker()
         self.follower_count = max(0, follower_count)
         self.follower_goal = max(1, follower_goal)

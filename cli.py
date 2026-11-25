@@ -1321,7 +1321,7 @@ def main():
     p_synth.add_argument("--pitch", type=int, default=None, help="Explicit MiniMax semitone pitch offset (-12..12)")
     p_synth.add_argument(
         "--provider",
-        choices=["minimax_speech", "fish_audio", "local_kokoro"],
+        choices=["minimax_speech", "fish_audio", "deepseek_tts", "local_kokoro"],
         default=None,
         help="Optional explicit speech provider override",
     )

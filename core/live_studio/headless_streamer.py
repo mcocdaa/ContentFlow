@@ -34,12 +34,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, Final, List, Literal, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
-    from core.live_studio.world_engine import LiveAgentWorld
+    from core.live_studio.world_engine import AutonomousWorldBrain, LiveAgentWorld
 
+import httpx
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
-from config.settings import DEFAULT_FONTS
+from config.settings import (
+    DEFAULT_DEEPSEEK_BASE_URL,
+    DEFAULT_DEEPSEEK_TTS_URL,
+    DEFAULT_DEEPSEEK_TTS_VOICE,
+    DEFAULT_FONTS,
+)
 from core.live_studio.bilibili_live_api import (
     DEFAULT_LIVE_AREA_V2,
     REDACTED_RTMP_TOKEN,
@@ -1194,6 +1200,19 @@ def build_ambient_lofi_bgm_loop(
     return stereo.astype(np.float32)
 
 
+DEEPSEEK_VOICE_MAP: Final[Dict[SpeakerId, str]] = {
+    "dafeiyu": "stella",
+    "gemini": "stella",
+    "yowane": "stella",
+}
+DEEPSEEK_PAN_MAP: Final[Dict[SpeakerId, Tuple[float, float]]] = {
+    "dafeiyu": (0.94, 0.86),
+    "gemini": (0.86, 0.94),
+    "yowane": (0.90, 0.90),
+}
+TtsBackendMode = Literal["auto", "deepseek", "edge", "offline"]
+
+
 class SyntheticAudioMixer:
     """100% synthetic `s16le` 48 kHz stereo PCM mixer locked to exact video-frame slices."""
 
@@ -1205,6 +1224,11 @@ class SyntheticAudioMixer:
         fps: int = DEFAULT_FPS,
         bgm_path: Optional[Path] = None,
         use_edge_tts: bool = True,
+        tts_backend: Optional[TtsBackendMode] = None,
+        deepseek_api_key: Optional[str] = None,
+        deepseek_tts_url: Optional[str] = None,
+        deepseek_voice_map: Optional[Dict[SpeakerId, str]] = None,
+        deepseek_http_client: Optional[httpx.AsyncClient] = None,
         ffmpeg_bin: str = "ffmpeg",
         bgm_idle_gain: float = 0.72,
         bgm_duck_gain: float = 0.22,
@@ -1215,7 +1239,32 @@ class SyntheticAudioMixer:
         self.fps = max(1, int(fps))
         self.samples_per_frame = self.sample_rate // self.fps
         self.bytes_per_frame = self.samples_per_frame * self.channels * BYTES_PER_SAMPLE
-        self.use_edge_tts = use_edge_tts
+
+        if tts_backend is None:
+            resolved_backend: TtsBackendMode = "edge" if use_edge_tts else "offline"
+        else:
+            resolved_backend = tts_backend
+        self.tts_backend: TtsBackendMode = resolved_backend
+        self.use_edge_tts = bool(use_edge_tts) and resolved_backend != "offline"
+
+        resolved_ds_key = (
+            deepseek_api_key if deepseek_api_key is not None else (os.getenv("DEEPSEEK_API_KEY") or "")
+        ).strip()
+        self._deepseek_api_key: str = resolved_ds_key
+        explicit_tts_url = deepseek_tts_url or os.getenv("DEEPSEEK_TTS_URL")
+        if explicit_tts_url:
+            self.deepseek_tts_url = explicit_tts_url.rstrip("/")
+        elif os.getenv("DEEPSEEK_BASE_URL"):
+            ds_base = (os.getenv("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
+            self.deepseek_tts_url = f"{ds_base}/tools/tts"
+        else:
+            self.deepseek_tts_url = DEFAULT_DEEPSEEK_TTS_URL
+        self._deepseek_voice_map: Dict[SpeakerId, str] = {**DEEPSEEK_VOICE_MAP, **(deepseek_voice_map or {})}
+        self._deepseek_http_client = deepseek_http_client
+        self._deepseek_lock: Optional[asyncio.Lock] = None
+        self._deepseek_lock_loop: Optional[asyncio.AbstractEventLoop] = None
+
+        self.tts_stats: Dict[str, int] = {"deepseek": 0, "edge": 0, "offline": 0}
         self.ffmpeg_bin = shutil.which(ffmpeg_bin) or ffmpeg_bin
         self.bgm_idle_gain = float(bgm_idle_gain)
         self.bgm_duck_gain = float(bgm_duck_gain)
@@ -1231,6 +1280,12 @@ class SyntheticAudioMixer:
         self._speech_offset: int = 0
         self._speech_total_samples: int = 0
         self._lock = threading.Lock()
+
+    def __repr__(self) -> str:
+        return (
+            f"SyntheticAudioMixer(sample_rate={self.sample_rate}, fps={self.fps}, "
+            f"tts_backend={self.tts_backend!r}, deepseek_configured={bool(self._deepseek_api_key)})"
+        )
 
     def _load_or_build_bgm(self, bgm_path: Optional[Path]) -> np.ndarray:
         if bgm_path is not None:
@@ -1317,42 +1372,150 @@ class SyntheticAudioMixer:
             stereo = stereo * min(1.8, 0.78 / peak)
         return stereo.astype(np.float32)
 
-    async def synthesize_turn_pcm(self, turn: PersonaTurn) -> np.ndarray:
-        """Synthesize a `PersonaTurn` into 48 kHz float32 stereo PCM via `edge-tts` or offline synth."""
-        safe_text = redact_pii(turn.text).replace("@", "").strip()
-        if not safe_text:
-            return synthesize_offline_fallback_pcm("欢迎来到双AI直播间", turn.speaker_id, sample_rate=self.sample_rate)
+    def _get_deepseek_lock(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        if self._deepseek_lock is None or self._deepseek_lock_loop is not loop:
+            self._deepseek_lock = asyncio.Lock()
+            self._deepseek_lock_loop = loop
+        return self._deepseek_lock
 
-        if self.use_edge_tts:
-            last_exc: Optional[Exception] = None
+    def _decode_deepseek_pcm_24k_to_stereo(self, raw_pcm: bytes, speaker_id: SpeakerId) -> Optional[np.ndarray]:
+        if len(raw_pcm) < 2400 or len(raw_pcm) % 2 != 0:
+            return None
+        mono_24k = np.frombuffer(raw_pcm, dtype="<i2").astype(np.float32) / 32768.0
+        if mono_24k.size == 0:
+            return None
+        if self.sample_rate == 24000:
+            mono = mono_24k
+        else:
+            out_len = max(1, int(round(len(mono_24k) * (float(self.sample_rate) / 24000.0))))
+            src_idx = np.linspace(0.0, float(len(mono_24k) - 1), out_len, dtype=np.float64)
+            mono = np.interp(src_idx, np.arange(len(mono_24k), dtype=np.float64), mono_24k).astype(np.float32)
+        peak = float(np.max(np.abs(mono)))
+        if peak > 1e-4:
+            mono = mono * min(1.8, 0.78 / peak)
+        pan_l, pan_r = DEEPSEEK_PAN_MAP.get(speaker_id, (0.90, 0.90))
+        return np.stack([mono * pan_l, mono * pan_r], axis=-1).astype(np.float32)
+
+    async def _synthesize_deepseek_tts_pcm(self, safe_text: str, speaker_id: SpeakerId) -> Optional[np.ndarray]:
+        if not self._deepseek_api_key:
+            return None
+        voice_candidate = (
+            self._deepseek_voice_map.get(speaker_id) or os.getenv("DEEPSEEK_TTS_VOICE") or DEFAULT_DEEPSEEK_TTS_VOICE
+        ).strip()
+        voice_id = (
+            voice_candidate.lower() if voice_candidate.lower() in {"stella", "tide"} else DEFAULT_DEEPSEEK_TTS_VOICE
+        )
+        headers = {
+            "Authorization": f"Bearer {self._deepseek_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload: Dict[str, Any] = {
+            "text": safe_text,
+            "voice_id": voice_id,
+            "format": "pcm",
+            "filter_markdown": True,
+        }
+
+        async with self._get_deepseek_lock():
+            last_err: Optional[str] = None
             for attempt in range(2):
                 try:
-                    import edge_tts
+                    if self._deepseek_http_client is not None:
+                        resp = await self._deepseek_http_client.post(
+                            self.deepseek_tts_url, headers=headers, json=payload, timeout=12.0
+                        )
+                    else:
+                        async with httpx.AsyncClient(timeout=12.0) as client:
+                            resp = await client.post(self.deepseek_tts_url, headers=headers, json=payload)
 
-                    voice = VOICE_MAP.get(turn.speaker_id, VOICE_MAP["dafeiyu"])
-                    rate, pitch = VOICE_STYLE_MAP.get(turn.speaker_id, ("+0%", "+0Hz"))
-                    comm = edge_tts.Communicate(text=safe_text, voice=voice, rate=rate, pitch=pitch)
-                    mp3_buf = io.BytesIO()
-                    async with asyncio.timeout(8.0):
-                        async for chunk in comm.stream():
-                            if chunk.get("type") == "audio":
-                                data = chunk.get("data")
-                                if isinstance(data, (bytes, bytearray)):
-                                    mp3_buf.write(data)
-                    decoded = await self._decode_mp3_bytes_to_stereo(mp3_buf.getvalue())
+                    if resp.status_code == 400:
+                        logger.info("DeepSeek TTS rejected text for %s (HTTP 400)", speaker_id)
+                        return None
+                    if resp.status_code >= 400:
+                        last_err = f"HTTP_{resp.status_code}"
+                        if attempt == 0 and resp.status_code in (429, 503, 504):
+                            await asyncio.sleep(0.30)
+                            continue
+                        break
+
+                    decoded = self._decode_deepseek_pcm_24k_to_stereo(bytes(resp.content), speaker_id)
                     if decoded is not None and len(decoded) > self.samples_per_frame:
                         return decoded
+                    last_err = "TRUNCATED_PCM"
                 except Exception as exc:
-                    last_exc = exc
+                    last_err = type(exc).__name__
                     if attempt == 0:
-                        await asyncio.sleep(0.25)
-            if last_exc is not None:
-                logger.info(
-                    "edge-tts unavailable for %s (%s); using pure-NumPy melodic fallback",
-                    turn.speaker_id,
-                    type(last_exc).__name__,
-                )
+                        await asyncio.sleep(0.30)
+            if last_err:
+                logger.info("DeepSeek TTS unavailable for %s (%s); trying fallback", speaker_id, last_err)
+        return None
 
+    async def _synthesize_edge_tts_pcm(self, safe_text: str, speaker_id: SpeakerId) -> Optional[np.ndarray]:
+        if not self.use_edge_tts:
+            return None
+        last_exc: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                import edge_tts
+
+                voice = VOICE_MAP.get(speaker_id, VOICE_MAP["dafeiyu"])
+                rate, pitch = VOICE_STYLE_MAP.get(speaker_id, ("+0%", "+0Hz"))
+                comm = edge_tts.Communicate(text=safe_text, voice=voice, rate=rate, pitch=pitch)
+                mp3_buf = io.BytesIO()
+                async with asyncio.timeout(8.0):
+                    async for chunk in comm.stream():
+                        if chunk.get("type") == "audio":
+                            data = chunk.get("data")
+                            if isinstance(data, (bytes, bytearray)):
+                                mp3_buf.write(data)
+                decoded = await self._decode_mp3_bytes_to_stereo(mp3_buf.getvalue())
+                if decoded is not None and len(decoded) > self.samples_per_frame:
+                    return decoded
+            except Exception as exc:
+                last_exc = exc
+                if attempt == 0:
+                    await asyncio.sleep(0.25)
+        if last_exc is not None:
+            logger.info(
+                "edge-tts unavailable for %s (%s); checking next audio fallback",
+                speaker_id,
+                type(last_exc).__name__,
+            )
+        return None
+
+    async def synthesize_turn_pcm(self, turn: PersonaTurn) -> np.ndarray:
+        """Synthesize a `PersonaTurn` into 48 kHz float32 stereo PCM via DeepSeek/Edge-TTS/offline synth."""
+        safe_text = redact_pii(turn.text).replace("@", "").strip()
+        if not safe_text:
+            self.tts_stats["offline"] = self.tts_stats.get("offline", 0) + 1
+            return synthesize_offline_fallback_pcm("欢迎来到AI活工坊", turn.speaker_id, sample_rate=self.sample_rate)
+
+        order: Tuple[str, ...]
+        if self.tts_backend == "offline":
+            order = ()
+        elif self.tts_backend == "edge":
+            order = ("edge",)
+        elif self.tts_backend == "deepseek":
+            order = ("deepseek", "edge") if self.use_edge_tts else ("deepseek",)
+        else:
+            # auto: give DeepSeek 蓝色大肥鱼 official DeepSeek voice while keeping distinct Edge voices for partners
+            if turn.speaker_id == "dafeiyu":
+                order = ("deepseek", "edge") if self.use_edge_tts else ("deepseek",)
+            else:
+                order = ("edge", "deepseek") if self.use_edge_tts else ("deepseek",)
+
+        for provider in order:
+            pcm: Optional[np.ndarray] = None
+            if provider == "deepseek":
+                pcm = await self._synthesize_deepseek_tts_pcm(safe_text, turn.speaker_id)
+            elif provider == "edge":
+                pcm = await self._synthesize_edge_tts_pcm(safe_text, turn.speaker_id)
+            if pcm is not None and len(pcm) > self.samples_per_frame:
+                self.tts_stats[provider] = self.tts_stats.get(provider, 0) + 1
+                return pcm
+
+        self.tts_stats["offline"] = self.tts_stats.get("offline", 0) + 1
         return synthesize_offline_fallback_pcm(safe_text, turn.speaker_id, sample_rate=self.sample_rate)
 
     def enqueue_speech(self, pcm_stereo: np.ndarray, *, pad_silence_sec: float = 0.25) -> None:
@@ -1451,6 +1614,7 @@ class HeadlessLiveStreamer:
         director: Optional[DualAILiveDirector] = None,
         controller: Optional[BilibiliLiveController] = None,
         world: Optional["LiveAgentWorld"] = None,
+        world_brain: Optional["AutonomousWorldBrain"] = None,
         ffmpeg_bin: str = "ffmpeg",
         video_encoder: Optional[Literal["h264_nvenc", "libx264"]] = None,
         fps: int = DEFAULT_FPS,
@@ -1463,6 +1627,7 @@ class HeadlessLiveStreamer:
         self.director = director or DualAILiveDirector()
         self.controller = controller
         self.world = world
+        self.world_brain = world_brain
         self.video_encoder: Literal["h264_nvenc", "libx264"] = video_encoder or detect_video_encoder(self.ffmpeg_bin)
         self.status_callback = status_callback
 
@@ -1758,6 +1923,8 @@ class HeadlessLiveStreamer:
             cmd_offset = 0
             last_state_write = 0.0
             last_telemetry_poll = -30.0
+            brain_interval = max(1.0, float(self.world_brain.interval_sec)) if self.world_brain is not None else 75.0
+            last_brain_tick = time.monotonic() - max(0.0, brain_interval - 3.0)
             cmd_path = (record_dir / "agent_commands.jsonl") if record_dir is not None else None
             state_path = (record_dir / "world_state.json") if record_dir is not None else None
             try:
@@ -1788,7 +1955,27 @@ class HeadlessLiveStreamer:
                         except Exception as exc:
                             logger.debug("Agent command bridge poll skipped (%s)", type(exc).__name__)
 
-                    # 2) Poll Bilibili live telemetry every 30s during go-live
+                    # 2) Autonomous DeepSeek World Brain periodic engineering & suggestion loop
+                    if (
+                        self.world is not None
+                        and self.world_brain is not None
+                        and self.world_brain.has_api_key
+                        and (now - last_brain_tick) >= brain_interval
+                    ):
+                        last_brain_tick = now
+                        try:
+                            brain_cmds = await self.world_brain.decide_next_actions(self.world.export_state_dict())
+                            for bcmd in brain_cmds:
+                                if str(bcmd.get("cmd") or "").strip().lower() == "stop":
+                                    continue
+                                bres = self.world.apply_agent_command(bcmd)
+                                speech_req = bres.get("speech_request")
+                                if isinstance(speech_req, tuple) and len(speech_req) == 3:
+                                    self.director.enqueue_agent_speech(speech_req[0], speech_req[1], speech_req[2])
+                        except Exception as exc:
+                            logger.debug("AutonomousWorldBrain loop skipped (%s)", type(exc).__name__)
+
+                    # 3) Poll Bilibili live telemetry every 30s during go-live
                     if (
                         mode == "go-live"
                         and telemetry_ctrl is not None
@@ -1813,7 +2000,7 @@ class HeadlessLiveStreamer:
                         except Exception as exc:
                             logger.debug("Telemetry poll skipped (%s)", type(exc).__name__)
 
-                    # 3) Write atomic world_state.json every 2.0s
+                    # 4) Write atomic world_state.json every 2.0s
                     if self.world is not None and state_path is not None and (now - last_state_write) >= 2.0:
                         last_state_write = now
                         with contextlib.suppress(Exception):
@@ -2081,6 +2268,10 @@ class HeadlessLiveStreamer:
             "cast": list(self.director.cast),
             "poll": self.director.poll.snapshot().to_dict(),
             "highlights_recorded": len(self.director.highlight_tracker.moments),
+            "tts_backend": self.audio_mixer.tts_backend,
+            "tts_stats": dict(self.audio_mixer.tts_stats),
+            "llm_backend": getattr(self.director.responder, "backend_name", "unknown"),
+            "autonomous_brain_enabled": bool(self.world_brain is not None and self.world_brain.has_api_key),
             "frame_dump_path": str(frame_dump_path) if (frame_dump_path is not None and dumped_frame) else None,
             "stderr_tail": list(self._stderr_lines)[-6:],
         }

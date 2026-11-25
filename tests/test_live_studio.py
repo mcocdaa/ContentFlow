@@ -631,7 +631,11 @@ def test_stage_server_http_assets_and_websocket_broadcast() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_launch_live_mvp_cli_parsing_and_bounded_rehearsal(tmp_path: Path) -> None:
+def test_launch_live_mvp_cli_parsing_and_bounded_rehearsal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LIVE_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
     # Live mode requires --room-id
     with pytest.raises(SystemExit):
         launch_live_mvp.parse_args(["--mode", "live"])

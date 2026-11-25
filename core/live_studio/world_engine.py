@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import math
 import os
 import re
@@ -25,11 +26,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Deque, Dict, Final, List, Optional, Sequence, Tuple
 
+import httpx
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance
 
 from core.live_studio.danmaku import DanmakuEvent
-from core.live_studio.director import PERSONAS, TRIO_CAST, PersonaTurn, SpeakerId
+from core.live_studio.director import (
+    DEFAULT_LLM_BASE_URL,
+    DEFAULT_LLM_MODEL,
+    PERSONAS,
+    TRIO_CAST,
+    PersonaTurn,
+    SpeakerId,
+    format_world_context_summary,
+)
 from core.live_studio.headless_streamer import (
     CHARACTER_CANONICAL_RELS,
     CHARACTER_CUTOUT_RELS,
@@ -47,6 +57,8 @@ from core.live_studio.headless_streamer import (
     resolve_cjk_font_path,
 )
 from core.live_studio.safety import AI_DISCLOSURE_BANNER, LiveComplianceGuard, redact_pii
+
+logger = logging.getLogger(__name__)
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent.parent
 DEFAULT_MEMORY_PATH: Final[Path] = REPO_ROOT / "output" / "live_world" / "viewer_memory.json"
@@ -997,6 +1009,212 @@ class LiveAgentWorld:
                 "recent_danmaku": list(self.recent_danmaku)[-8:],
                 "stop_requested": self.stop_requested,
             }
+
+
+_ALLOWED_BRAIN_ACTIONS: Final[frozenset[str]] = frozenset(
+    {"accept_suggestion", "resolve_event", "build_upgrade", "announce"}
+)
+_ALLOWED_BRAIN_MOODS: Final[frozenset[str]] = frozenset(
+    {"lively", "hype", "teasing", "smug", "shocked", "grateful", "focused"}
+)
+
+
+def _strip_json_code_fence(raw: str) -> str:
+    cleaned = (raw or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned.strip()
+
+
+class AutonomousWorldBrain:
+    """24/7 DeepSeek-powered autonomous agent controller that drives LiveAgentWorld safely."""
+
+    def __init__(
+        self,
+        *,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+        interval_sec: float = 75.0,
+        timeout_sec: float = 15.0,
+        http_client: Optional[httpx.AsyncClient] = None,
+    ) -> None:
+        resolved_key = (
+            api_key
+            if api_key is not None
+            else (os.getenv("LIVE_LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or "")
+        )
+        self._api_key = resolved_key.strip()
+        self.base_url = (
+            base_url or os.getenv("LIVE_LLM_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL") or DEFAULT_LLM_BASE_URL
+        ).rstrip("/")
+        self.model = (model or os.getenv("LIVE_LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
+        self.interval_sec = max(1.0, float(interval_sec))
+        self.timeout_sec = max(2.0, float(timeout_sec))
+        self._external_client = http_client
+        self.guard = LiveComplianceGuard()
+
+    @property
+    def has_api_key(self) -> bool:
+        return bool(self._api_key)
+
+    def __repr__(self) -> str:
+        return (
+            f"AutonomousWorldBrain(base_url={self.base_url!r}, model={self.model!r}, "
+            f"interval_sec={self.interval_sec!r}, configured={self.has_api_key})"
+        )
+
+    def sanitize_and_build_commands(self, decision: Dict[str, Any], state: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Validate LLM JSON decision into safe `apply_agent_command` dicts (never accepts stop)."""
+        if not isinstance(decision, dict):
+            return []
+
+        commands: List[Dict[str, Any]] = []
+        raw_world = state.get("world")
+        world_data: Dict[str, Any] = raw_world if isinstance(raw_world, dict) else {}
+        raw_wb = state.get("workbench")
+        wb_data: Dict[str, Any] = raw_wb if isinstance(raw_wb, dict) else {}
+
+        raw_task = redact_pii(str(decision.get("task") or "")).replace("@", "").strip()[:52]
+        raw_log = redact_pii(str(decision.get("log_text") or "")).replace("@", "").strip()[:72]
+        raw_tag = re.sub(r"[^A-Za-z]", "", str(decision.get("tag") or "BRAIN")).upper()[:8] or "BRAIN"
+        try:
+            stage_idx = max(0, min(len(PIPELINE_STAGES) - 1, int(decision.get("stage", 0))))
+        except (TypeError, ValueError):
+            stage_idx = 0
+
+        if raw_task or raw_log:
+            commands.append(
+                {
+                    "cmd": "work_log",
+                    "task": raw_task or str(wb_data.get("active_task") or "巡检活工坊"),
+                    "stage": stage_idx,
+                    "tag": raw_tag,
+                    "text": raw_log or raw_task,
+                }
+            )
+
+        wa = decision.get("world_action")
+        if isinstance(wa, dict):
+            act = str(wa.get("action") or "").strip().lower()
+            if act in _ALLOWED_BRAIN_ACTIONS:
+                if act == "accept_suggestion":
+                    raw_sugs = state.get("suggestions")
+                    sugs: List[Any] = raw_sugs if isinstance(raw_sugs, list) else []
+                    has_open = any(isinstance(s, dict) and s.get("status") == "待采纳" for s in sugs)
+                    if has_open:
+                        sid = str(wa.get("suggestion_id") or "").strip().upper()[:12]
+                        cmd_wa: Dict[str, Any] = {"cmd": "world_action", "action": "accept_suggestion"}
+                        if sid:
+                            cmd_wa["suggestion_id"] = sid
+                        commands.append(cmd_wa)
+                elif act == "resolve_event":
+                    if isinstance(world_data.get("active_event"), dict):
+                        commands.append({"cmd": "world_action", "action": "resolve_event"})
+                elif act == "build_upgrade":
+                    try:
+                        xp = max(5, min(35, int(wa.get("xp", 18))))
+                    except (TypeError, ValueError):
+                        xp = 18
+                    try:
+                        code_pts = max(0, min(35, int(wa.get("code_pts", xp))))
+                    except (TypeError, ValueError):
+                        code_pts = xp
+                    try:
+                        comp_pts = max(0, min(25, int(wa.get("compute_pts", xp // 2))))
+                    except (TypeError, ValueError):
+                        comp_pts = xp // 2
+                    commands.append(
+                        {
+                            "cmd": "world_action",
+                            "action": "build_upgrade",
+                            "xp": xp,
+                            "code_pts": code_pts,
+                            "compute_pts": comp_pts,
+                        }
+                    )
+                elif act == "announce":
+                    raw_banner = str(wa.get("text") or "").replace("@", "").strip()[:60]
+                    chk = self.guard.filter_output(raw_banner)
+                    if raw_banner and chk.allowed and chk.cleaned_text:
+                        commands.append({"cmd": "world_action", "action": "announce", "text": chk.cleaned_text})
+
+        sp = decision.get("speech")
+        if isinstance(sp, dict):
+            raw_speaker = str(sp.get("speaker") or "dafeiyu").strip().lower()
+            speaker: SpeakerId = raw_speaker if raw_speaker in PERSONAS else "dafeiyu"  # type: ignore[assignment]
+            raw_mood = str(sp.get("mood") or "lively").strip().lower()
+            mood = raw_mood if raw_mood in _ALLOWED_BRAIN_MOODS else "lively"
+            raw_speech = str(sp.get("text") or "").replace("@", "").strip()[:65]
+            if raw_speech:
+                chk_sp = self.guard.filter_output(raw_speech, persona=speaker)
+                if chk_sp.allowed and chk_sp.cleaned_text:
+                    commands.append(
+                        {
+                            "cmd": "speak",
+                            "speaker": speaker,
+                            "mood": mood,
+                            "text": chk_sp.cleaned_text,
+                        }
+                    )
+
+        return commands
+
+    async def decide_next_actions(self, state: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Query DeepSeek Chat in JSON mode to pick the next safe autonomous workshop action."""
+        if not self.has_api_key:
+            return []
+
+        summary = format_world_context_summary(state)
+        sys_prompt = (
+            "你是正在B站「2D AI 活工坊」直播间24小时自主打工、写代码和接待弹幕的 AI 总工程师。"
+            "请根据实时工坊状态，严格返回单个 JSON 对象（不要 Markdown 代码块，不要任何 @用户名 或个人隐私）：\n"
+            "{\n"
+            '  "task": "18字以内当前工作台在忙的具体工程任务",\n'
+            '  "stage": 0到3整数(0读建议,1改世界,2跑验证,3播报),\n'
+            '  "tag": "AGENT|CODE|FIX|IDEA|BUILD之一",\n'
+            '  "log_text": "38字以内具体推进日志",\n'
+            '  "world_action": {"action": "accept_suggestion|resolve_event|build_upgrade|announce|none", "xp": 15, "text": "可选横幅"},\n'
+            '  "speech": {"speaker": "dafeiyu|gemini|yowane之一", "mood": "lively|hype|teasing|focused之一", "text": "45字以内播报一句或留空"}\n'
+            "}\n"
+            "规则：若有待采纳建议优先用 accept_suggestion；若有突发警报且适合救援可用 resolve_event；"
+            "平时推进工程用 build_upgrade（xp 填 10 到 25）。禁止使用任何未列出的 action。"
+        )
+        user_msg = f"当前工坊实时状态：\n{summary}\n请给出下一步工坊执行指令 JSON。"
+
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        body: Dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_msg},
+            ],
+            "response_format": {"type": "json_object"},
+            "max_tokens": 280,
+            "temperature": 0.7,
+        }
+
+        try:
+            if self._external_client is not None:
+                resp = await self._external_client.post(url, headers=headers, json=body, timeout=self.timeout_sec)
+            else:
+                async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
+                    resp = await client.post(url, headers=headers, json=body)
+            resp.raise_for_status()
+            payload = resp.json()
+            raw_content = str(payload["choices"][0]["message"]["content"]).strip()
+            parsed = json.loads(_strip_json_code_fence(raw_content))
+            if not isinstance(parsed, dict):
+                return []
+            return self.sanitize_and_build_commands(parsed, state)
+        except Exception as exc:
+            logger.warning("AutonomousWorldBrain tick skipped (%s)", type(exc).__name__)
+            return []
 
 
 class WorldStageRenderer:

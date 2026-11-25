@@ -207,10 +207,10 @@ class BilibiliLiveController:
         return f"BilibiliLiveController(face_auth_qr_path={str(self.face_auth_qr_path)!r}, timeout_sec={self.timeout_sec!r})"
 
     @staticmethod
-    def _headers() -> Dict[str, str]:
+    def _headers(referer: str = "https://link.bilibili.com/p/center/index") -> Dict[str, str]:
         return {
             "User-Agent": STANDARD_USER_AGENT,
-            "Referer": "https://link.bilibili.com/p/center/index",
+            "Referer": referer,
             "Origin": "https://link.bilibili.com",
             "Accept": "application/json, text/plain, */*",
         }
@@ -571,10 +571,16 @@ class BilibiliLiveController:
             logger.debug("get_live_telemetry Room/get_info skipped (%s)", type(exc).__name__)
 
         try:
+            cookies = self.vault.load_bilibili_cookies() or None
+        except Exception:
+            cookies = None
+
+        try:
             r2 = self._session.get(
                 BILIBILI_LIVE_INFO_BY_ROOM_URL,
                 params={"room_id": str(room_id)},
-                headers=self._headers(),
+                cookies=cookies,
+                headers=self._headers(referer="https://live.bilibili.com/"),
                 timeout=self.timeout_sec,
             )
             r2.raise_for_status()
