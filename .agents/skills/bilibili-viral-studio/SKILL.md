@@ -19,10 +19,10 @@ description: >-
 2. 使用 `1920x1080`（16:9）主封面，关键内容放在 4:3 中心安全区（横坐标 240–1680）。打开两种比例的实图，双人片尤其要看两张脸、标题和影响剧情的道具。上传后再看平台返回的封面。
 3. 标题点明角色与剧情反差。三行模板用亮金 `#FFD700`、纯白 `#FFFFFF`、赛博青 `#00F0FF` 配 8–10 px 黑描边。双人封面若文字挡脸或遮住关键道具，先缩短文案，再看 4:3 缩略图能否读清。
 
-### B. 前 3 秒钩子与节奏动态密度
-4. **首帧直入高能冲突，拒绝站桩 PPT**：前 3 秒直接进入剧场反转、动作特写或爆点问题；严禁复用旧模板走老路（每期立项须写入 `brief.json` 的 `creative_spec` 并在 `library/creative_ledger.json` 登记防重）。
-5. **Beat Punch-In 多景别切换**：超过 8 秒的舞蹈或表演片段优先通过 `EpisodeAssembler` (`cli.py assemble-episode`) 开启 `beat_punch_bpm`，每 4 拍在全景群舞与 `1.32x` 上半身特写之间卡点切换，消除单机位疲劳。
-6. **技术流与比例铁律**：成片严格保持 `1920x1080`、`SAR=1:1`、`DAR=16:9`（绝不横向拉伸人物）、`60.00fps` (`OpenCV DIS Optical Flow`)、`yuv420p` (`bt709`)、`-14 LUFS` 立体声 `48kHz AAC` 与 `Noto Sans CJK SC` 字幕。
+### B. 前 3 秒钩子、成片时长与舒展镜头节奏
+4. **立项黑马预检与时长硬红线（`>= 60.0s`）**：立项前先用 `cli.py breakout-radar`（详见 [bilibili-breakout-radar](../bilibili-breakout-radar/SKILL.md)）扫描 B 站低粉爆款与高留存切口，再结合 `cli.py benchmark --online` 校准题材。自 `018` 期起所有新视频必须按 **`>= 60.0 秒`**（至少 1 分钟）设计剧本与分镜，`VideoQualityGate` 自动拦截 `< 60.0s` 的短片。前 3 秒直接进入剧场反转、动作特写或爆点问题，拒绝站桩 PPT；每期立项须写入 `brief.json` 的 `creative_spec` 并在 `library/creative_ledger.json` 登记防重。
+5. **舒展镜头节奏与选择性 Beat Punch-In**：2D 剧场/叙事动画优先采用可灵 4.0 原生多镜头（`prefer_multi_shots=true`，每镜 `3.0–4.0s` 完整表演），默认关闭 `beat_punch_bpm` 数码跳切与高频闪白，确保全片切镜间隔中位数 **`>= 2.5s`**；仅对长于 8 秒且无原生切镜的纯热舞段落，通过 `EpisodeAssembler` (`cli.py assemble-episode`) 适度启用 `beat_punch_bpm` 消除单机位疲劳。
+6. **技术流与比例铁律**：成片严格保持 `>= 60.0s`、`1920x1080`、`SAR=1:1`、`DAR=16:9`（绝不横向拉伸人物）、`60.00fps` (`OpenCV DIS Optical Flow`)、`yuv420p` (`bt709`)、`-14 LUFS` 立体声 `48kHz AAC` 与 `Noto Sans CJK SC` 字幕。
 
 **怎样回答“用了可灵 4 吗，画面流畅吗”**
 
@@ -32,7 +32,7 @@ description: >-
 
 ### C. 礼仪与合规红线（一票否决 / 扣分项）
 7. **严禁群发 `@股东`**：简介与置顶评论中严禁使用 `@用户名` 群发打扰观众（由 `QualityGate._eval_compliance` 自动检查扣分）；兑现评论区点单仅可在原评论下礼貌单点回复一次。
-8. **完整借物表、真实伴奏致谢与 GB 45438-2025 声明**：简介中以纯文本形式完整致谢角色一创/二设、动作与 BGM 伴奏参考 UP 主（含 BVID）、开源 TTS 与开源字体，并显式标注 `GB 45438-2025` AIGC 生成合成声明；优先通过 `core/bgm_hunter.py`（`cli.py fetch-bgm`）提取 `48kHz` 立体声热门伴奏/二创混音，严禁再用单薄纯正弦波蜂鸣充当热舞主音轨，严禁商用闭源字体或未授权声优克隆。
+8. **完整借物表、真实伴奏致谢与声画合规声明**：依据《民法典》第1023条及《人工智能生成合成内容标识办法》，严禁未经授权克隆真人或动漫声优原声，严禁使用商用闭源字体；简介中须以纯文本形式完整致谢角色一创/二设、动作与 BGM 伴奏参考 UP 主（含 BVID）、开源 TTS 与开源字体（`Noto Sans CJK SC`），并显式标注 `GB 45438-2025` AIGC 生成合成声明。优先通过 `core/bgm_hunter.py`（`cli.py fetch-bgm`）提取 `48kHz` 立体声热门伴奏/二创混音，严禁再用单薄纯正弦波蜂鸣充当主音轨。
 
 定时投稿时核对解析后的简介、B 站原生 AI 声明和创作中心的稿件详情。模板、发布入口差异及审核状态见[定时投稿与回读](references/scheduled-release.md)。
 
@@ -41,20 +41,23 @@ description: >-
 ## 二、 核心自动化命令（共性工程一律走 CLI）
 
 ```bash
-# 0. 检索并提取 48kHz 立体声B站热门伴奏 / 二创混音片段（输出自动附带借物表致谢行）
-./.venv/bin/python cli.py fetch-bgm --query "大展鸿图 机械舞" --limit 8
-./.venv/bin/python cli.py fetch-bgm --bvid BV1veMtzGEHf --start 0.0 --duration 14.8 --output track.wav
+# 0. 立项前扫描 B 站低粉爆款 / 黑马赛道（详见 ../bilibili-breakout-radar/SKILL.md）
+./.venv/bin/python cli.py breakout-radar --top 15
 
-# 1. 查询分区榜单线索并测量本地成片。竞品节奏和封面另传 --competitor-video 与 --competitor-cover
+# 1. 检索并提取 48kHz 立体声B站热门伴奏 / 二创混音片段（输出自动附带借物表致谢行）
+./.venv/bin/python cli.py fetch-bgm --query "大展鸿图 机械舞" --limit 8
+./.venv/bin/python cli.py fetch-bgm --bvid BV1veMtzGEHf --start 0.0 --duration 62.0 --output track.wav
+
+# 2. 查询分区榜单线索并测量本地成片。竞品节奏和封面另传 --competitor-video 与 --competitor-cover
 ./.venv/bin/python cli.py benchmark --project 012 --online
 
-# 2. 渲染高明度 vivid_scene 封面（auto 对舞蹈/整活自动选 vivid_scene，科普选 tech_split）
+# 3. 渲染高明度 vivid_scene 封面（auto 对舞蹈/整活自动选 vivid_scene，科普选 tech_split）
 ./.venv/bin/python cli.py design-cover --project 012 --style auto
 
-# 3. 运行 O(1) 流式 60FPS 光流补帧 + 鼓点切镜 + -14 LUFS 成片装配器
+# 4. 运行 O(1) 流式 60FPS 光流补帧 + -14 LUFS 成片装配器（剧场动画默认关闭 beat_punch_bpm）
 ./.venv/bin/python cli.py assemble-episode --spec projects/012_demo/episode_spec.json
 
-# 4. 运行 100 分制质量门禁（含技术、音频、视觉、封面与礼仪防重检查，自动释放 pyiqa 显存/内存）
+# 5. 运行 100 分制质量门禁（含 >= 60s 时长、技术、音频、视觉、封面与礼仪防重检查，自动释放 pyiqa 显存/内存）
 ./.venv/bin/python cli.py quality-check --project 012 --threshold 90
 ```
 

@@ -64,7 +64,7 @@ def test_compliant_fonts_and_voice_redline() -> None:
         assert Path(f).name.lower() not in forbidden
         assert any(k in f.lower() for k in ("noto", "wqy"))
 
-    skill_md = (CONTENTFLOW_ROOT / ".agents" / "skills" / "figure-tutorial-video" / "SKILL.md").read_text(
+    skill_md = (CONTENTFLOW_ROOT / ".agents" / "skills" / "bilibili-viral-studio" / "SKILL.md").read_text(
         encoding="utf-8"
     )
     assert "石川由依" not in skill_md

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "contentflow"
 version = "0.1.0"
-description = "End-to-end 3D figurine & anime virtual idol technical tutorial video production pipeline (Blender MMD + Seedream/Seedance + ComfyUI + EbSynth + RIFE)"
+description = "Autonomous Bilibili AI video production, dark-horse radar, 100-point quality gate, and headless 2D livestream engine"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

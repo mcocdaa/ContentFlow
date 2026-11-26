@@ -1,9 +1,8 @@
-"""Unit tests for ContentFlow core modules, CLI, and skill scripts."""
+"""Unit tests for ContentFlow core modules and CLI."""
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,15 +16,6 @@ from core.figure_orchestrator import FigurePipelineMode, FigureVideoOrchestrator
 from core.html_formatter import _format_inline, markdown_to_wechat_html
 from core.models import FactSheet
 from core.video_api_router import VideoApiRouter
-
-
-def _load_script_module(name: str, rel_path: str):
-    script_path = Path(__file__).resolve().parent.parent / rel_path
-    spec = importlib.util.spec_from_file_location(name, script_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def test_html_formatter_escaped_inline_and_ordered_lists() -> None:
@@ -179,35 +169,6 @@ def test_copywriting_engine() -> None:
     assert "DemoFlow" in pkg.wechat_md
     assert "<ol " in pkg.wechat_html
     assert len(pkg.scenes) == 4
-
-
-def test_skill_scripts_helpers(tmp_path: Path) -> None:
-    gen_pose = _load_script_module("generate_pose", ".agents/skills/figure-tutorial-video/scripts/generate_pose.py")
-    assert (
-        gen_pose.normalize_ark_url("https://ark.cn-beijing.volces.com/api/v3")
-        == "https://ark.cn-beijing.volces.com/api/v3/images/generations"
-    )
-    assert (
-        gen_pose.normalize_ark_url("https://ark.cn-beijing.volces.com/api/plan/v3/")
-        == "https://ark.cn-beijing.volces.com/api/plan/v3/images/generations"
-    )
-    prompt = gen_pose.resolve_pose_prompt("warning_pointer")
-    assert "激光教鞭" in prompt
-
-    comp = _load_script_module("composite_scene", ".agents/skills/figure-tutorial-video/scripts/composite_scene.py")
-    proj_dir = tmp_path / "proj"
-    layers_dir = proj_dir / "assets" / "decomposed_layers"
-    layers_dir.mkdir(parents=True)
-    bg_path = layers_dir / "layer_0_z0_background.jpg"
-    board_path = layers_dir / "layer_1_z1_全息大屏底板.png"
-    char_path = proj_dir / "assets" / "char_transparent.png"
-    Image.new("RGB", (2560, 1440), color=(20, 30, 40)).save(bg_path)
-    Image.new("RGBA", (1389, 781), color=(0, 50, 80, 180)).save(board_path)
-    Image.new("RGBA", (400, 900), color=(255, 200, 200, 255)).save(char_path)
-
-    outputs = comp.batch_composite_project(proj_dir)
-    assert len(outputs) == 1
-    assert outputs[0].exists()
 
 
 def test_canonical_http_server_and_webui(tmp_path: Path) -> None:
