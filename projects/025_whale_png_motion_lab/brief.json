@@ -1,0 +1,64 @@
+{
+  "project_id": "025_whale_png_motion_lab",
+  "episode_label": "透明像素实验室 · 第 025 期",
+  "name": "这2张鲸鱼娘PNG，哪张是假透明？3分钟把真图做成动画",
+  "tagline": "同样顶着棋盘格，换成橙色就能抓出假透明。",
+  "category": "计算机技术",
+  "target_partition": "知识 → 计算机技术",
+  "bilibili_web_category": "知识",
+  "target_duration_sec": 180,
+  "min_duration_sec": 60,
+  "description": "用鲸鱼娘透明立绘做一组可复查的网页动画实验。观众先猜哪张图的棋盘格烤进了像素，再亲手换底色、读发梢透明度、固定脚底旋转、用 Canvas 交叉淡入，并复看同一时刻。",
+  "target_audience": ["会保存 PNG、想做表情或桌宠的观众", "第一次给 HTML 图片做动画的创作者"],
+  "creative_spec": {
+    "track": "oss_tool_demo",
+    "archetype": "reproducible_browser_alpha_and_motion_tutorial",
+    "setting": "暖白实验纸、双列样品台和可逐像素回看的网页画布",
+    "meme_source": "网上找到的透明素材为什么带一圈棋盘格？用同一张鲸鱼娘立绘生成真假对照，换背景揭晓。",
+    "radar_reference": "2026-11-26 的小号雷达里，像素画工具实演 BV1p3raB8EMh 采样收藏率 10.25%。本期用可复制的单文件实验验证同类需求，点击与收藏需发布后观察。"
+  },
+  "act_structure": {
+    "act_count": 18,
+    "act_duration_sec": 10,
+    "source": "design/episode/index.html",
+    "narration": "design/episode/narration.json"
+  },
+  "interaction_design": {
+    "danmaku": "前十秒双列验图，让观众先猜 A 或 B。",
+    "favorite": "简介可复制完整 HTML，保存后可把自己的透明 PNG 换进去。",
+    "coin": "展示完整实测链，含人物消失的绘制顺序错误、透明度泄漏和修复。",
+    "share": "把换底色和读 Alpha 的办法带给反复下载到假透明 PNG 的同事。"
+  },
+  "tech_stack": ["原生 HTML、CSS 与 Canvas 2D", "Noto Sans CJK SC", "普通中文合成讲解", "EpisodeAssembler 1080P / 60 fps"],
+  "highlights": ["浏览器实读像素透明度 0、255、158", "将原图绘入不透明棋盘并导出真 PNG 反例", "CSS 呼吸和 Canvas 图层顺序、透明度与脚底支点", "离线单文件支持载自己的 PNG、拖动时间与逐像素读数"],
+  "call_to_action": "先猜哪张透明，再把自己的素材放进示例检查。",
+  "cover": {
+    "style": "tech_split",
+    "base_image": "assets/cover-base.jpg",
+    "hook_line1": "哪张 PNG",
+    "hook_line2": "真透明？",
+    "hook_line3": "换底色见！",
+    "badge": "鲸鱼娘动画课",
+    "tags": ["实测 Alpha", "可复制代码"]
+  },
+  "sources": {
+    "character": "https://www.bilibili.com/video/BV1tE9XBbErS/",
+    "website_directory": "https://treapgogo.github.io/deepseek-whale-girl/index.html#top",
+    "pet_original": "https://github.com/pokerface-1224/deepseek-whale-girl-pet/blob/main/art/raw/front.png",
+    "pet_icon": "https://github.com/pokerface-1224/deepseek-whale-girl-pet/blob/main/icon.png",
+    "pet_art_license": "https://github.com/pokerface-1224/deepseek-whale-girl-pet/blob/main/LICENSE"
+  },
+  "compliance": {
+    "aigc_standard": "GB 45438-2025",
+    "bilibili_ai_declaration_required": true,
+    "at_mentions_count": 0
+  },
+  "deliverables": {
+    "final_video": "delivery/鲸鱼娘透明PNG动画课_final.mp4",
+    "cover": "delivery/鲸鱼娘透明PNG动画课_cover.jpg",
+    "cover_16x9": "delivery/鲸鱼娘透明PNG动画课_cover.jpg",
+    "cover_4x3": "delivery/鲸鱼娘透明PNG动画课_cover_4x3.jpg",
+    "subtitle_srt": "delivery/鲸鱼娘透明PNG动画课_subtitle.srt",
+    "offline_demo": "delivery/鲸鱼娘透明像素实验室.html"
+  }
+}

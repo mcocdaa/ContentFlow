@@ -1,0 +1,18 @@
+{
+  "width": 1920,
+  "height": 1080,
+  "fps": 60,
+  "duration_seconds": 600,
+  "duration_frames": 36000,
+  "stages": [
+    {"start":0,"end":60,"label":"定一句目标","base":"output/base_0.png"},
+    {"start":60,"end":420,"label":"写完草稿","base":"output/base_1.png"},
+    {"start":420,"end":540,"label":"补一个缺口","base":"output/base_2.png"},
+    {"start":540,"end":600,"label":"保存第一版","base":"output/base_3.png"}
+  ],
+  "clock":{"center_x":643,"center_y":478,"font":"Noto Sans CJK SC Bold","size_px":168,"color":"#164552","max_rect":[245,356,796,250],"seconds_formula":"frame == 35999 ? 0 : ceil(600-frame/60)"},
+  "progress":{"x":185,"y":698,"width":920,"height":12,"color":"#177E78"},
+  "preview":"output/clock_preview.png",
+  "guide_audio":"原创海浪氛围，无口播。",
+  "source":"鲸鱼专注钟.html"
+}

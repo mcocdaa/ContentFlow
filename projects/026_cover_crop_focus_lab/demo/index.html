@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>双比例封面裁切实验</title>
+<style>
+*{box-sizing:border-box}body{background:#f8f5ea;color:#132f35;max-width:1190px;margin:auto;padding:clamp(14px,3.4vw,45px);font:16px/1.5 "Noto Sans CJK SC",sans-serif}h1{font-size:clamp(28px,4vw,45px);margin:0 0 16px}h2{font-size:18px;margin:0 0 7px}.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px}.views{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:22px 0}.views canvas{width:100%;height:auto;display:block;border:2px solid #183632}.photo{background:#e9ecde}input[type=range]{width:min(350px,100%);accent-color:#096d63}button,label.file{border:1px solid #0b6359;border-radius:4px;background:#006a5c;color:white;padding:7px 13px;font:inherit;cursor:pointer}.file input{max-width:15em}.outputs{display:flex;gap:10px;flex-wrap:wrap}input[type=number]{width:5.3em}output{font-variant-numeric:tabular-nums}#status{color:#556761}@media(max-width:650px){.views{grid-template-columns:1fr}}
+</style></head><body>
+<h1>双比例封面裁切实验</h1>
+<label class="file">换一张图片 <input type="file" id="upload" accept="image/*"></label>
+<p>宽屏母图为 1920 × 1080。黄框表示实际导出范围，绿线表示想要保留的两侧边界。</p>
+<div class="views"><section><h2>16:9 母图</h2><canvas id="wide" width="960" height="540" class="photo"></canvas></section><section><h2>4:3 实际裁切</h2><canvas id="crop" width="720" height="540" class="photo"></canvas></section></div>
+<div class="controls"><label>裁框起点　<input id="left" type="range" min="0" max="480" value="240" step="1"></label><output id="position"></output><button id="center" type="button">居中</button><button id="match" type="button">取可行区间中点</button></div>
+<div class="controls"><label>左焦点 L　<input type="number" step="1" id="l" value="460" min="0" max="1920"></label><label>右焦点 R　<input type="number" step="1" id="r" value="1790" min="0" max="1920"></label><output id="bounds"></output></div>
+<div class="controls outputs"><button id="saveWide" type="button">导出 1920 × 1080 PNG</button><button id="saveCrop" type="button">导出 1440 × 1080 PNG</button></div>
+<p id="status" role="status"></p>
+<details><summary>示例图片来源与使用许可</summary>
+<p>示例取自 ContentFlow 第 024 期的纸飞机面试画面。该图使用可灵 3.0 Omni 参考图生成，本工具将画面等比裁切并标出边界。上传自己的照片时，图像仅在本页浏览器内处理。</p>
+<p>大肥鱼原型「溟月」由上善无形创作，DeepSeek 女仆造型由 ZipZipPipe 二次设计。本示例中大肥鱼形象的改编按 CC BY-NC-SA 4.0 署名、非商业使用、相同方式共享。
+<a href="https://www.bilibili.com/video/BV1tE9XBbErS/">角色原作说明</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">大肥鱼改编许可</a>。</p>
+<p>Gemini 娘参考 ZipZipPipe《AI娘化》及蓝色大肥鱼档案馆收录的立绘。<a href="https://www.pixiv.net/artworks/148186519">原设</a> · <a href="https://www.bilibili.com/video/BV1bARXBYEZz/">作者再创作说明</a>。弱音ハク原案 CAFFEIN，源自 Crypton Future Media 的初音未来同人创作。<a href="https://caffein89.blogspot.com/p/blog-page_03.html">作者的非商业同人说明</a>。</p>
+<p>本工具的裁框、坐标和导出逻辑由 ContentFlow 制作。界面优先使用系统中的 Noto Sans CJK SC（SIL OFL 1.1）。</p></details>
+<script src="crop.js"></script><script>
+const el=id=>document.getElementById(id), c=el('wide').getContext('2d'),p=el('crop').getContext('2d');
+let master,bitmapUrl,liveLeft=240,points=[460,1790];
+function draw(){
+  if(!master)return;
+  c.drawImage(master,0,0,960,540); c.fillStyle='#102e3388';
+  c.fillRect(0,0,liveLeft/2,540);c.fillRect((liveLeft+1440)/2,0,(480-liveLeft)/2,540);
+  c.strokeStyle='#ffcf4c';c.lineWidth=3;c.strokeRect(liveLeft/2+1,1,718,538);
+  c.strokeStyle='#00976b';for(const x of points){c.beginPath();c.moveTo(x/2,0);c.lineTo(x/2,540);c.stroke()}
+  coverCrop.draw(p,master,liveLeft,0,0,720,540);
+  el('position').textContent='X = '+liveLeft+' px';
+  const [a,b]=coverCrop.feasibleInterval(...points), valid=points[0]<=points[1]&&a<=b;
+  el('bounds').textContent=valid?'可行起点 '+a+'～'+b+' px':'无法同时保留两个焦点，请检查左右边界或另排 4:3 版面。';
+  el('match').disabled=!valid;
+}
+async function loadImage(src){
+  const img=new Image();img.src=src;
+  try{await img.decode();master=coverCrop.wideMaster(img);draw();el('status').textContent='';}
+  catch{el('status').textContent='图片打开失败。请选择本地 JPEG、PNG 或 WebP 文件。'}
+}
+el('upload').onchange=async e=>{const f=e.target.files[0];if(!f)return;if(bitmapUrl)URL.revokeObjectURL(bitmapUrl);bitmapUrl=URL.createObjectURL(f);await loadImage(bitmapUrl)};
+el('left').oninput=e=>{liveLeft=Number(e.target.value);draw()};
+for(const id of ['l','r']) el(id).oninput=()=>{points=['l','r'].map(i=>Math.max(0,Math.min(1920,Number(el(i).value))));draw()};
+function setX(x){el('left').value=x;liveLeft=x;draw()}
+el('center').onclick=()=>setX(240);el('match').onclick=()=>{const [a,b]=coverCrop.feasibleInterval(...points);setX(Math.round((a+b)/2))};
+function save(canvas,name){canvas.toBlob(blob=>{if(!blob)return;const href=URL.createObjectURL(blob),a=document.createElement('a');a.href=href;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(href),1500)},'image/png')}
+el('saveWide').onclick=()=>{if(master)save(master,'cover-16x9.png')};el('saveCrop').onclick=()=>{if(!master)return;const out=document.createElement('canvas');out.width=1440;out.height=1080;coverCrop.draw(out.getContext('2d'),master,liveLeft,0,0,1440,1080);save(out,'cover-4x3.png')};
+loadImage('../assets/interview_original.jpg');
+</script></body></html>

@@ -91,6 +91,24 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
 
 ---
 
+### 2026-11-26 · 025–027 的真实操作演示、等比输出与投稿回执
+
+| 项目 | 本次已有证据 | 可复用做法 |
+| --- | --- | --- |
+| 025 透明 PNG 动画课 | 180 秒，10800 帧。更换封面并更新借物表后，本地质量门禁 92.5/100，零阻断。旧方形图标相对 368 × 420 原画纵向多拉长 42.2%。 | 课程与独立实验室共用像素取样和脚底支点。两版封面改用[原画封面生成器](../projects/025_whale_png_motion_lab/design/cover_base.py)，以双眼中心距除以双眼中点到嘴的距离，原画为 2.171，新本地及线上双封面约 2.173。 |
+| 026 双比例封面裁切 | 80 秒，4800 帧，本地质量门禁 96/100，零阻断。2720 × 1536 原画上下各裁 3 像素，以 12/17 的统一倍率生成母图。 | 从同一母图裁出 4:3。用方图、竖图、超宽图等测试开发页和独立 HTML 的两种 PNG 导出，测量同一圆的水平、垂直直径。 |
+| 027 鲸鱼专注钟 | 原画头像版成片 600 秒、36000 帧、−14.10 LUFS，本地质量门禁 90/100，零阻断。离线单文件可启动、暂停、继续、重置并保存本地速记。 | 按真实时间完成十分钟跟练。四个阶段分成 20 个 30 秒片段，以全片帧号计算秒数。检查首帧 10:00、倒数第二帧 00:01、最后一帧 00:00。 |
+
+三稿创作中心回读如下，时间均为北京时间。各稿标题、标签、简介、两版线上封面和原生「含AI生成内容」声明（本次 ID 为 1）均已核对。充电关闭，允许转载。
+
+| 期号 / BVID | 平台分区 | 平台保存的档期 | 11 月 26 日回读状态 |
+| --- | --- | --- | --- |
+| 025 / `BV11NyUzuEAj` | 知识（1010） | 12 月 1 日 18:30 | 17:44:56，通过审核，等待发布（−40）。封面及借物表在原稿号下更新。 |
+| 026 / `BV1Pc1EzsEUj` | 科技数码（1012） | 12 月 2 日 18:30 | 17:50:08，通过审核，等待发布（−40）。 |
+| 027 / `BV1Cw1EzXEF7` | 科技数码（1012） | 12 月 3 日 18:30 | 18:05:15，通过审核，等待发布（−40）。 |
+
+025 首次接口提交返回 `-412`，026 首次接口提交返回通用参数错误 `21001`。分别查清队列后，通过官方编辑器提交并按新 BVID 回读。系统测试 157 项通过，Ruff 格式、静态检查及 mypy（52 个文件）通过。网页演示和查稿入口见[演示库](../library/motion_cards/README.md)及[定时投稿与回读](../.agents/skills/bilibili-viral-studio/references/scheduled-release.md)。
+
 ## 二、 已完成进化记录（Completed Slices）
 
 * ✅ **E1 — 礼仪与比例双重护栏**：清空所有预设及线上简介中的群发 `@股东`；在 `core/quality_gate.py` 中新增 `DAR` vs 分辨率拉伸一票否决项、`@` 群发扣分校验，以及基于 `library/creative_ledger.json` 的近 3 期题材防重校验。
@@ -144,7 +162,7 @@ B 站稿件详情的播放快照取于北京时间 2026-11-20 16:48。第一条�
   * 已在 `core/publisher.py` 为 `BilibiliUploader.verify_archive_submission` 增加瞬时限流/空响应（`-509`/`JSONDecodeError`/`ConnectionError`）指数退避重试，并新增 `verify_archives_batch` 串行批量节奏控制与脱敏兜底返回；
   * 已在 `tests/test_audio_router.py` 与 `tests/test_publisher.py` 补齐离线全 Mock 单测；全仓串行门禁通过（`ruff format --check .` `76 files` / `ruff check .` / `mypy core cli.py scripts/launch_live_mvp.py scripts/launch_headless_live.py` `38 source files` / `pytest -q` **`98 passed in 189.48s`**）。
 * ✅ **K10 — 三人铁三角全自动直播企划与舞台/实时投票/涨粉庆祝升级（`docs/LIVE_PROGRAM_TRIO_SHOW.md` + `core/live_studio/` + `scripts/launch_headless_live.py`）**
-  * **节目企划文档**：新增 [LIVE_PROGRAM_TRIO_SHOW.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PROGRAM_TRIO_SHOW.md) 并在 [LIVE_PLAN_DUAL_AI.md](file:///home/mcocdaa/AI_CODE/ContentFlow/docs/LIVE_PLAN_DUAL_AI.md) 建立交叉引用，明确「18:30 投新片 + 19:00–20:00 铁三角直播接力 + 下播高光切片反哺」60 分钟四段式节目单、可选大模型 API 接入指南与 24 GiB 内存错峰规约；
+  * **节目企划文档**：新增 [LIVE_PROGRAM_TRIO_SHOW.md](LIVE_PROGRAM_TRIO_SHOW.md) 并在 [LIVE_PLAN_DUAL_AI.md](LIVE_PLAN_DUAL_AI.md) 建立交叉引用，明确「18:30 投新片 + 19:00–20:00 铁三角直播接力 + 下播高光切片反哺」60 分钟四段式节目单、可选大模型 API 接入指南与 24 GiB 内存错峰规约；
   * **三人舞台与互动引擎**：在 `director.py`、`safety.py`、`headless_streamer.py`、`stage_server.py`、`__init__.py` 与 `scripts/launch_headless_live.py` 落地第三位主角 `yowane`（弱音ハク，`zh-TW-HsiaoYuNeural -4Hz` + 专属中低音离线声部）、`LivePollState` 实时弹幕公投进度条（按昵称去重改投 + 飙升标星）、`notify_follower_count` 涨粉金色横幅与优先台词、默认 `--cast trio` 与自定义 `--poll-topic` / `--poll-options`；
   * **严格门禁与预览验收**：零麦克风词法审计 `0` 命中；15 秒 `--cast trio` 本地无头预览（`h264_nvenc` `1920x1080 @ 30fps` + `48kHz` 立体声）及抽帧视觉均人工核验通过；补齐 `tests/test_live_studio.py` 与 `tests/test_headless_live.py` 单测后全仓串行门禁 **`ruff format/check`（`77 files`）+ `mypy`（`38 files`）+ `pytest -q`（`105 passed in 188.71s`）** 100% 通过。
 * ✅ **K11 — 原创非二创作品借物表署名门禁兼容（`core/quality_gate.py`）与三方向并行 A/B/C 破圈实验闭环**

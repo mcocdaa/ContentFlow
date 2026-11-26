@@ -1,0 +1,37 @@
+{
+  "project_id": "027_whale_focus_timer",
+  "name": "给自己十分钟，和鲸鱼娘一起写完第一版",
+  "tagline": "一支实时倒计时视频，一张可用的写作工作单。",
+  "category": "科技 → 软件应用",
+  "target_partition": "科技 → 软件应用 (tid=230)",
+  "bilibili_web_category": "科技数码",
+  "target_duration_sec": 600,
+  "min_duration_sec": 600,
+  "description": "用一个真正走满十分钟的专注钟，把一段写不出来的任务拆成定目标、写草稿、补缺口和保存四步。随片独立 HTML 可断网双击使用，暂停或继续，并在本机记下第一版。",
+  "tech_stack": [
+    "HTML Canvas 2D",
+    "JavaScript 壁钟计时",
+    "FFmpeg",
+    "Noto Sans CJK SC"
+  ],
+  "creative_spec": {
+    "archetype": "real_time_ten_minute_guided_writing_timer",
+    "setting": "海岸写作室，一只青绿色专注钟和一张每阶段翻页的手边工作单。",
+    "meme_source": "延续023切屏监工讨论的写作启动难题，改成能跟完一轮的海边陪伴练习。",
+    "interaction": "观众用本地倒计时或视频完成一份可保存、能继续修改的第一版。",
+    "track": "oss_tool_demo",
+    "duration_rationale": "跟练本身需要十分钟；倒计时的每一秒与真实时间一一对应。",
+    "format": "guided_writing_session"
+  },
+  "deliverables": {
+    "final_video": "delivery/Ep027_鲸鱼专注钟_final.mp4",
+    "cover": "delivery/鲸鱼专注钟_cover.jpg",
+    "cover_16x9": "delivery/鲸鱼专注钟_cover.jpg",
+    "cover_4x3": "delivery/鲸鱼专注钟_cover_4x3.jpg",
+    "standalone_tool": "鲸鱼专注钟.html"
+  },
+  "compliance": {
+    "aigc_standard": "GB 45438-2025",
+    "at_mentions_allowed": false
+  }
+}

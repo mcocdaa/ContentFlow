@@ -1,0 +1,83 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>鲸鱼娘透明像素实验室</title><style>
+:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f4f1e6;color:#142f33;font:16px/1.6 "Noto Sans CJK SC",system-ui,sans-serif}main{max-width:1060px;padding:28px clamp(16px,4vw,52px);margin:auto}h1{font-size:clamp(25px,4.2vw,43px);letter-spacing:-.05em;margin:0 0 18px}h2{font-size:20px;margin:16px 0 8px}button,select,input{font:inherit}button,select{padding:6px 12px;background:#fffdf7;color:#15373a;border:1px solid #80918f;border-radius:5px}button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #c35c25;outline-offset:2px}form,.controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:8px 0 14px}form label{display:flex;gap:6px;align-items:center}input[type=file]{max-width:min(210px,76vw)}.stage{background:#0c3339;padding:8px;border-radius:8px}.stage canvas{display:block;width:100%;height:auto}.grid>section{min-width:0}.grid{display:grid;grid-template-columns:1fr 1.2fr;gap:24px}#source{display:block;max-width:100%;max-height:260px;width:auto;height:auto;cursor:crosshair;background:repeating-conic-gradient(#c3ccc3 0 25%,#f9f5eb 0 50%) 0/20px 20px}output{font-variant-numeric:tabular-nums;font-weight:650}pre{padding:16px;background:#153438;color:#ecf6e8;border-radius:4px;overflow-x:auto;font:14px/1.6 ui-monospace,monospace}summary{cursor:pointer}footer{margin-top:20px;font-size:14px}a{color:#11665a}#seek{width:min(55vw,440px)}@media(max-width:680px){.grid{grid-template-columns:minmax(0,1fr);gap:0}form{align-items:flex-start}.controls{gap:8px}main{padding-top:14px}}
+</style></head><body><main>
+<h1>鲸鱼娘透明像素实验室</h1>
+<form onsubmit="return false">
+<label>角色<select id="preset"><option value="whale">正面立绘</option><option value="icon">Q 版桌宠原画</option></select></label>
+<label>自己的 PNG<input type="file" id="upload" accept="image/png"></label>
+<label>舞台底色<select id="bg"><option value="fade">蓝 → 橙</option><option value="blue">蓝色</option><option value="orange">橙色</option><option value="grid">棋盘格</option></select></label>
+<label>支点<select id="pivot"><option value="feet">脚底</option><option value="center">中心</option></select></label>
+</form>
+<div class="stage"><canvas width="960" height="440" id="stage" aria-label="可换底色与支点的角色预览"></canvas></div>
+<div class="controls"><button type="button" id="play" aria-pressed="false">播放</button><label>时间 <input id="seek" type="range" min="0" max="4" step=".01" value="0"></label><output id="time">0.00 秒</output></div>
+<p id="status" role="status"></p>
+<div class="grid"><section><h2>点原图，读取透明度</h2><canvas width="1" height="1" id="source" aria-label="可点击读出 RGBA 的像素图"></canvas>
+<p><label>X <input id="px" type="number" min="0" value="0" style="width:5em"></label> <label>Y <input id="py" type="number" min="0" value="0" style="width:5em"></label> <button type="button" id="read">取样</button></p><output id="rgba">等待读取</output><p><button type="button" id="flat">下载烤入棋盘格的对照 PNG</button></p></section>
+<section><h2>在自己的网页中复现</h2><p>把自己的透明图命名为 whale.png，和下面的 HTML 放在同一目录。双击 HTML 就能看见呼吸动画。</p>
+<pre id="snippet">&lt;meta charset="utf-8"&gt;
+&lt;style&gt;
+  body { background: #92cadd; }
+  img {
+    height: 220px; width: auto;
+    transform-origin: 50% 100%;
+    animation: up 2s ease-in-out infinite alternate;
+  }
+  @keyframes up {
+    to { transform: translateY(-8px) rotate(3deg); }
+  }
+&lt;/style&gt;
+&lt;img src="whale.png" alt="鲸鱼娘"&gt;</pre>
+<details><summary>Canvas 怎样切背景？</summary><pre>ctx.fillStyle = "#92cadd";
+ctx.fillRect(0, 0, w, h);
+ctx.save();
+ctx.globalAlpha = mix; // 0 到 1
+ctx.fillStyle = "#ffac70";
+ctx.fillRect(0, 0, w, h);
+ctx.restore();
+const width = height * whale.naturalWidth / whale.naturalHeight;
+ctx.drawImage(whale, x, y, width, height);</pre></details></section></div>
+<footer><details><summary>素材来源与许可</summary><p>鲸鱼娘原型由上善无形创作，ZipZipPipe 设计 DeepSeek 女仆造型。正面立绘取自 ContentFlow 定型素材，示例保留透明轮廓并编排动作。<a href="https://www.bilibili.com/video/BV1tE9XBbErS/">角色原作说明</a>。Q 版正面原画来自 pokerface-1224 维护的桌宠项目，本示例按原始宽高比显示并添加动效。<a href="https://github.com/pokerface-1224/deepseek-whale-girl-pet/blob/main/art/raw/front.png">桌宠正面原稿</a> · <a href="https://github.com/pokerface-1224/deepseek-whale-girl-pet/blob/main/LICENSE">项目许可</a>。这些角色美术的改编按 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> 非商业、署名、相同方式共享。</p></details></footer>
+</main><script src="motion.js"></script><script>
+const presets = {whale:'../../../library/characters/deepseek_dafeiyu/dafeiyu_canonical_front_cutout.png',icon:'../assets/whale-pet-front.png'};
+const el = id=>document.getElementById(id);
+const ctx=el('stage').getContext('2d'), source=el('source'), brush=source.getContext('2d',{willReadFrequently:true}), M=window.whaleMotion;
+let img, current=0, run=false, started=0, frame=0, request=0;
+function draw() {
+  if(!img)return;
+  const bg=el('bg').value;
+  if(bg==='grid') M.checkers(ctx,0,0,960,440,24);
+  else M.background(ctx,0,0,960,440,bg==='orange'?1:bg==='blue'?0:(1-Math.cos(current*Math.PI/2))/2);
+  ctx.fillStyle='#4c7476';ctx.fillRect(90,410,780,1);
+  M.sprite(ctx,img,480,410,Math.min(370,650*img.naturalHeight/img.naturalWidth),M.pose(current),el('pivot').value);
+  el('seek').value=current; el('time').value=current.toFixed(2)+' 秒';
+}
+function stop(){run=false;cancelAnimationFrame(frame);el('play').textContent='播放';el('play').setAttribute('aria-pressed','false');}
+function tick(stamp){if(!run)return;current=((stamp-started)/1000)%4;draw();frame=requestAnimationFrame(tick);}
+el('play').onclick=()=>{if(run)return stop();if(!img)return;run=true;started=performance.now()-current*1000;el('play').textContent='暂停';el('play').setAttribute('aria-pressed','true');frame=requestAnimationFrame(tick);};
+el('seek').oninput=()=>{stop();current=Number(el('seek').value);draw();};
+el('bg').onchange=draw;el('pivot').onchange=draw;
+function sample(){
+  if(!img)return;
+  const clamp=(v,max)=>Math.min(max,Math.max(0,Math.trunc(Number(v)||0)));
+  const x=clamp(el('px').value,source.width-1),y=clamp(el('py').value,source.height-1);
+  el('px').value=x;el('py').value=y;
+  try{const rgba=Array.from(brush.getImageData(x,y,1,1).data);el('rgba').value='('+x+', '+y+')  ·  RGBA ('+rgba.join(', ')+')';}
+  catch{el('rgba').value='请选用本地 PNG，或打开随片提供的单文件版本后取样。';}
+}
+async function load(url){
+  const token=++request, next=new Image();next.src=url;
+  try{await next.decode();if(token!==request)return;img=next;source.width=img.naturalWidth;source.height=img.naturalHeight;
+    brush.drawImage(img,0,0);el('px').max=source.width-1;el('py').max=source.height-1;
+    el('px').value=el('py').value=0;sample();draw();el('status').textContent='原图 '+source.width+' × '+source.height+' 像素';}
+  catch{if(token===request)el('status').textContent='无法打开图片，请重新选择有效的 PNG。';}
+}
+el('preset').onchange=()=>{el('upload').value='';load(presets[el('preset').value]);};
+el('upload').onchange=async()=>{const f=el('upload').files[0];if(!f)return;const url=URL.createObjectURL(f);try{await load(url);}finally{URL.revokeObjectURL(url);}};
+source.onclick=e=>{if(!img)return;const b=source.getBoundingClientRect();el('px').value=Math.floor((e.clientX-b.left)*source.width/b.width);el('py').value=Math.floor((e.clientY-b.top)*source.height/b.height);sample();};
+el('read').onclick=sample;
+el('flat').onclick=()=>{if(!img)return; const canvas=document.createElement('canvas');canvas.width=source.width;canvas.height=source.height;
+const c=canvas.getContext('2d');M.checkers(c,0,0,canvas.width,canvas.height,Math.max(6,Math.round(canvas.width/12)));c.drawImage(img,0,0);
+try{canvas.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='烤入棋盘格的对照.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},'image/png');}
+catch{el('status').textContent='请先选择本地 PNG，或使用单文件版本后导出。';}};
+load(presets.whale);
+</script></body></html>

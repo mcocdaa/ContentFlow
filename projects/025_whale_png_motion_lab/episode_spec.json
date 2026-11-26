@@ -1,0 +1,10 @@
+{
+  "acts": [{"video_path": "output/tutorial_picture.mp4"}],
+  "audio_path": "design/episode/assets/episode.wav",
+  "output_mp4_path": "delivery/鲸鱼娘透明PNG动画课_final.mp4",
+  "target_fps": 60,
+  "copy_video_stream": true,
+  "width": 1920,
+  "height": 1080,
+  "loudnorm_target_i": -14.0
+}

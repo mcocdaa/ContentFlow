@@ -165,11 +165,42 @@
     },
     {
       "project_id": "024_ai_reverse_interview_human_boss",
-      "status": "assets_ready_awaiting_kling_video_credits",
+      "bvid": "BV18vyUzUEdm",
+      "status": "published",
       "archetype": "trio_ai_daylight_reverse_job_interview_satire",
-      "setting": "晴空纯白玻璃科技园大厅与浅枫木阳光招聘面试间（V>=191）",
-      "meme_source": "《AI合租B站号》职场反客为主面试人类老板：大肥鱼折简历纸飞机、Gemini娘拍黄灯、弱音亮红章审问24G内存与白米饭福利，见64G内存金字聘书全员星眼起立鞠躬神反转",
+      "setting": "三位 AI 的招聘面试间，观众从人事档案里还原老板求职经过。",
+      "meme_source": "人类带着一份设备预算来应聘老板。首轮收到纸飞机退件，复试时内存与伙食一起写进劳动条件。",
+      "date": "2026-11-26"
+    },
+    {
+      "project_id": "025_whale_png_motion_lab",
+      "archetype": "reproducible_browser_alpha_and_motion_tutorial",
+      "setting": "暖白实验纸、双列样品台和可逐像素回看的网页画布",
+      "meme_source": "网上找到的透明素材为什么带一圈棋盘格？用同一张鲸鱼娘立绘生成真假对照，换背景揭晓。",
+      "status": "scheduled",
+      "bvid": "BV11NyUzuEAj",
+      "schedule_at": "2026-12-01T18:30:00+08:00",
       "date": "2026-12-01"
+    },
+    {
+      "project_id": "026_cover_crop_focus_lab",
+      "archetype": "dual_ratio_cover_crop_blind_comparison",
+      "setting": "以纸飞机与星形发饰为定位点的双比例封面裁切工作台",
+      "meme_source": "024 面试纸飞机画面进入不同展示比例后，一枚星形发饰从边缘消失。",
+      "status": "scheduled",
+      "bvid": "BV1Pc1EzsEUj",
+      "schedule_at": "2026-12-02T18:30:00+08:00",
+      "date": "2026-12-02"
+    },
+    {
+      "project_id": "027_whale_focus_timer",
+      "date": "2026-12-03",
+      "status": "scheduled",
+      "bvid": "BV1Cw1EzXEF7",
+      "schedule_at": "2026-12-03T18:30:00+08:00",
+      "archetype": "real_time_ten_minute_guided_writing_timer",
+      "setting": "海岸写作室，一只青绿色专注钟和一张每阶段翻页的手边工作单。",
+      "meme_source": "延续023切屏监工讨论的写作启动难题，改成能跟完一轮的海边陪伴练习。"
     }
   ]
 }

@@ -1,0 +1,28 @@
+{
+  "project_id":"026_cover_crop_focus_lab",
+  "name":"同一张封面裁成4:3，谁切掉了猫娘的星星？",
+  "tagline":"用同一张面试原画演示两版真实像素裁切",
+  "category":"科技 → 软件应用",
+  "target_partition":"科技 → 软件应用 (tid=230)",
+  "bilibili_web_category":"科技数码",
+  "target_duration_sec":80,
+  "min_duration_sec":60,
+  "description":"选 A 或 B 看谁裁断了发饰，再拖动一只恒宽裁框，验证同时保留纸飞机和猫娘发饰的坐标。",
+  "tech_stack":["HTML Canvas 2D","浏览器 drawImage","Noto Sans CJK SC"],
+  "creative_spec":{
+    "archetype":"dual_ratio_cover_crop_blind_comparison",
+    "setting":"以纸飞机与星形发饰为定位点的双比例封面裁切工作台",
+    "meme_source":"024 面试纸飞机画面进入不同展示比例后，一枚星形发饰从边缘消失。",
+    "interaction":"先盲选 A/B，结尾可暂停保存裁框约束，代入自己的图片做对照。",
+    "track":"oss_tool_demo"
+  },
+  "deliverables":{
+    "final_video":"delivery/Ep026_双比例封面裁切实验_final.mp4",
+    "cover":"delivery/双比例封面裁切实验_cover.jpg",
+    "cover_16x9":"delivery/双比例封面裁切实验_cover.jpg",
+    "cover_4x3":"delivery/双比例封面裁切实验_cover_4x3.jpg",
+    "subtitle_srt":"delivery/Ep026_双比例封面裁切实验_subtitle.srt",
+    "offline_demo":"delivery/双比例封面裁切实验.html"
+  },
+  "compliance":{"aigc_standard":"GB 45438-2025","at_mentions_allowed":false}
+}

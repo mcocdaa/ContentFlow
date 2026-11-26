@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>星星去哪了 · 封面</title><style>body{margin:0;background:#f9f4df}canvas{display:block;width:min(100vw,1400px);height:auto}</style></head><body><canvas></canvas><script src="../demo/crop.js"></script><script>
+const ready = (async()=>{
+  const img = new Image();img.src='../assets/interview_original.jpg';await img.decode();
+  await document.fonts.ready;
+  const master=coverCrop.wideMaster(img),cv=document.querySelector('canvas'),c=cv.getContext('2d');
+  function paint(w,h) {
+    cv.width=w;cv.height=h;const narrow=w/h<1.5, split=narrow?625:806;
+    const fg='#142f36', green='#006858', bg='#fbf3de', amber='#ffca4e';
+    function text(s,x,y,size,color,weight=850){c.font=weight+' '+size+'px "Noto Sans CJK SC",sans-serif';c.fillStyle=color;c.textBaseline='alphabetic';c.fillText(s,x,y);}
+    c.fillStyle=bg;c.fillRect(0,0,w,h);
+    const panelWidth=w-split, sourceHeight=795,sourceWidth=panelWidth/h*sourceHeight;
+    const sx=1920-sourceWidth,sy=126, scale=h/sourceHeight;
+    c.drawImage(master,sx,sy,sourceWidth,sourceHeight,split,0,panelWidth,h);
+    c.fillStyle=green;c.fillRect(split-10,0,10,h);
+    const x=narrow?50:78;
+    c.fillStyle=green;c.fillRect(x,97,13,51);text('封面裁图实验',x+32,139,narrow?36:42,green,750);
+    text('星星',x-4,456,narrow?171:195,fg,950);text('去哪了？',x-5,646,narrow?125:157,fg,950);
+    c.fillStyle=amber;c.fillRect(x,748,narrow?455:527,105);text('16:9  →  4:3',x+21,821,narrow?56:65,fg,850);
+    const e=split+(1680-sx)*scale;
+    c.save();c.setLineDash([20,13]);c.lineWidth=8;c.strokeStyle='#fff5d6';c.beginPath();c.moveTo(e,0);c.lineTo(e,h);c.stroke();c.setLineDash([11,22]);c.lineWidth=5;c.strokeStyle=fg;c.stroke();c.restore();
+    const cx=split+(1727-sx)*scale,cy=(376-sy)*scale;
+    c.beginPath();c.ellipse(cx,cy,91*scale,79*scale,-.2,0,Math.PI*2);c.lineWidth=11;c.strokeStyle=fg;c.stroke();c.lineWidth=6;c.strokeStyle=amber;c.stroke();
+    return cv;
+  }
+  window.drawCover=paint;paint(1920,1080);
+})();window.coverReady=ready;
+</script></body></html>
