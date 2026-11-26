@@ -1916,6 +1916,8 @@ class HeadlessLiveStreamer:
 
         total_frames = max(1, int(round(max(0.5, duration_sec) * self.fps)))
         dump_frame_idx = max(1, min(total_frames - 1, int(total_frames * 0.45)))
+        if duration_sec > 30.0:
+            dump_frame_idx = min(dump_frame_idx, max(1, self.fps * 5))
 
         video_r, video_w = os.pipe()
         audio_r, audio_w = os.pipe()
@@ -2474,6 +2476,7 @@ class HeadlessLiveStreamer:
                 room_id=room_id,
                 cookies=ctrl.vault.load_bilibili_cookies(),
                 stats_callback=_on_room_stats,
+                reconnect=True,
             )
         )
         stream_stats: Dict[str, Any] = {

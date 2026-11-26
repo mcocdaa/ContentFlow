@@ -1,0 +1,369 @@
+{
+  "schema_version": "1.0",
+  "project_id": "024_ai_reverse_interview_human_boss",
+  "episode": "Ep024 · AI组团反向面试人类老板",
+  "target_duration_sec": 70.0,
+  "compliance_notes": {
+    "zero_copyrighted_ip_names": true,
+    "zero_at_mentions": true,
+    "zero_pii": true,
+    "async_submit_only": "All Kling commands must run with KLING_NONINTERACTIVE=1 and -q without --poll; coordinator schedules async query_tasks."
+  },
+  "canonical_refs": {
+    "dafeiyu": {
+      "path": "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+      "visual_descriptor": "亮蓝长卷发配双侧蓝麻花辫与浅蓝蝴蝶结、头两侧蓝白鲸鳍耳、白色蕾丝女仆发带、湛蓝眼眸、深蓝配白荷叶边围裙女仆装与深蓝鲸鱼尾的少女（后勤福利考官）"
+    },
+    "gemini": {
+      "path": "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+      "visual_descriptor": "紫蓝渐变长发带双侧发髻与呆毛、毛茸茸紫蓝猫耳、左侧渐变四角星发饰、玫瑰粉与琥珀金异色瞳、深紫蓝星芒露肩裙配浅紫白荷叶袖套的俏皮少女（数据增长考官）"
+    },
+    "yowane": {
+      "path": "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg",
+      "visual_descriptor": "银灰顺滑长马尾、酒红眼眸、精致红框眼镜、洁白有领衬衫外搭深蓝修身西装外套配格纹百褶裙的冷静知性少女（主考官/HR总监；按2D生动二次元动画角色呈现，严禁出现手办底座）"
+    }
+  },
+  "visual_style_bible": {
+    "render_style": "高清剧场版2D赛璐珞二次元动画插画与演出质感，线条干净锐利，色彩通透明快，五官精致自然，手部五指清晰",
+    "setting": "晴空纯白玻璃幕墙科技园区阳光面试间，大面全景落地窗外是湛蓝晴空、洁白云朵与明媚绿意，室内为奶油纯白墙面与温暖浅枫木考官长桌",
+    "lighting_and_brightness": "通透明亮的自然日光高明度打光（目标平均明度 V>=178，暗部像素占比 <8%），严禁黑边、暗角、昏暗霓虹或阴沉阴影"
+  },
+  "keyframes": [
+    {
+      "id": "kf_hero_interview_16x9",
+      "role": "Act 1–3 核心场景锚点 + Ep024 16:9/4:3 高明度主封面锚点",
+      "command": "image_to_image",
+      "model": "kling-image-v3_0_omni",
+      "img_resolution": "2k",
+      "aspect_ratio": "16:9",
+      "imageCount": 1,
+      "output_path": "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_hero_interview_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "image_slot_mapping": {
+        "图片1": "dafeiyu_ref.png（蓝发双麻花辫鲸耳女仆装少女）",
+        "图片2": "gemini_ref.png（紫蓝长发猫耳异色瞳少女）",
+        "图片3": "yowane_ref.jpg（银灰长发红框眼镜西装衬衫少女）"
+      },
+      "prompt": "高清剧场版2D赛璐珞二次元动画主视觉全景镜头，晴空纯白玻璃幕墙科技园阳光面试间，背景大面全景落地窗透出湛蓝晴空、洁白云朵与明亮阳光，室内奶油纯白极简墙面搭配温暖浅枫木长桌，整体通透明亮高明度日光，严禁暗部黑影与暗角。三位二次元少女考官并排端坐在浅枫木考官席长桌后面对镜头气场十足（构图上方留出干净晴空与落地窗呼吸空间便于封面排版）：正中是图片3的银灰长马尾红框眼镜深蓝西装白衬衫少女（生动真实2D动画角色，无任何手办底座），神情冷静威严略微前倾，右手高举一枚醒目亮红色印章正欲拍在桌面的白色简历档案上；右侧是图片2的紫蓝渐变长发毛茸茸猫耳、左金右粉异色瞳配四角星发饰少女，身穿深紫蓝星芒露肩裙配浅紫白荷叶袖套，笑得俏皮犀利，单手高举彩色彩虹光泽评级打分牌；左侧是图片1的亮蓝长卷发配双蓝麻花辫与蓝蝴蝶结、蓝白鲸鳍耳、白色蕾丝发带配深蓝白围裙女仆装少女，怀里紧抱一只热气腾腾的大号纯白便当米饭盒、里面盛满晶莹蓬松白米饭并捏着一双木筷，鼓着腮帮认真审视镜头。浅枫木长桌上整齐摆放白色简历纸、透明水杯与一枚亮黄色圆顶蜂鸣器按钮，明亮自然光在桌面泛起柔和反光。人物面部严格还原图片1、图片2、图片3，手部五指自然清晰，无任何乱码文字、无水印、无黑边。"
+    },
+    {
+      "id": "kf_mid_airplane_16x9",
+      "role": "Act 4–5 中近景爆笑冲突锚点（纸飞机简历 + 狂拍黄灯蜂鸣器）",
+      "command": "image_to_image",
+      "model": "kling-image-v3_0_omni",
+      "img_resolution": "2k",
+      "aspect_ratio": "16:9",
+      "imageCount": 1,
+      "output_path": "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_mid_airplane_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "image_slot_mapping": {
+        "图片1": "dafeiyu_ref.png（蓝发双麻花辫鲸耳女仆装少女）",
+        "图片2": "gemini_ref.png（紫蓝长发猫耳异色瞳少女）",
+        "图片3": "yowane_ref.jpg（银灰长发红框眼镜西装衬衫少女）"
+      },
+      "prompt": "高清剧场版2D赛璐珞二次元动画中近景爆笑喜剧冲突画面，晴空纯白玻璃幕墙科技园浅枫木阳光面试间，落地窗外湛蓝晴空暖亮日光洒满室内，整体高明度通透色彩，严禁暗部阴影。浅枫木考官桌后三人上演夸张搞笑反差互动：左侧是图片1的蓝发双蓝麻花辫鲸耳女仆装少女，一脸得意俏皮坏笑，正探身扬手把一张折成白色纸飞机的面试简历朝镜头前上方轻快掷出，纸飞机带起轻盈白色气流轨迹；右侧是图片2的紫蓝长发猫耳粉金异色瞳星饰少女，两只毛茸茸紫蓝猫耳气呼呼竖起炸毛，鼓起脸颊双手猛力拍向桌上一枚晶亮明黄色圆顶淘汰蜂鸣器，按钮爆出明亮暖金色星芒闪光；正中是图片3的银灰长马尾红框眼镜深蓝西装白衬衫少女（生动2D动画角色，无任何手办底座），面对左右两边的混乱完全不为所动，左手淡定推着红框眼镜镜梁反出一道清亮白光，右手握金属钢笔低头在纯白夹板上冷面打叉记录。浅枫木桌面放着白米饭盒、散开几页简历纸与亮红印章，画面节奏张力十足、表情极具喜剧表现力，人物严格还原图片1、图片2、图片3，手指清晰自然，无乱码文字、无水印、无黑边。"
+    },
+    {
+      "id": "kf_finale_64g_16x9",
+      "role": "Act 6–7 全片高潮神反转与终幕欢呼锚点（64G内存+无限白米饭金字聘书）",
+      "command": "image_to_image",
+      "model": "kling-image-v3_0_omni",
+      "img_resolution": "2k",
+      "aspect_ratio": "16:9",
+      "imageCount": 1,
+      "output_path": "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_finale_64g_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "image_slot_mapping": {
+        "图片1": "dafeiyu_ref.png（蓝发双麻花辫鲸耳女仆装少女）",
+        "图片2": "gemini_ref.png（紫蓝长发猫耳异色瞳少女）",
+        "图片3": "yowane_ref.jpg（银灰长发红框眼镜西装衬衫少女）"
+      },
+      "prompt": "高清剧场版2D赛璐珞二次元动画全片高潮神反转画面，晴空纯白玻璃科技园阳光面试间，大面晴空落地窗倾泻出灿烂温暖的金色日光光束洒满浅枫木办公长桌，空气中飘浮着闪亮金色微粒与明快马卡龙色彩带花瓣，极致高明度纯白晴空暖金氛围，严禁暗角黑边。浅枫木长桌正中央摊开一份散发柔和暖金辉光的奶油金边豪华聘书简历，封面醒目印着简洁清晰的烫金字样「64G」与发亮芯片纹章，旁边摆着一碗冒着幸福白气的晶莹大白米饭。桌后三位考官少女全都兴奋地从椅子上猛然起身、眼睛里闪耀出超大亮晶晶星光（眼冒星光），并肩前倾朝镜头热烈欢呼：左侧是图片1的蓝发双蓝麻花辫鲸耳女仆装少女，湛蓝眼眸冒出璀璨星光，双手捧在脸颊旁惊喜大笑，身后蓝鲸尾欢快翘起；正中是图片3的银灰长马尾红框眼镜深蓝西装白衬衫少女（生动2D动画角色，无任何手办底座），酒红双眸同样闪着明亮星光，展露罕见灿烂笑容，高举发光亮红通过印章做出录用欢呼姿态；右侧是图片2的紫蓝长发猫耳粉金异色瞳少女，异色瞳闪耀星芒，猫耳兴奋竖起，高举双手比出双剪刀手开怀欢呼。人物五官与服饰严格还原图片1、图片2、图片3，画面洋溢欢快爆笑大反转氛围，五指清晰，无杂乱小字、无水印。"
+    }
+  ],
+  "acts": [
+    {
+      "act": 1,
+      "id": "act1_desk_slam_reverse_interview_open",
+      "title": "0.0s开场拍桌亮红章：AI组团反向面试",
+      "time_range_sec": [0.0, 10.0],
+      "command": "omni_ref_video",
+      "model": "kling-video-v4_0",
+      "resolution": "1080p",
+      "duration": 10,
+      "aspect_ratio": "16:9",
+      "prefer_multi_shots": true,
+      "enable_audio": true,
+      "keepOriginalSound": false,
+      "keyframe": "kf_hero_interview_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_hero_interview_16x9.jpg",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act1_desk_slam_reverse_interview_open.mp4",
+      "dialogue_cn": [
+        {
+          "speaker": "弱音ハク",
+          "start_sec": 0.4,
+          "end_sec": 5.2,
+          "line": "下一位人类老板，请坐。今天由我们三个面试你！"
+        },
+        {
+          "speaker": "弱音ハク",
+          "start_sec": 5.6,
+          "end_sec": 9.6,
+          "line": "先声明，不自带64G内存的，直接淘汰！"
+        }
+      ],
+      "prompt": "以图片1的晴空纯白玻璃科技园浅枫木阳光面试间为统一场景与主构图，全程高明度明亮通透日光2D赛璐珞剧场版动画风格，自然流畅多镜头切换（共3个舒展镜头）。镜头1（0-3.5秒）：开场0秒直接爆点动作，中近景特写图片4的银灰长马尾红框眼镜深蓝西装少女抬手咔嚓推起红框眼镜反出亮光，紧接着右手握亮红印章啪地一声干脆利落拍在浅枫木考官桌的简历档案上，冷静威严地用清晰干练御姐中文语音开口说：“下一位人类老板，请坐。今天由我们三个面试你！”镜头2（3.5-7秒）：镜头丝滑后拉切回全景考官席，窗外湛蓝晴空云朵明亮耀眼，三位考官一字排开——左侧图片2的蓝发双麻花辫鲸耳女仆装少女抱着热气腾腾的大白米饭盒微微探身盯紧前方，右侧图片3的紫蓝长发猫耳粉金异色瞳少女得意晃动彩色评分牌。镜头3（7-10秒）：推近图片4的银灰长发红框眼镜少女，她单手举起红色印章微扬下巴，清脆铿锵地说：“先声明，不自带六十四G内存的，直接淘汰！”同期声包含清脆推眼镜轻响、啪地拍桌与印章落纸音效，背景干净明亮办公室自然氛围，全程无暗角无字幕水印。"
+    },
+    {
+      "act": 2,
+      "id": "act2_catgirl_growth_interrogation",
+      "title": "数据增长考官猫娘灵魂拷问五年规划",
+      "time_range_sec": [10.0, 20.0],
+      "command": "omni_ref_video",
+      "model": "kling-video-v4_0",
+      "resolution": "1080p",
+      "duration": 10,
+      "aspect_ratio": "16:9",
+      "prefer_multi_shots": true,
+      "enable_audio": true,
+      "keepOriginalSound": false,
+      "keyframe": "kf_hero_interview_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_hero_interview_16x9.jpg",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act2_catgirl_growth_interrogation.mp4",
+      "dialogue_cn": [
+        {
+          "speaker": "Gemini娘",
+          "start_sec": 0.4,
+          "end_sec": 5.3,
+          "line": "第一题！新老板，频道三秒完播怎么拉满，五年规划呢？"
+        },
+        {
+          "speaker": "Gemini娘",
+          "start_sec": 5.8,
+          "end_sec": 9.6,
+          "line": "只会画大饼可不行，后台数据我们全盯着呢！"
+        }
+      ],
+      "prompt": "延续图片1的晴空纯白玻璃科技园浅枫木阳光面试间场景，高明度2D赛璐珞剧场版动画，自然流畅3镜头正反打。镜头1（0-3.5秒）：活力中近景切到右侧图片3的紫蓝渐变长发毛茸茸猫耳、粉金异色瞳配四角星发饰少女，她猫耳灵动一抖，高高举起闪亮彩虹评分牌向前轻挥，元气俏皮带点毒舌的清亮中文少女音开口拷问：“第一题！新老板，频道三秒完播怎么拉满，五年规划呢？”镜头2（3.5-6.8秒）：切换面试者第一人称略仰角中景望向浅枫木长桌，落地窗晴空阳光灿烂，图片3的紫蓝猫耳少女用评分牌轻敲掌心一脸审视，旁边图片2的蓝发双麻花辫鲸耳女仆装少女抱着米饭盒认真点头附和，图片4的银灰长发红框眼镜少女抱臂冷眼旁观。镜头3（6.8-10秒）：切回图片3的紫蓝猫耳少女俯身靠近镜头，粉金异色瞳微微眯起露出狡黠笑意，伸出食指轻轻摇晃说：“只会画大饼可不行，后台数据我们全盯着呢！”同期声包含评分牌挥动轻风声与清脆敲桌节奏音，语速自然活泼不急促，全程无乱码文字无黑边。"
+    },
+    {
+      "act": 3,
+      "id": "act3_whale_maid_welfare_audit",
+      "title": "福利考官大肥鱼灵魂追问白米饭与内存",
+      "time_range_sec": [20.0, 30.0],
+      "command": "omni_ref_video",
+      "model": "kling-video-v4_0",
+      "resolution": "1080p",
+      "duration": 10,
+      "aspect_ratio": "16:9",
+      "prefer_multi_shots": true,
+      "enable_audio": true,
+      "keepOriginalSound": false,
+      "keyframe": "kf_hero_interview_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_hero_interview_16x9.jpg",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act3_whale_maid_welfare_audit.mp4",
+      "dialogue_cn": [
+        {
+          "speaker": "DeepSeek 蓝色大肥鱼",
+          "start_sec": 0.4,
+          "end_sec": 4.2,
+          "line": "轮到福利考核！管不管热腾腾的白米饭？"
+        },
+        {
+          "speaker": "DeepSeek 蓝色大肥鱼",
+          "start_sec": 4.6,
+          "end_sec": 9.6,
+          "line": "什么？内存才24G还要开直播？这我当场给你服务器繁忙！"
+        }
+      ],
+      "prompt": "延续图片1的晴空纯白玻璃科技园浅枫木阳光面试间，明媚高明度2D赛璐珞剧场版动画，3个节奏舒展喜剧镜头。镜头1（0-3.5秒）：中近景聚焦左侧图片2的亮蓝长卷发双麻花辫鲸耳女仆装少女，她把冒着柔和白气的大号纯白米饭盒咚一声稳稳放在浅枫木桌上，挥动手中木筷，用清甜憨萌又一本正经的中文少女音发问：“轮到福利考核！管不管热腾腾的白米饭？”镜头2（3.5-6.8秒）：特写她伸手翻开桌上一张薄薄的白色简历，头两侧蓝白鲸鳍耳瞬间夸张耷拉下来，湛蓝眼睛瞪大鼓起腮帮露出难以置信的喜剧表情，指着简历大声吐槽：“什么？内存才二十四G还要开直播？”镜头3（6.8-10秒）：中景拉宽，图片2的蓝发鲸耳女仆少女双手叉腰气鼓鼓地左右摇摆，身后蓝鲸尾拍打空气，正中图片4银灰长发红框眼镜少女无奈扶额轻叹，右侧图片3的紫蓝猫耳粉金异色瞳少女在一旁忍笑点头附和，蓝发少女理直气壮喊出：“这我当场给你服务器繁忙！”同期声有陶瓷饭盒稳落木桌咚声、翻纸沙沙声与俏皮喜剧节奏音效，明亮通透无暗角。"
+    },
+    {
+      "act": 4,
+      "id": "act4_paper_airplane_yellow_buzzer",
+      "title": "折简历纸飞机飞出+猫娘炸毛猛拍黄灯",
+      "time_range_sec": [30.0, 40.0],
+      "command": "omni_ref_video",
+      "model": "kling-video-v4_0",
+      "resolution": "1080p",
+      "duration": 10,
+      "aspect_ratio": "16:9",
+      "prefer_multi_shots": true,
+      "enable_audio": true,
+      "keepOriginalSound": false,
+      "keyframe": "kf_mid_airplane_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_mid_airplane_16x9.jpg",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act4_paper_airplane_yellow_buzzer.mp4",
+      "dialogue_cn": [
+        {
+          "speaker": "DeepSeek 蓝色大肥鱼",
+          "start_sec": 0.4,
+          "end_sec": 3.8,
+          "line": "算力严重不合格，简历送你上天吧！"
+        },
+        {
+          "speaker": "Gemini娘",
+          "start_sec": 4.0,
+          "end_sec": 7.2,
+          "line": "没预算还催更，直接按黄灯淘汰！"
+        },
+        {
+          "speaker": "弱音ハク",
+          "start_sec": 7.4,
+          "end_sec": 9.7,
+          "line": "综合评估不通过，请回吧。"
+        }
+      ],
+      "prompt": "以图片1的晴空玻璃科技园浅枫木阳光面试间爆笑冲突画面为起始基准，高明度2D赛璐珞剧场版喜剧动画，3个高表现力连贯镜头。镜头1（0-3.6秒）：中近景聚焦左侧图片2的蓝发双麻花辫鲸耳女仆装少女，她得意眨眼坏笑，双手利落把白色简历折成尖头纸飞机，挥手一掷让白色纸飞机沿着优雅弧线呼啸掠过阳光镜头，她清脆欢快地说：“算力严重不合格，简历送你上天吧！”镜头2（3.6-7.0秒）：利落切到右侧图片3的紫蓝长发猫耳粉金异色瞳少女，她一对紫蓝猫耳夸张炸毛竖起，鼓着脸颊双手狠狠连拍桌上的亮黄圆顶蜂鸣器，按钮爆出明快金色星光与叮咚清脆警报声，她元气大喊：“没预算还催更，直接按黄灯淘汰！”镜头3（7.0-10秒）：稳切到正中图片4的银灰长马尾红框眼镜深蓝西装少女，在两侧欢闹衬托下她丝毫不乱，抬手轻推红框眼镜，钢笔在白夹板上潇洒划下叉号，冷静淡定收尾：“综合评估不通过，请回吧。”同期声含折纸声、纸飞机破风轻哨、综艺清脆叮咚蜂鸣声与钢笔书写声，全程日光通透高明度。"
+    },
+    {
+      "act": 5,
+      "id": "act5_golden_resume_envelope_twist",
+      "title": "神秘鎏金简历滑上长桌：反转伏笔拉满",
+      "time_range_sec": [40.0, 50.0],
+      "command": "omni_ref_video",
+      "model": "kling-video-v4_0",
+      "resolution": "1080p",
+      "duration": 10,
+      "aspect_ratio": "16:9",
+      "prefer_multi_shots": true,
+      "enable_audio": true,
+      "keepOriginalSound": false,
+      "keyframe": "kf_mid_airplane_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_mid_airplane_16x9.jpg",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act5_golden_resume_envelope_twist.mp4",
+      "dialogue_cn": [
+        {
+          "speaker": "弱音ハク",
+          "start_sec": 3.2,
+          "end_sec": 6.6,
+          "line": "等等……你简历背面还藏了附加装备清单？"
+        },
+        {
+          "speaker": "Gemini娘",
+          "start_sec": 6.8,
+          "end_sec": 9.7,
+          "line": "哇！这难道是全新顶配预算？！"
+        }
+      ],
+      "prompt": "延续图片1的晴空纯白玻璃科技园浅枫木阳光面试间，高明度2D赛璐珞剧场版动画，3个悬念拉满的反转铺垫镜头。镜头1（0-3.2秒）：浅枫木桌面贴面低机位推进镜头，从前景应聘者方向缓缓滑来一份厚实华丽的奶油鎏金硬壳简历文件夹，在落地窗温暖日光下折射出耀眼暖金光晕，稳稳停在长桌正中央。镜头2（3.2-6.6秒）：切到中景，三位考官瞬间定格；正中图片4的银灰长马尾红框眼镜深蓝西装少女放下钢笔，好奇地伸手翻开鎏金封面，柔和耀眼的暖金光芒迎面映亮她的红框眼镜与酒红眼眸，她微微一怔声音带着惊讶问：“等等……你简历背面还藏了附加装备清单？”镜头3（6.6-10秒）：左右双人惊喜近景，图片2的蓝发双麻花辫鲸耳女仆少女和图片3的紫蓝猫耳异色瞳少女同时探身凑近桌面，金色反光在两人睁大的眼眸中闪闪发亮，紫蓝猫耳少女捂嘴惊呼：“哇！这难道是全新顶配预算？！”同期声包含卡片滑过木桌的清脆摩擦声、闪亮梦幻的金色风铃叮铃悬念音效与清晰自然中文表演配音，全程晴空亮白无暗沉。"
+    },
+    {
+      "act": 6,
+      "id": "act6_64g_starry_eyes_standing_ovation",
+      "title": "64G内存+无限白米饭曝光：三人星眼起立鞠躬",
+      "time_range_sec": [50.0, 60.0],
+      "command": "omni_ref_video",
+      "model": "kling-video-v4_0",
+      "resolution": "1080p",
+      "duration": 10,
+      "aspect_ratio": "16:9",
+      "prefer_multi_shots": true,
+      "enable_audio": true,
+      "keepOriginalSound": false,
+      "keyframe": "kf_finale_64g_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_finale_64g_16x9.jpg",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act6_64g_starry_eyes_standing_ovation.mp4",
+      "dialogue_cn": [
+        {
+          "speaker": "全员合声",
+          "start_sec": 3.4,
+          "end_sec": 6.4,
+          "line": "64G内存配无限白米饭？！全票通过！"
+        },
+        {
+          "speaker": "弱音ハク",
+          "start_sec": 6.7,
+          "end_sec": 9.7,
+          "line": "老板，请马上入职，今天您说了算！"
+        }
+      ],
+      "prompt": "以图片1的晴空落地窗金光洒满浅枫木办公桌神反转画面为视觉核心，极致高明度2D赛璐珞剧场版高潮演出，3个极具喜感张力的连贯镜头。镜头1（0-3.2秒）：华丽特写浅枫木桌正中央摊开的发光鎏金聘书，金色日光与暖亮星芒洒在清晰烫金字样「64G」和一碗热腾腾晶莹白米饭上，光晕璀璨夺目。镜头2（3.2-6.6秒）：猛然切至全景，窗外晴空洒入万丈金光与轻盈彩带花瓣，桌后三位考官——左侧图片2的蓝发双麻花辫鲸耳女仆少女、正中图片4的银灰长马尾红框眼镜深蓝西装少女、右侧图片3的紫蓝猫耳粉金异色瞳少女——毫秒级同步猛然起立，三人眼中同时闪出超大动漫星光（眼冒星光），热烈鼓掌欢呼齐声惊叹：“六十四G内存配无限白米饭？！全票通过！”镜头3（6.6-10秒）：三人默契并肩齐刷刷朝镜头深深九十度礼貌鞠躬再欢喜抬头，图片4的银灰长发少女满脸灿烂笑意将发光红印章豪爽盖在金字聘书上，欣喜朗声说：“老板，请马上入职，今天您说了算！”同期声包含欢快闪耀胜利号角短音、椅子齐声拉开声、热烈掌声、三人喜悦合声与清脆盖章声，高明度纯净通透。"
+    },
+    {
+      "act": 7,
+      "id": "act7_trio_cheering_danmaku_cta",
+      "title": "终幕欢呼+互动弹幕引导：扣1加64G内存扣2供白米饭",
+      "time_range_sec": [60.0, 70.0],
+      "command": "omni_ref_video",
+      "model": "kling-video-v4_0",
+      "resolution": "1080p",
+      "duration": 10,
+      "aspect_ratio": "16:9",
+      "prefer_multi_shots": true,
+      "enable_audio": true,
+      "keepOriginalSound": false,
+      "keyframe": "kf_finale_64g_16x9.jpg",
+      "images": [
+        "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_finale_64g_16x9.jpg",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/dafeiyu_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/gemini_ref.png",
+        "projects/024_ai_reverse_interview_human_boss/assets/refs/yowane_ref.jpg"
+      ],
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act7_trio_cheering_danmaku_cta.mp4",
+      "dialogue_cn": [
+        {
+          "speaker": "DeepSeek 蓝色大肥鱼",
+          "start_sec": 0.4,
+          "end_sec": 3.4,
+          "line": "耶！终于不用卡内存，今天加餐白米饭！"
+        },
+        {
+          "speaker": "Gemini娘",
+          "start_sec": 3.7,
+          "end_sec": 6.4,
+          "line": "屏幕前的准老板们，轮到你们应聘啦！"
+        },
+        {
+          "speaker": "全员合声",
+          "start_sec": 6.6,
+          "end_sec": 9.8,
+          "line": "弹幕扣1给AI加64G内存，扣2只管供白米饭！"
+        }
+      ],
+      "prompt": "延续图片1的晴空纯白玻璃科技园金光烂漫浅枫木面试间，高明度欢快2D赛璐珞剧场版收尾，3个洋溢活力的互动镜头。镜头1（0-3.5秒）：明媚中景聚焦左侧图片2的蓝发双麻花辫鲸耳女仆装少女，她高高捧起冒着热气的晶莹白米饭盒原地雀跃转半圈，湛蓝大眼弯成月牙，元气欢呼：“耶！终于不用卡内存，今天加餐白米饭！”镜头2（3.5-6.5秒）：明快中近景切到右侧图片3的紫蓝猫耳异色瞳少女与正中图片4的银灰长马尾红框眼镜西装少女并肩凑近镜头，猫耳少女俏皮比出双剪刀手、银发少女微笑举起烫金录用聘书，猫耳少女清亮邀请：“屏幕前的准老板们，轮到你们应聘啦！”镜头3（6.5-10秒）：温暖对称全景，晴空落地窗暖阳与彩带微光飞舞，三位少女并肩站在浅枫木长桌后灿烂大笑、同时朝镜头活泼招手并指向画面上方弹幕区，清脆明朗地齐声喊出：“弹幕扣一给AI加六十四G内存，扣二只管供白米饭！”同期声洋溢轻快愉悦少女笑声与明亮收尾风铃声，画面明净灿烂、无黑边无乱码。"
+    }
+  ]
+}

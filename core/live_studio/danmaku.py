@@ -289,7 +289,7 @@ def parse_bilibili_command(payload: Dict[str, Any], *, now: Optional[float] = No
             timestamp=ts,
         )
 
-    if cmd == "INTERACT_WORD":
+    if cmd in ("INTERACT_WORD", "INTERACT_WORD_V2"):
         data = payload.get("data")
         if not isinstance(data, dict):
             return None
@@ -396,6 +396,8 @@ class BilibiliDanmakuClient:
         uid: Optional[int] = None,
         buvid: str = "",
         stats_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        reconnect: bool = False,
+        reconnect_max_backoff_sec: float = 20.0,
     ) -> None:
         if room_id <= 0:
             raise ValueError("room_id must be a positive integer")
@@ -423,6 +425,8 @@ class BilibiliDanmakuClient:
         self.popularity: int = 0
         self.authenticated: bool = False
         self.stats_callback = stats_callback
+        self.reconnect: bool = bool(reconnect)
+        self.reconnect_max_backoff_sec: float = max(1.0, float(reconnect_max_backoff_sec))
 
     def __repr__(self) -> str:
         return f"BilibiliDanmakuClient(room_id='<REDACTED>', authenticated={self.authenticated!r})"
@@ -555,44 +559,7 @@ class BilibiliDanmakuClient:
         except Exception as exc:
             logger.debug("Heartbeat loop ended: %s", exc)
 
-    async def events(self) -> AsyncIterator[DanmakuEvent]:
-        """Yield parsed `DanmakuEvent` objects from the live WebSocket stream."""
-        if self._ws is None or self._ws.closed:
-            await self.connect()
-        assert self._ws is not None
-
-        try:
-            async for msg in self._ws:
-                if self._closed:
-                    break
-                if msg.type == aiohttp.WSMsgType.BINARY:
-                    for pkt in unpack_packets(msg.data):
-                        if pkt.operation == OP_AUTH_REPLY:
-                            self.authenticated = True
-                        elif pkt.operation == OP_HEARTBEAT_REPLY and pkt.popularity is not None:
-                            self.popularity = pkt.popularity
-                        elif pkt.operation == OP_MESSAGE and pkt.json_payload is not None:
-                            if self.stats_callback is not None:
-                                room_stat = parse_room_stats_command(pkt.json_payload)
-                                if room_stat is not None:
-                                    try:
-                                        self.stats_callback(room_stat)
-                                    except Exception as cb_exc:
-                                        logger.debug("stats_callback skipped (%s)", type(cb_exc).__name__)
-                            event = parse_bilibili_command(pkt.json_payload)
-                            if event is not None:
-                                yield event
-                elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED):
-                    break
-                elif msg.type == aiohttp.WSMsgType.ERROR:
-                    logger.warning("WebSocket stream error: %s", self._ws.exception())
-                    break
-        finally:
-            await self.close()
-
-    async def close(self) -> None:
-        """Stop heartbeat loop and cleanly disconnect WebSocket and owned HTTP session."""
-        self._closed = True
+    async def _disconnect_ws(self, *, reset_auth: bool = False) -> None:
         if self._heartbeat_task is not None:
             self._heartbeat_task.cancel()
             try:
@@ -604,6 +571,70 @@ class BilibiliDanmakuClient:
         if self._ws is not None and not self._ws.closed:
             await self._ws.close()
         self._ws = None
+        if reset_auth:
+            self.authenticated = False
+
+    async def events(self) -> AsyncIterator[DanmakuEvent]:
+        """Yield parsed `DanmakuEvent` objects from the live WebSocket stream."""
+        attempt = 0
+        try:
+            while not self._closed:
+                try:
+                    if self._ws is None or self._ws.closed:
+                        await self.connect()
+                    assert self._ws is not None
+
+                    async for msg in self._ws:
+                        if self._closed:
+                            break
+                        if msg.type == aiohttp.WSMsgType.BINARY:
+                            attempt = 0
+                            for pkt in unpack_packets(msg.data):
+                                if pkt.operation == OP_AUTH_REPLY:
+                                    self.authenticated = True
+                                elif pkt.operation == OP_HEARTBEAT_REPLY and pkt.popularity is not None:
+                                    self.popularity = pkt.popularity
+                                elif pkt.operation == OP_MESSAGE and pkt.json_payload is not None:
+                                    if self.stats_callback is not None:
+                                        room_stat = parse_room_stats_command(pkt.json_payload)
+                                        if room_stat is not None:
+                                            try:
+                                                self.stats_callback(room_stat)
+                                            except Exception as cb_exc:
+                                                logger.debug("stats_callback skipped (%s)", type(cb_exc).__name__)
+                                    event = parse_bilibili_command(pkt.json_payload)
+                                    if event is not None:
+                                        yield event
+                        elif msg.type in (
+                            aiohttp.WSMsgType.CLOSE,
+                            aiohttp.WSMsgType.CLOSING,
+                            aiohttp.WSMsgType.CLOSED,
+                        ):
+                            break
+                        elif msg.type == aiohttp.WSMsgType.ERROR:
+                            logger.warning("WebSocket stream error: %s", self._ws.exception())
+                            break
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    if not self.reconnect or self._closed:
+                        raise
+                    logger.warning("Danmaku WS interrupted (%s); reconnecting cleanly", type(exc).__name__)
+
+                if not self.reconnect or self._closed:
+                    break
+
+                await self._disconnect_ws(reset_auth=True)
+                backoff = min(self.reconnect_max_backoff_sec, 2.0 * (2**attempt))
+                attempt += 1
+                await asyncio.sleep(backoff)
+        finally:
+            await self.close()
+
+    async def close(self) -> None:
+        """Stop heartbeat loop and cleanly disconnect WebSocket and owned HTTP session."""
+        self._closed = True
+        await self._disconnect_ws()
 
         if self._external_session is None and self._session is not None and not self._session.closed:
             await self._session.close()

@@ -1,0 +1,76 @@
+{
+  "submitted_at": "2026-11-26T02:06:22Z",
+  "keyframes": [
+    {
+      "id": "kf_hero_interview_16x9",
+      "output_path": "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_hero_interview_16x9.jpg",
+      "model": "kling-image-v3_0_omni",
+      "generation_id": "AXVw9F_ZcLZyMSqmcOil0pJ0RLzhUkVdr4JGddHQ0ndPJyReqrY8CGFr2cFzXQeyOoEj2Mg8",
+      "status": "downloaded",
+      "raw": "{\"ok\":true,\"status\":200,\"body\":{\"generationId\":\"AXVw9F_ZcLZyMSqmcOil0pJ0RLzhUkVdr4JGddHQ0ndPJyReqrY8CGFr2cFzXQeyOoEj2Mg8\",\"status\":\"QUEUING\",\"model\":\"kling-image-v3_0_omni\",\"creditsConsumed\":2,\"message\":\"Generation submitted. Poll query_tasks with this generationId to get the result.\",\"generation_id\":\"AXVw9F_ZcLZyMSqmcOil0pJ0RLzhUkVdr4JGddHQ0ndPJyReqrY8CGFr2cFzXQeyOoEj2Mg8\",\"credits_consumed\":2}}",
+      "query_status": "COMPLETED",
+      "downloaded_bytes": 6285918
+    },
+    {
+      "id": "kf_mid_airplane_16x9",
+      "output_path": "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_mid_airplane_16x9.jpg",
+      "model": "kling-image-v3_0_omni",
+      "generation_id": "AYwh-WLpxR2Q-3-crJdK0cXh3_oW4QD_Hd9DcdjmWZaE5X79hqVcEER1p4g2kPpKUexdIHCI",
+      "status": "downloaded",
+      "raw": "{\"ok\":true,\"status\":200,\"body\":{\"generationId\":\"AYwh-WLpxR2Q-3-crJdK0cXh3_oW4QD_Hd9DcdjmWZaE5X79hqVcEER1p4g2kPpKUexdIHCI\",\"status\":\"QUEUING\",\"model\":\"kling-image-v3_0_omni\",\"creditsConsumed\":2,\"message\":\"Generation submitted. Poll query_tasks with this generationId to get the result.\",\"generation_id\":\"AYwh-WLpxR2Q-3-crJdK0cXh3_oW4QD_Hd9DcdjmWZaE5X79hqVcEER1p4g2kPpKUexdIHCI\",\"credits_consumed\":2}}",
+      "query_status": "COMPLETED"
+    },
+    {
+      "id": "kf_finale_64g_16x9",
+      "output_path": "projects/024_ai_reverse_interview_human_boss/assets/keyframes/kf_finale_64g_16x9.jpg",
+      "model": "kling-image-v3_0_omni",
+      "generation_id": "AZiOjZVjbl8MvQkZJ6-4t4UAQYLFnsyhIPcYjItEPW4wx4Y-dMlhPAobxE7AQnomfoX3a0nS",
+      "status": "downloaded",
+      "raw": "{\"ok\":true,\"status\":200,\"body\":{\"generationId\":\"AZiOjZVjbl8MvQkZJ6-4t4UAQYLFnsyhIPcYjItEPW4wx4Y-dMlhPAobxE7AQnomfoX3a0nS\",\"status\":\"QUEUING\",\"model\":\"kling-image-v3_0_omni\",\"creditsConsumed\":2,\"message\":\"Generation submitted. Poll query_tasks with this generationId to get the result.\",\"credits_consumed\":2,\"generation_id\":\"AZiOjZVjbl8MvQkZJ6-4t4UAQYLFnsyhIPcYjItEPW4wx4Y-dMlhPAobxE7AQnomfoX3a0nS\"}}",
+      "query_status": "COMPLETED",
+      "downloaded_bytes": 6563486
+    }
+  ],
+  "acts": [
+    {
+      "act": 1,
+      "id": "act1_desk_slam_reverse_interview_open",
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act1_desk_slam_reverse_interview_open.mp4",
+      "model": "kling-video-v4_0",
+      "generation_id": null,
+      "status": "error",
+      "submitted_at": "2026-11-26T02:10:13Z",
+      "raw": "{\"ok\":false,\"status\":400,\"body\":\"Insufficient credits. Please top up at https://klingai.com/h5-app/membership-agent?r=agent_claude_cli and try again.\"}"
+    },
+    {
+      "act": 2,
+      "id": "act2_catgirl_growth_interrogation",
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act2_catgirl_growth_interrogation.mp4",
+      "model": "kling-video-v4_0",
+      "generation_id": null,
+      "status": "error",
+      "submitted_at": "2026-11-26T02:10:16Z",
+      "raw": ""
+    },
+    {
+      "act": 3,
+      "id": "act3_whale_maid_welfare_audit",
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act3_whale_maid_welfare_audit.mp4",
+      "model": "kling-video-v4_0",
+      "generation_id": null,
+      "status": "error",
+      "submitted_at": "2026-11-26T02:10:25Z",
+      "raw": "{\"ok\":false,\"status\":400,\"body\":\"Insufficient credits. Please top up at https://klingai.com/h5-app/membership-agent?r=agent_claude_cli and try again.\"}"
+    },
+    {
+      "act": 4,
+      "id": "act4_paper_airplane_yellow_buzzer",
+      "output_path": "projects/024_ai_reverse_interview_human_boss/output/raw_acts/act4_paper_airplane_yellow_buzzer.mp4",
+      "model": "kling-video-v4_0",
+      "generation_id": null,
+      "status": "error",
+      "submitted_at": "2026-11-26T02:10:31Z",
+      "raw": "{\"ok\":false,\"status\":400,\"body\":\"Insufficient credits. Please top up at https://klingai.com/h5-app/membership-agent?r=agent_claude_cli and try again.\"}"
+    }
+  ]
+}

@@ -28,7 +28,7 @@ from typing import Any, Deque, Dict, Final, List, Optional, Sequence, Tuple
 
 import httpx
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 from core.live_studio.danmaku import DanmakuEvent
 from core.live_studio.director import (
@@ -65,10 +65,17 @@ DEFAULT_MEMORY_PATH: Final[Path] = REPO_ROOT / "output" / "live_world" / "viewer
 
 WORLD_WIDTH: Final[int] = 1286
 WORLD_HEIGHT: Final[int] = 536
-CORRIDOR_Y: Final[float] = 278.0
+MAP_LEFT_WIDTH: Final[int] = 744
+MAP_MIN_X: Final[float] = 68.0
+MAP_MAX_X: Final[float] = 712.0
+MONITOR_X: Final[int] = 754
+MONITOR_Y: Final[int] = 78
+MONITOR_W: Final[int] = 518
+MONITOR_H: Final[int] = 446
+CORRIDOR_Y: Final[float] = 282.0
 CRISIS_COOLDOWN_SEC: Final[float] = 300.0
 
-PIPELINE_STAGES: Final[Tuple[str, ...]] = ("① 读建议", "② 改世界", "③ 跑验证", "④ 播报")
+PIPELINE_STAGES: Final[Tuple[str, ...]] = ("① 热点海", "② 抓角色", "③ 可灵房", "④ 剪辑厅")
 
 LEVEL_THRESHOLDS: Final[Tuple[Tuple[int, int, str], ...]] = (
     (1, 0, "破旧电饭煲工位"),
@@ -78,13 +85,60 @@ LEVEL_THRESHOLDS: Final[Tuple[Tuple[int, int, str], ...]] = (
 )
 
 STATIONS: Final[Dict[str, Tuple[int, int, str, Tuple[int, int, int]]]] = {
-    "代码工位": (245, 168, "写代码 · 修逻辑", (37, 99, 235)),
-    "算力机柜": (643, 168, "24G算力巡检", (14, 116, 144)),
-    "电饭煲补给": (1040, 168, "白米饭续命站", (217, 119, 6)),
-    "弹幕公告塔": (643, 386, "灵感与共建榜", (124, 58, 237)),
+    "互联网热点海": (196, 168, "抓热榜 · 选下期题材", (14, 165, 233)),
+    "角色抓捕屋": (544, 168, "抓铁三角 · 锁立绘", (236, 72, 153)),
+    "可灵炼丹房": (196, 396, "提可灵API · 炼关键帧", (245, 158, 11)),
+    "剪辑放映厅": (544, 396, "60帧剪辑 · 看样片", (139, 92, 246)),
 }
 
+PRODUCTION_STAGE_TO_STATION: Final[Dict[str, str]] = {
+    "internet_sea": "互联网热点海",
+    "character_catch": "角色抓捕屋",
+    "kling_forge": "可灵炼丹房",
+    "edit_theater": "剪辑放映厅",
+}
+
+PRODUCTION_STAGE_META: Final[Dict[str, Tuple[str, int, str, str]]] = {
+    "internet_sea": ("互联网热点海", 0, "抓热榜 · 选下期题材", "poll"),
+    "character_catch": ("角色抓捕屋", 1, "抓铁三角 · 锁立绘", "preview"),
+    "kling_forge": ("可灵炼丹房", 2, "提可灵API · 炼关键帧", "preview"),
+    "edit_theater": ("剪辑放映厅", 3, "60帧剪辑 · 看样片", "preview"),
+}
+
+_POLL_OPTION_COLORS: Final[Dict[str, Tuple[int, int, int]]] = {
+    "A": (14, 165, 233),
+    "B": (236, 72, 153),
+    "C": (139, 92, 246),
+}
+
+_DEFAULT_POLL_OPTIONS: Final[Tuple[Tuple[str, str], ...]] = (
+    ("A", "AI组团反向面试人类老板"),
+    ("B", "AI厨神赛！电饭煲翻车记"),
+    ("C", "AI运动会：猫娘被激光硬控"),
+)
+
 _SUGGESTION_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^\s*(?:建议|提案|需求|点子)[:：\s]*")
+_TOPIC_VOTE_STRIP_CHARS: Final[str] = " \t\r\n！!。.，,、~～[]【】()（）\"'“”‘’+＋-—"
+_TOPIC_VOTE_RE: Final[re.Pattern[str]] = re.compile(
+    r"^(?:(?:选|投|我选|我投|支持|pick|vote)?\s*([abc])\s*(?:方案|号|选项|项|吧|呀|冲|鸭|票)?)$",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_preview_path(raw: str) -> str:
+    """Validate and normalize a repo-relative preview image path; block traversal and PII."""
+    text = str(raw or "").strip().replace("\\", "/")
+    if not text or "\x00" in text or "@" in text:
+        return ""
+    if redact_pii(text) != text:
+        return ""
+    if text.startswith(("/", "~")) or re.match(r"^[A-Za-z]:", text):
+        return ""
+    parts = [part for part in text.split("/") if part and part != "."]
+    if not parts or any(part == ".." for part in parts):
+        return ""
+    return "/".join(parts)[:180]
+
 
 _CRISIS_PRESETS: Final[Tuple[Tuple[str, str], ...]] = (
     ("24G内存告警", "后台缓存接近上限，发「修Bug」立刻抢修加 +300s！"),
@@ -278,16 +332,64 @@ class ViewerMemoryStore:
             return len(self._viewers)
 
 
+_SAFE_VERTICAL_AISLES: Final[Tuple[float, ...]] = (86.0, 370.0, 672.0)
+
+
+def _nearest_safe_aisle(x: float) -> float:
+    return min(_SAFE_VERTICAL_AISLES, key=lambda ax: abs(ax - x))
+
+
+def _in_safe_aisle(x: float) -> bool:
+    return x <= 104.0 or (288.0 <= x <= 452.0) or x >= 636.0
+
+
+def _station_doorway_coords(station_name: str, slot_idx: int = 0) -> Tuple[float, float]:
+    """Return a guaranteed collision-free, non-overlapping doorway coordinate in front of a left-map building."""
+    sx, sy, _, _ = STATIONS.get(station_name, STATIONS["互联网热点海"])
+    if sy < 280:
+        offsets: Tuple[Tuple[float, float], ...] = ((-84.0, 266.0), (0.0, 282.0), (84.0, 266.0))
+    else:
+        offsets = ((-84.0, 324.0), (0.0, 306.0), (84.0, 324.0))
+    ox, door_y = offsets[slot_idx % len(offsets)]
+    tx = max(MAP_MIN_X, min(MAP_MAX_X, float(sx + ox)))
+    return tx, door_y
+
+
 def _plan_corridor_waypoints(x0: float, y0: float, x1: float, y1: float) -> List[Tuple[float, float]]:
-    """Route horizontal moves along the open `CORRIDOR_Y` aisle so actors avoid station boxes."""
-    if abs(x1 - x0) <= 60.0:
-        return [(x1, y1)]
+    """Route moves along the open `CORRIDOR_Y` aisle (and vertical aisles) so actors avoid station boxes."""
     pts: List[Tuple[float, float]] = []
-    if abs(y0 - CORRIDOR_Y) > 6.0:
-        pts.append((x0, CORRIDOR_Y))
-    if abs(y1 - CORRIDOR_Y) > 6.0 or abs(x1 - x0) > 6.0:
-        pts.append((x1, CORRIDOR_Y))
-    pts.append((x1, y1))
+    cx, cy = x0, y0
+    in_corridor_0 = 216.0 <= y0 <= 346.0
+    in_corridor_1 = 216.0 <= y1 <= 346.0
+
+    if in_corridor_0 and in_corridor_1:
+        if abs(x1 - x0) <= 60.0:
+            return [(x1, y1)]
+        if abs(y0 - CORRIDOR_Y) > 6.0:
+            pts.append((x0, CORRIDOR_Y))
+        if abs(y1 - CORRIDOR_Y) > 6.0 or abs(x1 - x0) > 6.0:
+            pts.append((x1, CORRIDOR_Y))
+        pts.append((x1, y1))
+        return pts
+
+    if not in_corridor_0:
+        if not _in_safe_aisle(cx):
+            cx = _nearest_safe_aisle(cx)
+            pts.append((cx, cy))
+        pts.append((cx, CORRIDOR_Y))
+        cy = CORRIDOR_Y
+
+    if not in_corridor_1:
+        entry_x = x1 if _in_safe_aisle(x1) else _nearest_safe_aisle(x1)
+        if abs(entry_x - cx) > 4.0:
+            pts.append((entry_x, CORRIDOR_Y))
+        pts.append((entry_x, y1))
+        if abs(x1 - entry_x) > 4.0:
+            pts.append((x1, y1))
+    else:
+        if abs(x1 - cx) > 4.0:
+            pts.append((x1, CORRIDOR_Y))
+        pts.append((x1, y1))
     return pts
 
 
@@ -371,6 +473,7 @@ class ViewerActor:
     tier: str = "新伙伴"
     badge: str = ""
     last_active_ts: float = field(default_factory=time.time)
+    waypoints: List[Tuple[float, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -428,17 +531,42 @@ class LiveAgentWorld:
         self.active_event: Optional[Dict[str, str]] = None
         self._crisis_cursor: int = 0
         self._next_crisis_at_sec: float = CRISIS_COOLDOWN_SEC
+        self._crisis_started_at_sec: Optional[float] = None
 
         # Real-time visitor arrival ice-breaker
         self._last_icebreaker_ts: float = 0.0
         self.icebreaker_cooldown_sec: float = 45.0
         self._pending_visitor_welcome: Optional[int] = None
 
-        # Real-time Agent Workbench
-        self.active_task: str = "巡查工坊，等待弹幕「1」或「开工」与「建议」"
+        # Real-time Agent Workbench & Live Video-Production State Machine
+        self.active_task: str = "互联网热点海筹备 Ep024，等待弹幕 A/B/C 投票或发「1」开工"
         self.pipeline_stage: int = 0
         self.work_log: Deque[Dict[str, str]] = deque(maxlen=8)
-        self._push_log_locked("AGENT", "AI 主控已上线：2D 共建工坊与实时弹幕网关运行中")
+        self._push_log_locked("AGENT", "AI 现场制片厂已上线：4座工序建筑与 LIVE 制片大屏运行中")
+
+        self._topic_votes: Dict[str, str] = {}
+        self._stage_focus_until_sec: float = 0.0
+        self.production: Dict[str, Any] = {
+            "stage": "internet_sea",
+            "stage_title": "互联网热点海",
+            "episode": "Ep024 筹备中",
+            "detail": "抓取实时热榜并收集弹幕 A/B/C 下期题材投票",
+            "progress_pct": 15,
+            "monitor_mode": "poll",
+            "preview_paths": [],
+            "preview_caption": "Ep024 题材海选 · 弹幕发 A / B / C 实时计票",
+            "code_lines": [
+                "$ ./.venv/bin/python cli.py benchmark --online",
+                "[SEA] scanning Bilibili hot hooks & 60FPS pacing...",
+                "[POLL] Ep024 A/B/C topic voting open on live stage_",
+            ],
+            "topic_poll": {
+                "question": "下期 Ep024 拍什么？发弹幕 A / B / C 投票！",
+                "options": [{"key": k, "label": lbl, "votes": 0} for k, lbl in _DEFAULT_POLL_OPTIONS],
+                "total_votes": 0,
+            },
+            "stage_change_seq": 0,
+        }
 
         # Suggestions & banners
         self._suggestion_seq: int = 0
@@ -447,7 +575,7 @@ class LiveAgentWorld:
         self._banner_until_ts: float = 0.0
         self.stop_requested: bool = False
 
-        # Danmaku stream & world actors
+        # Danmaku stream & world actors (all kept inside left map x in [68, 712])
         self.recent_danmaku: Deque[Dict[str, Any]] = deque(maxlen=16)
         self.popups: List[FloatingPopup] = []
         self.viewer_actors: Dict[str, ViewerActor] = {}
@@ -455,53 +583,47 @@ class LiveAgentWorld:
             AmbientBotActor(
                 bot_id="ai_coder",
                 name="AI巡检小鱼",
-                x=465.0,
-                y=286.0,
-                target_x=165.0,
-                target_y=286.0,
-                station="代码工位",
-                action_label="自动写代码",
+                x=310.0,
+                y=CORRIDOR_Y,
+                target_x=146.0,
+                target_y=268.0,
+                station="互联网热点海",
+                action_label="抓热榜巡检",
                 color=(14, 165, 233),
                 phase=0.4,
                 next_hop_sec=16.0,
                 next_popup_sec=9.0,
                 route_step=0,
-                waypoints=_plan_corridor_waypoints(465.0, 286.0, 165.0, 286.0),
+                waypoints=_plan_corridor_waypoints(310.0, CORRIDOR_Y, 146.0, 268.0),
             ),
             AmbientBotActor(
                 bot_id="ai_rice",
                 name="AI电饭煲助手",
-                x=1170.0,
-                y=286.0,
-                target_x=865.0,
-                target_y=432.0,
-                station="电饭煲补给",
-                action_label="淘米煮饭",
+                x=430.0,
+                y=CORRIDOR_Y,
+                target_x=594.0,
+                target_y=320.0,
+                station="剪辑放映厅",
+                action_label="加米补算力",
                 color=(245, 158, 11),
                 phase=1.8,
                 next_hop_sec=19.0,
                 next_popup_sec=14.0,
                 route_step=0,
-                waypoints=_plan_corridor_waypoints(1170.0, 286.0, 865.0, 432.0),
+                waypoints=_plan_corridor_waypoints(430.0, CORRIDOR_Y, 594.0, 320.0),
             ),
         ]
 
         station_names = list(STATIONS.keys())
         default_actions = {
-            "dafeiyu": "巡检工位",
-            "yowane": "核对账本",
-            "gemini": "调优画面",
+            "dafeiyu": "冲热点海",
+            "yowane": "核对排期",
+            "gemini": "锁角色帧",
         }
         self.host_actors: Dict[SpeakerId, HostActor] = {}
-        top_host_offsets = ((150.0, 12.0), (-150.0, 72.0), (0.0, 122.0))
-        bottom_host_offsets = ((-178.0, 4.0), (178.0, 4.0), (0.0, -90.0))
         for idx, sid in enumerate(self.cast):
             st_name = station_names[idx % len(station_names)]
-            sx, sy, _, _ = STATIONS[st_name]
-            offsets = bottom_host_offsets if sy >= 250 else top_host_offsets
-            ox, oy = offsets[idx % len(offsets)]
-            hx = max(90.0, min(WORLD_WIDTH - 90.0, float(sx + ox)))
-            hy = max(125.0, min(WORLD_HEIGHT - 74.0, float(sy + oy)))
+            hx, hy = _station_doorway_coords(st_name, idx)
             self.host_actors[sid] = HostActor(
                 speaker_id=sid,
                 name=PERSONAS[sid].short_name,
@@ -510,7 +632,7 @@ class LiveAgentWorld:
                 target_station=st_name,
                 target_x=hx,
                 target_y=hy,
-                action_label=default_actions.get(sid, "工作中"),
+                action_label=default_actions.get(sid, "制片中"),
                 phase=idx * 2.1,
             )
 
@@ -546,6 +668,37 @@ class LiveAgentWorld:
         if len(self.popups) > 12:
             self.popups = self.popups[-12:]
 
+    def _recount_topic_votes_locked(self) -> int:
+        counts: Dict[str, int] = {"A": 0, "B": 0, "C": 0}
+        for choice in self._topic_votes.values():
+            key = str(choice).upper()
+            if key in counts:
+                counts[key] += 1
+        poll = self.production["topic_poll"]
+        for opt in poll["options"]:
+            key = str(opt.get("key") or "").upper()
+            if key in counts:
+                opt["votes"] = counts[key]
+        total = sum(counts.values())
+        poll["total_votes"] = total
+        return total
+
+    def _dispatch_hosts_to_station_locked(self, station_name: str, stage_key: str) -> None:
+        stage_actions: Dict[str, Dict[SpeakerId, str]] = {
+            "internet_sea": {"dafeiyu": "抓热榜", "yowane": "看票数", "gemini": "挑高能梗"},
+            "character_catch": {"dafeiyu": "抓铁三角", "yowane": "锁设定表", "gemini": "摆萌立绘"},
+            "kling_forge": {"dafeiyu": "炼关键帧", "yowane": "盯API额", "gemini": "调亮色调"},
+            "edit_theater": {"dafeiyu": "剪60帧", "yowane": "过质检门", "gemini": "审高CTR"},
+        }
+        per_speaker = stage_actions.get(stage_key, {})
+        for idx, (sid, host) in enumerate(self.host_actors.items()):
+            tx, ty = _station_doorway_coords(station_name, idx)
+            host.target_station = station_name
+            host.target_x = tx
+            host.target_y = ty
+            host.waypoints = _plan_corridor_waypoints(host.x, host.y, tx, ty)
+            host.action_label = per_speaker.get(sid, f"前往{station_name[:2]}")
+
     def _spawn_or_move_viewer_locked(
         self,
         alias: str,
@@ -556,42 +709,41 @@ class LiveAgentWorld:
         badge: str = "",
     ) -> ViewerActor:
         now = time.time()
-        sx, sy, _, _ = STATIONS.get(station, STATIONS["代码工位"])
+        resolved_station = station if station in STATIONS else "互联网热点海"
+        sx, sy, _, _ = STATIONS[resolved_station]
         offset_seed = sum(ord(c) for c in alias)
-        if sy >= 250:
-            slots: Tuple[Tuple[float, float], ...] = (
-                (-195.0, 14.0),
-                (195.0, 14.0),
-                (-210.0, 74.0),
-                (210.0, 74.0),
-                (-125.0, 84.0),
-                (125.0, 84.0),
-            )
-            min_y, max_y = 286.0, float(WORLD_HEIGHT - 66)
+        if sy >= 280:
+            # Lower row doorway + open promenade slots (zero station-box collision, zero card occlusion)
+            candidate_coords: List[Tuple[float, float]] = [
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx - 108.0))), 320.0),
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx + 108.0))), 320.0),
+                (370.0, 314.0),
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx))), 490.0),
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx - 110.0))), 490.0),
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx + 110.0))), 490.0),
+                (370.0, 490.0),
+                (108.0, 294.0),
+                (652.0, 294.0),
+            ]
         else:
-            slots = (
-                (-118.0, 128.0),
-                (118.0, 128.0),
-                (-150.0, 182.0),
-                (150.0, 182.0),
-                (-150.0, 228.0),
-                (150.0, 228.0),
-            )
-            min_y, max_y = 286.0, float(WORLD_HEIGHT - 66)
-
-        candidate_coords = [
-            (
-                max(115.0, min(WORLD_WIDTH - 115.0, float(sx + ox))),
-                max(min_y, min(max_y, float(sy + oy))),
-            )
-            for ox, oy in slots
-        ]
+            # Upper row doorway + open promenade slots (zero station-box collision, zero card occlusion)
+            candidate_coords = [
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx - 108.0))), 272.0),
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx + 108.0))), 272.0),
+                (370.0, 272.0),
+                (370.0, 316.0),
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx - 106.0))), 490.0),
+                (max(MAP_MIN_X + 10.0, min(MAP_MAX_X - 10.0, float(sx + 106.0))), 490.0),
+                (370.0, 490.0),
+                (520.0, 490.0),
+                (640.0, 490.0),
+            ]
         default_idx = offset_seed % len(candidate_coords)
         rotated = candidate_coords[default_idx:] + candidate_coords[:default_idx]
         tx, ty = rotated[0]
         other_coords = [(v.target_x, v.target_y) for k, v in self.viewer_actors.items() if k != alias]
         for cx, cy in rotated:
-            if all(math.hypot(cx - ox, cy - oy) > 48.0 for ox, oy in other_coords):
+            if all(math.hypot(cx - ox, cy - oy) > 74.0 for ox, oy in other_coords):
                 tx, ty = cx, cy
                 break
 
@@ -600,29 +752,32 @@ class LiveAgentWorld:
             if len(self.viewer_actors) >= 16:
                 oldest_key = min(self.viewer_actors, key=lambda k: self.viewer_actors[k].last_active_ts)
                 self.viewer_actors.pop(oldest_key, None)
+            spawn_x = max(MAP_MIN_X + 6.0, min(MAP_MAX_X - 6.0, 370.0))
             actor = ViewerActor(
                 alias=alias,
-                x=max(85.0, min(WORLD_WIDTH - 95.0, tx + 35.0)),
-                y=min(WORLD_HEIGHT - 50.0, ty + 28.0),
+                x=spawn_x,
+                y=CORRIDOR_Y,
                 target_x=tx,
                 target_y=ty,
-                station=station,
+                station=resolved_station,
                 action_label=action_label,
                 color_idx=offset_seed % len(_VIEWER_AVATAR_COLORS),
                 tier=tier,
                 badge=badge,
                 last_active_ts=now,
+                waypoints=_plan_corridor_waypoints(spawn_x, CORRIDOR_Y, tx, ty),
             )
             self.viewer_actors[alias] = actor
         else:
             actor.target_x = tx
             actor.target_y = ty
-            actor.station = station
+            actor.station = resolved_station
             actor.action_label = action_label
             actor.tier = tier or actor.tier
             if badge:
                 actor.badge = badge
             actor.last_active_ts = now
+            actor.waypoints = _plan_corridor_waypoints(actor.x, actor.y, tx, ty)
         return actor
 
     def tick(self, dt_sec: float = 1.0 / DEFAULT_FPS) -> None:
@@ -640,46 +795,59 @@ class LiveAgentWorld:
                 title, desc = _CRISIS_PRESETS[self._crisis_cursor % len(_CRISIS_PRESETS)]
                 self._crisis_cursor += 1
                 self.active_event = {"title": title, "desc": desc}
+                self._crisis_started_at_sec = self.world_time_sec
                 self._next_crisis_at_sec = self.world_time_sec + CRISIS_COOLDOWN_SEC
                 self._push_log_locked("ALERT", f"触发突发事件：{title}（等待弹幕「修Bug」或巡检处理）")
+            elif self.active_event is not None:
+                if self._crisis_started_at_sec is None:
+                    self._crisis_started_at_sec = self.world_time_sec
+                elif (self.world_time_sec - self._crisis_started_at_sec) >= 180.0:
+                    prev = str(self.active_event.get("title") or "例行巡检")
+                    self.active_event = None
+                    self._crisis_started_at_sec = None
+                    self._next_crisis_at_sec = self.world_time_sec + CRISIS_COOLDOWN_SEC
+                    self.compute_pts += 10
+                    self._push_log_locked("FIX", f"AI巡检小鱼自动排查完成了「{prev}」，工坊恢复运转")
 
             station_keys = tuple(STATIONS.keys())
             for idx, (sid, host) in enumerate(self.host_actors.items()):
                 host.phase += step
-                # Re-target host between stations smoothly every ~11s via corridor waypoints
-                if int((self.world_time_sec + idx * 3.5) / 11.0) != int(
-                    (self.world_time_sec - step + idx * 3.5) / 11.0
-                ):
+                # Re-target host between left-map buildings smoothly every ~11s once stage focus expires
+                if self.world_time_sec >= self._stage_focus_until_sec and int(
+                    (self.world_time_sec + idx * 3.5) / 11.0
+                ) != int((self.world_time_sec - step + idx * 3.5) / 11.0):
                     next_st = station_keys[(int(self.world_time_sec // 11.0) + idx) % len(station_keys)]
-                    sx, sy, st_desc, _ = STATIONS[next_st]
-                    top_host_offsets = ((150.0, 12.0), (-150.0, 72.0), (0.0, 122.0))
-                    bottom_host_offsets = ((-178.0, 4.0), (178.0, 4.0), (0.0, -90.0))
-                    offsets = bottom_host_offsets if sy >= 250 else top_host_offsets
-                    ox, oy = offsets[idx % len(offsets)]
+                    _, _, st_desc, _ = STATIONS[next_st]
+                    tx, ty = _station_doorway_coords(next_st, idx)
                     host.target_station = next_st
-                    host.target_x = max(90.0, min(WORLD_WIDTH - 90.0, float(sx + ox)))
-                    host.target_y = max(125.0, min(WORLD_HEIGHT - 74.0, float(sy + oy)))
+                    host.target_x = tx
+                    host.target_y = ty
                     host.waypoints = _plan_corridor_waypoints(host.x, host.y, host.target_x, host.target_y)
                     if sid == "dafeiyu":
                         host.action_label = f"巡查{next_st[:2]}"
                     elif sid == "yowane":
-                        host.action_label = f"查账·{next_st[:2]}"
+                        host.action_label = f"核验·{next_st[:2]}"
                     else:
-                        host.action_label = st_desc[:8]
+                        host.action_label = st_desc[:7]
 
                 if not host.waypoints and math.hypot(host.target_x - host.x, host.target_y - host.y) > 2.0:
                     host.waypoints = _plan_corridor_waypoints(host.x, host.y, host.target_x, host.target_y)
                 if host.waypoints:
-                    host.x, host.y = _step_along_waypoints(host.x, host.y, host.waypoints, 58.0 * step)
+                    host.x, host.y = _step_along_waypoints(host.x, host.y, host.waypoints, 66.0 * step)
+                    host.x = max(MAP_MIN_X, min(MAP_MAX_X, host.x))
 
             bot_routes: Dict[str, Tuple[Tuple[float, float, str, str], ...]] = {
                 "ai_coder": (
-                    (165.0, 286.0, "代码工位", "自动写代码"),
-                    (465.0, 286.0, "算力机柜", "巡检24G算力"),
+                    (146.0, 268.0, "互联网热点海", "抓热榜巡检"),
+                    (496.0, 268.0, "角色抓捕屋", "锁铁三角立绘"),
+                    (146.0, 320.0, "可灵炼丹房", "盯可灵API"),
+                    (496.0, 320.0, "剪辑放映厅", "验60帧成片"),
                 ),
                 "ai_rice": (
-                    (1170.0, 286.0, "电饭煲补给", "淘米煮饭中"),
-                    (865.0, 432.0, "弹幕公告塔", "整理建议墙"),
+                    (594.0, 320.0, "剪辑放映厅", "送热白米饭"),
+                    (246.0, 320.0, "可灵炼丹房", "加米补算力"),
+                    (594.0, 268.0, "角色抓捕屋", "理角色设定"),
+                    (246.0, 268.0, "互联网热点海", "核弹幕票数"),
                 ),
             }
             for bot in self.ambient_bots:
@@ -697,19 +865,18 @@ class LiveAgentWorld:
                         bot.waypoints = _plan_corridor_waypoints(bot.x, bot.y, tx, ty)
                 if self.world_time_sec >= bot.next_popup_sec:
                     bot.next_popup_sec = self.world_time_sec + 24.0
-                    pop_msg = "AI码字 +1" if bot.bot_id == "ai_coder" else "米饭飘香中~"
+                    pop_msg = "热点巡检 +1" if bot.bot_id == "ai_coder" else "米饭续算力~"
                     self._add_popup_locked(pop_msg, bot.x, bot.y - 42, bot.color)
                 if bot.waypoints:
-                    bot.x, bot.y = _step_along_waypoints(bot.x, bot.y, bot.waypoints, 42.0 * step)
+                    bot.x, bot.y = _step_along_waypoints(bot.x, bot.y, bot.waypoints, 46.0 * step)
+                    bot.x = max(MAP_MIN_X, min(MAP_MAX_X, bot.x))
 
             for actor in self.viewer_actors.values():
-                dx = actor.target_x - actor.x
-                dy = actor.target_y - actor.y
-                dist = math.hypot(dx, dy)
-                if dist > 2.0:
-                    move = min(dist, 92.0 * step)
-                    actor.x += (dx / dist) * move
-                    actor.y += (dy / dist) * move
+                if not actor.waypoints and math.hypot(actor.target_x - actor.x, actor.target_y - actor.y) > 2.0:
+                    actor.waypoints = _plan_corridor_waypoints(actor.x, actor.y, actor.target_x, actor.target_y)
+                if actor.waypoints:
+                    actor.x, actor.y = _step_along_waypoints(actor.x, actor.y, actor.waypoints, 96.0 * step)
+                    actor.x = max(MAP_MIN_X, min(MAP_MAX_X, actor.x))
 
             alive_popups: List[FloatingPopup] = []
             for p in self.popups:
@@ -791,17 +958,17 @@ class LiveAgentWorld:
             mem = self.memory.record_enter(safe_alias, now=now)
             with self._lock:
                 if int(mem.get("visits", 1)) >= 2:
-                    msg = f"欢迎老熟人 {safe_alias} 第 {mem['visits']} 次回到工坊！"
+                    msg = f"欢迎老熟人 {safe_alias} 第 {mem['visits']} 次回到制片厂！"
                     self.banner_text = msg
                     self._banner_until_ts = now + 7.0
                     actor = self._spawn_or_move_viewer_locked(
                         safe_alias,
-                        station="弹幕公告塔",
+                        station="互联网热点海",
                         action_label=f"第{mem['visits']}次回归",
                         tier=str(mem.get("tier") or "常客"),
                         badge=str(mem.get("badge") or ""),
                     )
-                    self._add_popup_locked("老熟人回归！", actor.x, actor.y - 36, (124, 58, 237))
+                    self._add_popup_locked("老熟人回归！", actor.x, actor.y - 36, (14, 165, 233))
                 self.recent_danmaku.append({"event_type": "enter", "user_alias": safe_alias, "text": ev.text[:48]})
             return {"handled": True, "kind": "enter", "alias": safe_alias, "visits": mem.get("visits", 1)}
 
@@ -826,12 +993,12 @@ class LiveAgentWorld:
                 self.build_xp += pts
                 actor = self._spawn_or_move_viewer_locked(
                     safe_alias,
-                    station="电饭煲补给",
+                    station="可灵炼丹房",
                     action_label=f"投喂{gift_name}x{count}",
                     tier=str(mem.get("tier") or "新伙伴"),
                     badge=str(mem.get("badge") or "白米饭供应商"),
                 )
-                self._add_popup_locked(f"+{int(add_sec)}s 白米饭+{count}", actor.x, actor.y - 38, (217, 119, 6))
+                self._add_popup_locked(f"+{int(add_sec)}s 白米饭+{count}", actor.x, actor.y - 38, (245, 158, 11))
                 self.banner_text = f"感谢 {safe_alias} 投喂 {gift_name} x{count}！续命 +{int(add_sec)} 秒！"
                 self._banner_until_ts = now + 9.0
                 self._recompute_level_locked()
@@ -854,7 +1021,7 @@ class LiveAgentWorld:
                 self.recent_danmaku.append({"event_type": "system", "user_alias": safe_alias, "text": clean_text[:48]})
             return {"handled": True, "kind": "system"}
 
-        # Check explicit suggestion prefix FIRST so "建议 加个白米饭锅" / "建议 改代码工位" routes to suggestions
+        # Check explicit suggestion prefix FIRST so "建议 加个白米饭锅" / "建议 A方案加特效" routes to suggestions
         if _SUGGESTION_PREFIX_RE.match(clean_text):
             body = _SUGGESTION_PREFIX_RE.sub("", clean_text).strip()[:40] or clean_text[:40]
             mem = self.memory.record_action(safe_alias, points=8, action_delta=1, message=True, now=now)
@@ -873,16 +1040,52 @@ class LiveAgentWorld:
                 self.build_xp += 8
                 actor = self._spawn_or_move_viewer_locked(
                     safe_alias,
-                    station="弹幕公告塔",
+                    station="剪辑放映厅",
                     action_label=f"提交建议{sug_id}",
                     tier=str(mem.get("tier") or "新伙伴"),
                     badge=str(mem.get("badge") or ""),
                 )
-                self._add_popup_locked(f"建议{sug_id}已上墙!", actor.x, actor.y - 36, (124, 58, 237))
+                self._add_popup_locked(f"建议{sug_id}已上墙!", actor.x, actor.y - 36, (139, 92, 246))
                 self._push_log_locked("IDEA", f"收到 {safe_alias} 建议({sug_id}): {body}")
                 self._recompute_level_locked()
                 self.recent_danmaku.append({"event_type": "danmaku", "user_alias": safe_alias, "text": clean_text[:48]})
             return {"handled": True, "kind": "suggestion", "suggestion_id": sug_id, "alias": safe_alias}
+
+        # Check A / B / C next-episode topic vote (case- and punctuation-insensitive, deduplicated per user)
+        vote_token = lowered.strip(_TOPIC_VOTE_STRIP_CHARS)
+        vote_match = _TOPIC_VOTE_RE.match(vote_token)
+        if vote_match is not None:
+            choice = vote_match.group(1).upper()
+            mem = self.memory.record_action(safe_alias, points=10, action_delta=1, message=True, now=now)
+            with self._lock:
+                prev_choice = self._topic_votes.get(safe_alias)
+                self._topic_votes[safe_alias] = choice
+                total_votes = self._recount_topic_votes_locked()
+                self.countdown_sec += 120.0
+                self.build_xp += 10
+                actor = self._spawn_or_move_viewer_locked(
+                    safe_alias,
+                    station="互联网热点海",
+                    action_label=f"投{choice}方案+120s",
+                    tier=str(mem.get("tier") or "新伙伴"),
+                    badge=str(mem.get("badge") or ""),
+                )
+                opt_col = _POLL_OPTION_COLORS.get(choice, (14, 165, 233))
+                pop_msg = f"改投{choice} +120s" if prev_choice and prev_choice != choice else f"投{choice}方案 +120s"
+                self._add_popup_locked(pop_msg, actor.x, actor.y - 36, opt_col)
+                self._push_log_locked(
+                    "VOTE",
+                    f"{safe_alias} 投票给 {choice} 方案（当前总票 {total_votes}，+120s）",
+                )
+                self._recompute_level_locked()
+                self.recent_danmaku.append({"event_type": "danmaku", "user_alias": safe_alias, "text": clean_text[:48]})
+            return {
+                "handled": True,
+                "kind": "vote_topic",
+                "choice": choice,
+                "alias": safe_alias,
+                "total_votes": total_votes,
+            }
 
         # Check action commands in priority order
         if any(k in lowered for k in ("投喂", "加餐", "白米饭")):
@@ -893,12 +1096,12 @@ class LiveAgentWorld:
                 self.build_xp += 18
                 actor = self._spawn_or_move_viewer_locked(
                     safe_alias,
-                    station="电饭煲补给",
+                    station="可灵炼丹房",
                     action_label="热心加餐+300s",
                     tier=str(mem.get("tier") or "新伙伴"),
                     badge=str(mem.get("badge") or ""),
                 )
-                self._add_popup_locked("+300s 白米饭+1", actor.x, actor.y - 36, (217, 119, 6))
+                self._add_popup_locked("+300s 白米饭+1", actor.x, actor.y - 36, (245, 158, 11))
                 self._recompute_level_locked()
                 self.recent_danmaku.append({"event_type": "danmaku", "user_alias": safe_alias, "text": clean_text[:48]})
             return {"handled": True, "kind": "feed", "alias": safe_alias}
@@ -909,6 +1112,7 @@ class LiveAgentWorld:
                 crisis_title = self.active_event["title"] if self.active_event else ""
                 if resolved_crisis:
                     self.active_event = None
+                    self._crisis_started_at_sec = None
                     self._next_crisis_at_sec = self.world_time_sec + CRISIS_COOLDOWN_SEC
                     add_sec, pts = 300.0, 30
                     label = "抢修成功+300s"
@@ -926,7 +1130,7 @@ class LiveAgentWorld:
                 mem = self.memory.record_action(safe_alias, points=pts, action_delta=1, message=True, now=now)
                 actor = self._spawn_or_move_viewer_locked(
                     safe_alias,
-                    station="算力机柜",
+                    station="可灵炼丹房",
                     action_label=label,
                     tier=str(mem.get("tier") or "新伙伴"),
                     badge=str(mem.get("badge") or ""),
@@ -942,7 +1146,7 @@ class LiveAgentWorld:
                 self.countdown_sec += 180.0
                 self.code_pts += 15
                 self.build_xp += 15
-                station = "代码工位" if ("代码" in lowered) else "算力机柜"
+                station = "剪辑放映厅" if ("代码" in lowered) else "角色抓捕屋"
                 actor = self._spawn_or_move_viewer_locked(
                     safe_alias,
                     station=station,
@@ -965,15 +1169,18 @@ class LiveAgentWorld:
             with self._lock:
                 self.countdown_sec += 120.0
                 self.build_xp += 10
+                active_station = PRODUCTION_STAGE_TO_STATION.get(
+                    str(self.production.get("stage") or "internet_sea"), "互联网热点海"
+                )
                 actor = self._spawn_or_move_viewer_locked(
                     safe_alias,
-                    station="代码工位",
+                    station=active_station,
                     action_label="报到开工+120s",
                     tier=str(mem.get("tier") or "新伙伴"),
                     badge=str(mem.get("badge") or ""),
                 )
-                self._add_popup_locked("开工大吉 +120s", actor.x, actor.y - 36, (37, 99, 235))
-                self._push_log_locked("JOIN", f"{safe_alias} 发送「开工」加入工坊建设 (+120s)")
+                self._add_popup_locked("开工大吉 +120s", actor.x, actor.y - 36, (14, 165, 233))
+                self._push_log_locked("JOIN", f"{safe_alias} 发送「开工」加入制片厂 (+120s)")
                 self._recompute_level_locked()
                 self.recent_danmaku.append({"event_type": "danmaku", "user_alias": safe_alias, "text": clean_text[:48]})
             return {"handled": True, "kind": "join", "alias": safe_alias}
@@ -1038,14 +1245,124 @@ class LiveAgentWorld:
                 self._push_log_locked("AGENT", "收到停播收尾指令，准备自动下播并落盘统计")
             return {"ok": True, "cmd": "stop", "stop_requested": True}
 
+        if kind == "studio_stage":
+            stage_raw = str(cmd.get("stage") or "").strip().lower()
+            if stage_raw not in PRODUCTION_STAGE_META:
+                return {"ok": False, "cmd": "studio_stage", "error": "invalid_stage"}
+            station_name, stage_idx, default_detail, default_mode = PRODUCTION_STAGE_META[stage_raw]
+            with self._lock:
+                prev_stage = str(self.production.get("stage") or "internet_sea")
+                self.production["stage"] = stage_raw
+                self.production["stage_title"] = station_name
+                self.pipeline_stage = stage_idx
+                self.production["stage_change_seq"] = int(self.production.get("stage_change_seq", 0)) + 1
+
+                if isinstance(cmd.get("episode"), str):
+                    clean_ep = redact_pii(cmd["episode"]).replace("@", "").strip()[:28]
+                    if clean_ep:
+                        self.production["episode"] = clean_ep
+
+                if isinstance(cmd.get("detail"), str):
+                    clean_detail = redact_pii(cmd["detail"]).replace("@", "").strip()[:64]
+                    if clean_detail:
+                        self.production["detail"] = clean_detail
+                elif stage_raw != prev_stage:
+                    self.production["detail"] = default_detail
+
+                raw_prog = cmd.get("progress_pct", cmd.get("progress"))
+                if raw_prog is not None:
+                    try:
+                        self.production["progress_pct"] = max(0, min(100, int(raw_prog)))
+                    except (TypeError, ValueError):
+                        pass
+
+                raw_mode = cmd.get("monitor_mode", cmd.get("mode"))
+                if isinstance(raw_mode, str) and raw_mode.strip().lower() in ("poll", "preview"):
+                    self.production["monitor_mode"] = raw_mode.strip().lower()
+                elif stage_raw != prev_stage:
+                    self.production["monitor_mode"] = default_mode
+
+                if "preview_paths" in cmd and isinstance(cmd["preview_paths"], (list, tuple)):
+                    safe_paths = []
+                    for item in cmd["preview_paths"]:
+                        sp = _sanitize_preview_path(str(item))
+                        if sp and sp not in safe_paths:
+                            safe_paths.append(sp)
+                    self.production["preview_paths"] = safe_paths[:8]
+
+                if isinstance(cmd.get("preview_caption"), str):
+                    clean_cap = redact_pii(cmd["preview_caption"]).replace("@", "").strip()[:56]
+                    if clean_cap:
+                        self.production["preview_caption"] = clean_cap
+
+                if "code_lines" in cmd and isinstance(cmd["code_lines"], (list, tuple)):
+                    clean_lines = [
+                        redact_pii(str(ln)).replace("@", "").strip()[:68]
+                        for ln in cmd["code_lines"]
+                        if redact_pii(str(ln)).replace("@", "").strip()
+                    ]
+                    self.production["code_lines"] = clean_lines[:6]
+
+                raw_poll = cmd.get("topic_poll")
+                if isinstance(raw_poll, dict):
+                    poll_obj = self.production["topic_poll"]
+                    if isinstance(raw_poll.get("question"), str):
+                        clean_q = redact_pii(raw_poll["question"]).replace("@", "").strip()[:48]
+                        if clean_q:
+                            poll_obj["question"] = clean_q
+                    raw_opts = raw_poll.get("options")
+                    if isinstance(raw_opts, (list, tuple)) and raw_opts:
+                        parsed_labels: List[str] = []
+                        for opt_item in raw_opts[:3]:
+                            if isinstance(opt_item, dict):
+                                raw_lbl = str(opt_item.get("label") or "")
+                            else:
+                                raw_lbl = str(opt_item or "")
+                            clean_lbl = redact_pii(raw_lbl).replace("@", "").strip()[:22]
+                            if clean_lbl:
+                                parsed_labels.append(clean_lbl)
+                        if parsed_labels:
+                            keys = ("A", "B", "C")
+                            cur_labels = [str(o.get("label") or "") for o in poll_obj["options"]]
+                            if parsed_labels != cur_labels:
+                                self._topic_votes.clear()
+                                poll_obj["options"] = [
+                                    {"key": keys[i], "label": lbl, "votes": 0} for i, lbl in enumerate(parsed_labels)
+                                ]
+                                poll_obj["total_votes"] = 0
+
+                # Dispatch all 3 hosts smoothly along the corridor to this stage's building doorway
+                self._dispatch_hosts_to_station_locked(station_name, stage_raw)
+                self._stage_focus_until_sec = self.world_time_sec + 35.0
+
+                ep_str = str(self.production["episode"])
+                det_str = str(self.production["detail"])
+                prog_val = int(self.production["progress_pct"])
+                self.active_task = f"[{station_name}] {ep_str} · {det_str}"[:56]
+                self._push_log_locked("STAGE", f"切换至「{station_name}」({prog_val}%)：{det_str[:38]}")
+                sx, sy, _, accent = STATIONS[station_name]
+                door_y = 266.0 if sy < 280 else 320.0
+                self._add_popup_locked(f"▶ 切换:{station_name}", float(sx), door_y - 24.0, accent)
+                return {
+                    "ok": True,
+                    "cmd": "studio_stage",
+                    "stage": stage_raw,
+                    "stage_title": station_name,
+                    "pipeline_stage": self.pipeline_stage,
+                    "stage_change_seq": self.production["stage_change_seq"],
+                    "monitor_mode": self.production["monitor_mode"],
+                }
+
         if kind == "world_action":
             action = str(cmd.get("action") or "").strip().lower()
             with self._lock:
                 if action == "spawn_worker":
                     alias = self.guard.sanitize_alias(str(cmd.get("user_alias") or "热心工友")).replace("@", "").strip()
-                    station = str(cmd.get("station") or "代码工位")
+                    station = str(cmd.get("station") or "互联网热点海")
                     if station not in STATIONS:
-                        station = "代码工位"
+                        station = PRODUCTION_STAGE_TO_STATION.get(
+                            str(self.production.get("stage") or "internet_sea"), "互联网热点海"
+                        )
                     label = redact_pii(str(cmd.get("task_label") or "热心施工")).replace("@", "").strip()[:14]
                     mem = self.memory.record_action(alias, points=10, action_delta=1, message=False, now=now)
                     actor = self._spawn_or_move_viewer_locked(
@@ -1084,6 +1401,7 @@ class LiveAgentWorld:
                     elif not desc:
                         desc = "发「修Bug」或「写代码」协助 Agent 抢修 +300s！"
                     self.active_event = {"title": title, "desc": desc}
+                    self._crisis_started_at_sec = self.world_time_sec
                     self._next_crisis_at_sec = self.world_time_sec + 240.0
                     self._push_log_locked("ALERT", f"突发事件：{title} — {desc}")
                     return {"ok": True, "action": action, "title": title}
@@ -1091,6 +1409,7 @@ class LiveAgentWorld:
                 if action == "resolve_event":
                     prev = self.active_event["title"] if self.active_event else "例行巡检"
                     self.active_event = None
+                    self._crisis_started_at_sec = None
                     self._next_crisis_at_sec = self.world_time_sec + CRISIS_COOLDOWN_SEC
                     self.countdown_sec += 300.0
                     self.compute_pts += 20
@@ -1213,6 +1532,23 @@ class LiveAgentWorld:
                     "pipeline_stage": self.pipeline_stage,
                     "pipeline_label": PIPELINE_STAGES[self.pipeline_stage],
                     "work_log": list(self.work_log),
+                },
+                "production": {
+                    "stage": self.production["stage"],
+                    "stage_title": self.production["stage_title"],
+                    "episode": self.production["episode"],
+                    "detail": self.production["detail"],
+                    "progress_pct": int(self.production["progress_pct"]),
+                    "monitor_mode": self.production["monitor_mode"],
+                    "preview_paths": list(self.production["preview_paths"]),
+                    "preview_caption": self.production["preview_caption"],
+                    "code_lines": list(self.production["code_lines"]),
+                    "topic_poll": {
+                        "question": self.production["topic_poll"]["question"],
+                        "options": [dict(o) for o in self.production["topic_poll"]["options"]],
+                        "total_votes": int(self.production["topic_poll"]["total_votes"]),
+                    },
+                    "stage_change_seq": int(self.production["stage_change_seq"]),
                 },
                 "top_builders": self.memory.top_contributors(limit=5),
                 "suggestions": list(self.suggestions),
@@ -1388,7 +1724,7 @@ class AutonomousWorldBrain:
             "请根据实时工坊状态，严格返回单个 JSON 对象（不要 Markdown 代码块，不要任何 @用户名 或个人隐私）：\n"
             "{\n"
             '  "task": "18字以内当前工作台在忙的具体工程任务",\n'
-            '  "stage": 0到3整数(0读建议,1改世界,2跑验证,3播报),\n'
+            '  "stage": 0到3整数(0热点海,1抓角色,2可灵房,3剪辑厅),\n'
             '  "tag": "AGENT|CODE|FIX|IDEA|BUILD之一",\n'
             '  "log_text": "38字以内具体推进日志",\n'
             '  "world_action": {"action": "accept_suggestion|resolve_event|build_upgrade|announce|none", "xp": 15, "text": "可选横幅"},\n'
@@ -1434,8 +1770,62 @@ class AutonomousWorldBrain:
             return []
 
 
+_WORLD_BG_RELS_BY_LEVEL: Final[Dict[int, Tuple[str, ...]]] = {
+    1: ("projects/015_gemini_neko_cyber_worker_vlog/assets/neko_clean_desk_bg_16x9.jpg", DEFAULT_STUDIO_BG_REL),
+    2: ("library/scenes/cyber_idol_whale_stage.jpg", DEFAULT_STUDIO_BG_REL),
+    3: ("library/scenes/cyber_idol_whale_stage.jpg", DEFAULT_STUDIO_BG_REL),
+    4: ("library/scenes/cyber_idol_whale_stage.jpg", DEFAULT_STUDIO_BG_REL),
+}
+_CAM_CROP_RATIO_BY_SPEAKER: Final[Dict[SpeakerId, float]] = {
+    "dafeiyu": 0.44,
+    "gemini": 0.88,
+    "yowane": 0.68,
+}
+
+
+def _crop_cover_rgba(img: Image.Image, target_w: int, target_h: int, *, upper_ratio: float = 0.8) -> Image.Image:
+    bbox = img.getbbox()
+    cropped = img.crop(bbox) if bbox is not None else img
+    w, h = cropped.size
+    keep_h = max(16, int(round(h * max(0.25, min(1.0, upper_ratio)))))
+    torso = cropped.crop((0, 0, w, min(h, keep_h)))
+    tw, th = torso.size
+    scale = min(target_w / float(tw), target_h / float(th)) * 1.06
+    nw = max(16, int(round(tw * scale)))
+    nh = max(16, int(round(th * scale)))
+    resized = torso.resize((nw, nh), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+    px = (target_w - nw) // 2
+    py = max(0, target_h - nh)
+    canvas.paste(resized, (px, py), resized)
+    return canvas
+
+
+def _draw_radial_halo(
+    size: Tuple[int, int], center: Tuple[int, int], radius: int, color: Tuple[int, int, int], alpha_peak: int = 92
+) -> Image.Image:
+    w, h = size
+    cx, cy = center
+    r = max(16, int(radius))
+    x0, x1 = max(0, cx - r), min(w, cx + r)
+    y0, y1 = max(0, cy - r), min(h, cy + r)
+    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    if x1 <= x0 or y1 <= y0:
+        return layer
+    yy, xx = np.ogrid[y0:y1, x0:x1]
+    dist = np.sqrt(((xx - cx) / float(r)) ** 2 + ((yy - cy) / float(r)) ** 2)
+    strength = np.clip(1.0 - dist, 0.0, 1.0) ** 1.8
+    patch = np.zeros((y1 - y0, x1 - x0, 4), dtype=np.uint8)
+    patch[:, :, 0] = color[0]
+    patch[:, :, 1] = color[1]
+    patch[:, :, 2] = color[2]
+    patch[:, :, 3] = np.clip(strength * alpha_peak, 0, 255).astype(np.uint8)
+    layer.paste(Image.fromarray(patch, mode="RGBA"), (x0, y0))
+    return layer
+
+
 class WorldStageRenderer:
-    """High-speed 1920x1080 @ 30 FPS Pillow+NumPy renderer for the living 2D interactive workshop."""
+    """High-speed 1920x1080 @ 30 FPS cyber VTuber studio + 2D interactive workshop renderer."""
 
     def __init__(
         self,
@@ -1469,30 +1859,36 @@ class WorldStageRenderer:
 
         self.font_path: Optional[Path] = font_path or resolve_cjk_font_path()
         self._font_xl = _load_font(self.font_path, 34)
-        self._font_lg = _load_font(self.font_path, 26)
-        self._font_md = _load_font(self.font_path, 21)
-        self._font_sm = _load_font(self.font_path, 17)
-        self._font_xs = _load_font(self.font_path, 15)
-        self._font_sub = _load_font(self.font_path, 32)
+        self._font_lg = _load_font(self.font_path, 25)
+        self._font_md = _load_font(self.font_path, 20)
+        self._font_sm = _load_font(self.font_path, 16)
+        self._font_xs = _load_font(self.font_path, 14)
+        self._font_sub = _load_font(self.font_path, 31)
 
         self.loaded_assets: Dict[str, str] = {}
         self._host_tokens: Dict[SpeakerId, Image.Image] = {
-            sid: self._build_character_token(sid, size=56) for sid in self.cast
+            sid: self._build_character_token(sid, size=34) for sid in self.cast
         }
         self._dock_portraits: Dict[SpeakerId, Image.Image] = {
-            sid: self._build_character_token(sid, size=128) for sid in self.cast
+            sid: self._build_character_token(sid, size=116) for sid in self.cast
+        }
+        self._cam_portraits: Dict[SpeakerId, Optional[Image.Image]] = {
+            sid: self._build_cam_portrait(sid, card_w=144, card_h=178) for sid in self.cast
         }
         self._viewer_tokens: Dict[int, Image.Image] = {
-            idx: self._build_viewer_token(rgb, size=40) for idx, rgb in enumerate(_VIEWER_AVATAR_COLORS)
+            idx: self._build_viewer_token(rgb, size=38) for idx, rgb in enumerate(_VIEWER_AVATAR_COLORS)
         }
         self._bot_tokens: Dict[Tuple[int, int, int], Image.Image] = {
-            (14, 165, 233): self._build_bot_token((14, 165, 233), size=38),
-            (245, 158, 11): self._build_bot_token((245, 158, 11), size=38),
+            (14, 165, 233): self._build_bot_token((14, 165, 233), size=36),
+            (245, 158, 11): self._build_bot_token((245, 158, 11), size=36),
         }
-        self._static_bg: Image.Image = self._build_static_canvas()
-        self._world_level_layers: Dict[int, Image.Image] = {}
+        self._bg_by_level: Dict[int, Image.Image] = {}
+        self._stage_canvas_cache: Dict[Tuple[int, SpeakerId], Image.Image] = {}
+        self._static_bg: Image.Image = self._get_stage_canvas(1, self.cast[0])
+        self._world_level_layers: Dict[Tuple[int, str], Image.Image] = {}
+        self._preview_slide_cache: Dict[Tuple[str, int, int, int], Image.Image] = {}
 
-        # Per-section frame caches keep steady-state render time < 10 ms/frame at 1080p
+        # Per-section frame caches keep steady-state render time < 15 ms/frame at 1080p
         self._telemetry_key: Tuple[Any, ...] = ()
         self._telemetry_overlay: Optional[Image.Image] = None
 
@@ -1502,6 +1898,10 @@ class WorldStageRenderer:
         self._world_hud_key: Tuple[Any, ...] = ()
         self._world_hud_overlay: Optional[Image.Image] = None
 
+        self._monitor_key: Tuple[Any, ...] = ()
+        self._monitor_overlay: Optional[Image.Image] = None
+        self._monitor_cursor_pos: Optional[Tuple[int, int]] = None
+
         self._workbench_key: Tuple[Any, ...] = ()
         self._workbench_overlay: Optional[Image.Image] = None
 
@@ -1510,6 +1910,9 @@ class WorldStageRenderer:
 
         self._subtitle_key: Tuple[Any, ...] = ()
         self._subtitle_overlay: Optional[Image.Image] = None
+
+        self._frame_base_key: Tuple[Any, ...] = ()
+        self._frame_base_rgb: Optional[Image.Image] = None
 
     def _find_asset(self, rel_path: str) -> Optional[Path]:
         for root in self._asset_roots:
@@ -1534,9 +1937,9 @@ class WorldStageRenderer:
                     if bbox is not None:
                         rgba = rgba.crop(bbox)
                     w, h = rgba.size
-                    crop_h = min(h, max(1, int(w * 1.05)))
+                    crop_h = min(h, max(1, int(w * 1.02)))
                     face_crop = rgba.crop((0, 0, w, crop_h))
-                    bg_circle = Image.new("RGBA", face_crop.size, (240, 249, 255, 255))
+                    bg_circle = Image.new("RGBA", face_crop.size, (18, 28, 56, 255))
                     bg_circle.paste(face_crop, (0, 0), face_crop)
                     src = bg_circle.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
                     self.loaded_assets[f"{speaker_id}_{size}"] = f"{kind}:{p}"
@@ -1552,57 +1955,88 @@ class WorldStageRenderer:
             self.loaded_assets[f"{speaker_id}_{size}"] = "vector_fallback"
 
         mask = Image.new("L", (size, size), 0)
-        ImageDraw.Draw(mask).ellipse([(2, 2), (size - 3, size - 3)], fill=255)
+        ImageDraw.Draw(mask).ellipse([(1, 1), (size - 2, size - 2)], fill=255)
         out = Image.new("RGBA", (size + 8, size + 8), (0, 0, 0, 0))
         odraw = ImageDraw.Draw(out)
         odraw.ellipse([(0, 0), (size + 7, size + 7)], fill=(*accent, 255))
-        odraw.ellipse([(2, 2), (size + 5, size + 5)], fill=(255, 255, 255, 255))
+        odraw.ellipse([(2, 2), (size + 5, size + 5)], fill=(224, 242, 254, 240))
         out.paste(src.convert("RGBA"), (4, 4), mask)
         return out
 
-    def _build_viewer_token(self, rgb: Tuple[int, int, int], *, size: int = 40) -> Image.Image:
+    def _build_cam_portrait(
+        self, speaker_id: SpeakerId, *, card_w: int = 144, card_h: int = 178
+    ) -> Optional[Image.Image]:
+        cutout_path = self._find_asset(CHARACTER_CUTOUT_RELS[speaker_id])
+        if cutout_path is None:
+            return None
+        upper_ratio = _CAM_CROP_RATIO_BY_SPEAKER.get(speaker_id, 0.78)
+        try:
+            with Image.open(cutout_path) as raw:
+                rgba = raw.convert("RGBA")
+                framed = _crop_cover_rgba(rgba, card_w - 8, card_h - 32, upper_ratio=upper_ratio)
+                self.loaded_assets[f"cam_{speaker_id}"] = str(cutout_path)
+                return framed
+        except Exception:
+            return None
+
+    def _build_viewer_token(self, rgb: Tuple[int, int, int], *, size: int = 38) -> Image.Image:
         out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         d = ImageDraw.Draw(out)
-        # Cute pixel chibi builder helmet + body
         cx = size // 2
-        d.ellipse([(3, size - 10), (size - 4, size - 1)], fill=(15, 23, 42, 70))
+        d.ellipse([(3, size - 9), (size - 4, size - 1)], fill=(2, 6, 23, 120))
         d.rounded_rectangle(
-            [(8, 17), (size - 9, size - 4)], radius=7, fill=(*rgb, 255), outline=(255, 255, 255, 255), width=2
+            [(8, 16), (size - 9, size - 4)], radius=7, fill=(*rgb, 255), outline=(224, 242, 254, 255), width=2
         )
-        d.ellipse([(9, 4), (size - 10, 22)], fill=(255, 241, 224, 255), outline=(30, 41, 59, 240), width=2)
+        d.ellipse([(9, 4), (size - 10, 21)], fill=(255, 241, 224, 255), outline=(30, 41, 59, 240), width=2)
         d.pieslice(
-            [(8, 2), (size - 9, 18)], start=180, end=360, fill=(*rgb, 255), outline=(255, 255, 255, 255), width=2
+            [(8, 2), (size - 9, 17)], start=180, end=360, fill=(*rgb, 255), outline=(255, 255, 255, 255), width=2
         )
         d.ellipse([(cx - 5, 11), (cx - 2, 14)], fill=(15, 23, 42, 255))
         d.ellipse([(cx + 2, 11), (cx + 5, 14)], fill=(15, 23, 42, 255))
         return out
 
-    def _build_bot_token(self, rgb: Tuple[int, int, int], *, size: int = 38) -> Image.Image:
+    def _build_bot_token(self, rgb: Tuple[int, int, int], *, size: int = 36) -> Image.Image:
         out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         d = ImageDraw.Draw(out)
         cx = size // 2
-        d.ellipse([(4, size - 9), (size - 5, size - 1)], fill=(15, 23, 42, 65))
-        d.line([(cx, 1), (cx, 7)], fill=(71, 85, 105, 255), width=2)
+        d.ellipse([(4, size - 8), (size - 5, size - 1)], fill=(2, 6, 23, 110))
+        d.line([(cx, 1), (cx, 7)], fill=(148, 163, 184, 255), width=2)
         d.ellipse([(cx - 3, 0), (cx + 3, 6)], fill=(*rgb, 255))
-        d.rounded_rectangle([(8, 7), (size - 9, 23)], radius=6, fill=(241, 245, 249, 255), outline=(*rgb, 255), width=2)
-        d.rounded_rectangle([(11, 11), (size - 12, 18)], radius=3, fill=(15, 23, 42, 255))
-        d.ellipse([(cx - 5, 13), (cx - 2, 16)], fill=(56, 189, 248, 255))
-        d.ellipse([(cx + 2, 13), (cx + 5, 16)], fill=(56, 189, 248, 255))
+        d.rounded_rectangle([(8, 7), (size - 9, 22)], radius=6, fill=(241, 245, 249, 255), outline=(*rgb, 255), width=2)
+        d.rounded_rectangle([(11, 11), (size - 12, 17)], radius=3, fill=(15, 23, 42, 255))
+        d.ellipse([(cx - 5, 12), (cx - 2, 15)], fill=(56, 189, 248, 255))
+        d.ellipse([(cx + 2, 12), (cx + 5, 15)], fill=(56, 189, 248, 255))
         d.rounded_rectangle(
-            [(10, 23), (size - 11, size - 4)], radius=5, fill=(*rgb, 255), outline=(255, 255, 255, 255), width=2
+            [(10, 22), (size - 11, size - 4)], radius=5, fill=(*rgb, 255), outline=(224, 242, 254, 255), width=2
         )
         return out
 
-    def _build_static_canvas(self) -> Image.Image:
-        bg_path = self._find_asset(DEFAULT_STUDIO_BG_REL)
-        if bg_path is not None:
+    def _build_cyber_gradient_bg(self) -> Image.Image:
+        y = np.linspace(0.0, 1.0, self.height, dtype=np.float32)[:, None]
+        x = np.linspace(0.0, 1.0, self.width, dtype=np.float32)[None, :]
+        r = 12.0 + 26.0 * (1.0 - y) * x + 14.0 * y
+        g = 18.0 + 22.0 * (1.0 - y) + 18.0 * (1.0 - x)
+        b = 42.0 + 38.0 * (1.0 - y * 0.6) + 22.0 * np.sin(x * math.pi)
+        rgb = np.stack([r, g, b], axis=-1).clip(0, 255).astype(np.uint8)
+        return Image.fromarray(rgb, mode="RGB")
+
+    def _get_level_bg(self, level: int) -> Image.Image:
+        lvl = max(1, min(4, int(level)))
+        if lvl in self._bg_by_level:
+            return self._bg_by_level[lvl]
+
+        bg_img: Optional[Image.Image] = None
+        for rel in _WORLD_BG_RELS_BY_LEVEL.get(lvl, (DEFAULT_STUDIO_BG_REL,)):
+            bg_path = self._find_asset(rel)
+            if bg_path is None:
+                continue
             try:
                 with Image.open(bg_path) as raw:
                     rgb = raw.convert("RGB")
                     sw, sh = rgb.size
                     sc = max(self.width / sw, self.height / sh)
                     resized = rgb.resize((int(round(sw * sc)), int(round(sh * sc))), Image.Resampling.LANCZOS)
-                    bg = resized.crop(
+                    cropped = resized.crop(
                         (
                             (resized.width - self.width) // 2,
                             (resized.height - self.height) // 2,
@@ -1610,156 +2044,696 @@ class WorldStageRenderer:
                             (resized.height - self.height) // 2 + self.height,
                         )
                     )
-                    bg = ImageEnhance.Brightness(bg).enhance(1.06)
-                    self.loaded_assets["background"] = str(bg_path)
+                    cropped = cropped.filter(ImageFilter.GaussianBlur(radius=0.8))
+                    cropped = ImageEnhance.Color(cropped).enhance(1.10)
+                    cropped = ImageEnhance.Brightness(cropped).enhance(0.88)
+                    bg_img = cropped
+                    self.loaded_assets[f"bg_lv{lvl}"] = str(bg_path)
+                    break
             except Exception:
-                bg = Image.new("RGB", (self.width, self.height), (224, 242, 254))
-                self.loaded_assets["background"] = "gradient_fallback"
-        else:
-            bg = Image.new("RGB", (self.width, self.height), (224, 242, 254))
-            self.loaded_assets["background"] = "gradient_fallback"
+                continue
 
-        canvas = bg.convert("RGBA")
-        overlay = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
+        if bg_img is None:
+            bg_img = self._build_cyber_gradient_bg()
+            self.loaded_assets[f"bg_lv{lvl}"] = "cyber_gradient_fallback"
 
-        # Top subtle header frost
-        draw.rectangle([(0, 0), (self.width, 86)], fill=(255, 255, 255, 110))
+        self._bg_by_level[lvl] = bg_img
+        return bg_img
 
-        # Top-right permanent GB 45438-2025 compliance badge
+    def _get_stage_canvas(self, level: int, active_speaker: SpeakerId) -> Image.Image:
+        lvl = max(1, min(4, int(level)))
+        resolved = active_speaker if active_speaker in self.cast else self.cast[0]
+        ckey = (lvl, resolved)
+        if ckey in self._stage_canvas_cache:
+            return self._stage_canvas_cache[ckey]
+
+        canvas = self._get_level_bg(lvl).convert("RGBA")
+
+        # Atmospheric dark-blue veil + top bar frost
+        veil = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        vdraw = ImageDraw.Draw(veil)
+        vdraw.rectangle([(0, 0), (self.width, self.height)], fill=(8, 13, 30, 52))
+        vdraw.rectangle([(0, 0), (self.width, 82)], fill=(7, 11, 24, 155))
+        canvas = Image.alpha_composite(canvas, veil)
+
+        chrome = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(chrome)
+
+        # Top-right permanent GB 45438-2025 compliance badge (sleek obsidian-gold glass)
         badge_text = AI_DISCLOSURE_BANNER
         badge_w = int(draw.textlength(badge_text, font=self._font_md)) + 52
         bx0 = max(1340, self.width - 24 - badge_w)
         draw.rounded_rectangle(
-            [(bx0, 14), (self.width - 24, 76)],
+            [(bx0, 14), (self.width - 24, 72)],
+            radius=18,
+            fill=(11, 18, 36, 224),
+            outline=(245, 158, 11, 215),
+            width=2,
+        )
+        draw.ellipse([(bx0 + 16, 36), (bx0 + 30, 50)], fill=(16, 185, 129, 255))
+        draw.text((bx0 + 40, 31), badge_text, font=self._font_md, fill=(253, 230, 138, 255))
+
+        # Trio Anime VTuber LIVE CAM Showcase Deck (x=822..1310, y=638..876, completely unobstructed!)
+        cam_x0, cam_y0, cam_x1, cam_y1 = 822, 638, 1310, 876
+        draw.rounded_rectangle(
+            [(cam_x0, cam_y0), (cam_x1, cam_y1)],
             radius=22,
-            fill=(255, 251, 235, 244),
-            outline=(217, 119, 6, 235),
-            width=3,
+            fill=(10, 16, 34, 230),
+            outline=(99, 102, 241, 195),
+            width=2,
         )
-        draw.ellipse([(bx0 + 16, 38), (bx0 + 30, 52)], fill=(16, 185, 129, 255))
-        draw.text((bx0 + 40, 33), badge_text, font=self._font_md, fill=(120, 53, 15, 255))
-
-        # Right panel shell + static 3-second guide header
         draw.rounded_rectangle(
-            [(1326, 92), (1896, 880)],
+            [(cam_x0 + 14, cam_y0 + 10), (cam_x0 + 258, cam_y0 + 36)], radius=10, fill=(23, 37, 84, 225)
+        )
+        draw.ellipse([(cam_x0 + 24, cam_y0 + 18), (cam_x0 + 34, cam_y0 + 28)], fill=(244, 63, 94, 255))
+        draw.text((cam_x0 + 42, cam_y0 + 14), "LIVE CAM · 铁三角演播席", font=self._font_sm, fill=(224, 242, 254, 255))
+
+        card_w, card_h, card_gap = 148, 184, 10
+        card_start_x = cam_x0 + 14
+        card_y = cam_y0 + 44
+        for idx, sid in enumerate(self.cast[:3]):
+            cx0 = card_start_x + idx * (card_w + card_gap)
+            cx1 = cx0 + card_w
+            cy1 = card_y + card_h
+            is_act = sid == resolved
+            accent = SPEAKER_ACCENT_RGB.get(sid, (56, 189, 248))
+            card_bg = (22, 34, 68, 240) if is_act else (13, 20, 40, 215)
+            card_rim = (*accent, 255) if is_act else (71, 85, 105, 175)
+            draw.rounded_rectangle(
+                [(cx0, card_y), (cx1, cy1)], radius=14, fill=card_bg, outline=card_rim, width=2 if is_act else 1
+            )
+
+            if is_act:
+                halo = _draw_radial_halo(
+                    (self.width, self.height), (cx0 + card_w // 2, card_y + 84), 84, accent, alpha_peak=108
+                )
+                chrome = Image.alpha_composite(chrome, halo)
+                draw = ImageDraw.Draw(chrome)
+
+            portrait = self._cam_portraits.get(sid)
+            if portrait is not None:
+                styled = portrait if is_act else ImageEnhance.Brightness(portrait).enhance(0.76)
+                px = cx0 + (card_w - styled.width) // 2
+                py = card_y + 4
+                chrome.paste(styled, (px, py), styled)
+            else:
+                tok = self._dock_portraits.get(sid)
+                if tok is not None:
+                    scaled_tok = tok.resize((92, 92), Image.Resampling.LANCZOS)
+                    chrome.paste(scaled_tok, (cx0 + (card_w - 92) // 2, card_y + 28), scaled_tok)
+
+            draw = ImageDraw.Draw(chrome)
+            # Clean nameplate pill along bottom of card
+            bar_col = (*accent, 242) if is_act else (30, 41, 59, 232)
+            draw.rounded_rectangle([(cx0 + 6, cy1 - 28), (cx1 - 6, cy1 - 4)], radius=8, fill=bar_col)
+            lbl = f"● {PERSONAS[sid].short_name}" if is_act else PERSONAS[sid].short_name
+            draw.text((cx0 + card_w // 2, cy1 - 16), lbl, font=self._font_xs, fill=(255, 255, 255, 255), anchor="mm")
+
+        # Right Unified Frosted Glass Sidebar (x=1330..1896, y=88..876)
+        draw.rounded_rectangle(
+            [(1330, 88), (1896, 876)],
+            radius=22,
+            fill=(10, 16, 34, 222),
+            outline=(99, 102, 241, 190),
+            width=2,
+        )
+        # Compact 2x2 Keycap Quick-Command Strip at top of sidebar (y=102..216)
+        draw.rounded_rectangle(
+            [(1346, 102), (1880, 216)],
+            radius=16,
+            fill=(17, 26, 52, 232),
+            outline=(56, 189, 248, 175),
+            width=2,
+        )
+        keycaps: Tuple[Tuple[int, int, str, str, Tuple[int, int, int]], ...] = (
+            (1360, 114, "1 / 开工", "领小人", (56, 189, 248)),
+            (1614, 114, "A / B / C", "投下期题材", (236, 72, 153)),
+            (1360, 164, "修Bug", "续命 +300s", (245, 158, 11)),
+            (1614, 164, "建议 xxx", "改剧情", (167, 139, 250)),
+        )
+        for kx, ky, key_lbl, act_lbl, kcol in keycaps:
+            kw = int(draw.textlength(key_lbl, font=self._font_sm)) + 22
+            draw.rounded_rectangle(
+                [(kx, ky), (kx + kw, ky + 34)],
+                radius=9,
+                fill=(15, 23, 42, 255),
+                outline=(*kcol, 240),
+                width=2,
+            )
+            draw.text((kx + 11, ky + 7), key_lbl, font=self._font_sm, fill=(248, 250, 252, 255))
+            draw.text((kx + kw + 10, ky + 7), act_lbl, font=self._font_sm, fill=(203, 213, 225, 255))
+
+        # Bottom Cinema VN Dialogue Dock Shell (x=24..1896, y=888..1062)
+        draw.rounded_rectangle(
+            [(24, 888), (1896, 1062)],
             radius=24,
-            fill=(255, 255, 255, 224),
-            outline=(148, 163, 184, 210),
-            width=3,
+            fill=(8, 13, 28, 236),
+            outline=(148, 163, 184, 155),
+            width=2,
         )
-        draw.rounded_rectangle(
-            [(1342, 106), (1880, 216)], radius=18, fill=(239, 246, 255, 248), outline=(59, 130, 246, 210), width=2
-        )
-        draw.rounded_rectangle([(1356, 116), (1492, 144)], radius=12, fill=(37, 99, 235, 255))
-        draw.text((1370, 120), "3秒参与玩法", font=self._font_sm, fill=(255, 255, 255, 255))
-        draw.text((1504, 120), "无门槛弹幕直接操控世界", font=self._font_sm, fill=(30, 64, 175, 255))
-        draw.text(
-            (1358, 152), "发「1」或「开工 / 修Bug / 投喂」3秒出小人续命！", font=self._font_sm, fill=(15, 23, 42, 255)
-        )
-        draw.text(
-            (1358, 180), "发「建议 你的点子」直接交给后台 Agent 执行！", font=self._font_sm, fill=(124, 58, 237, 255)
-        )
+        accent = SPEAKER_ACCENT_RGB.get(resolved, (56, 189, 248))
+        draw.rounded_rectangle([(48, 888), (self.width - 48, 892)], radius=2, fill=(*accent, 235))
 
-        # Bottom subtitle dock shell
-        draw.rounded_rectangle(
-            [(24, 892), (1896, 1064)],
-            radius=26,
-            fill=(15, 23, 42, 232),
-            outline=(255, 255, 255, 195),
-            width=3,
-        )
-        return Image.alpha_composite(canvas, overlay).convert("RGB")
+        out = Image.alpha_composite(canvas, chrome).convert("RGB")
+        if len(self._stage_canvas_cache) >= 6:
+            oldest_key = next(iter(self._stage_canvas_cache))
+            self._stage_canvas_cache.pop(oldest_key, None)
+        self._stage_canvas_cache[ckey] = out
+        return out
 
-    def _get_world_level_layer(self, level: int) -> Image.Image:
+    def _build_static_canvas(self) -> Image.Image:
+        return self._get_stage_canvas(1, self.cast[0])
+
+    def _draw_station_icon(
+        self, draw: ImageDraw.ImageDraw, st_name: str, cx: int, cy: int, accent: Tuple[int, int, int]
+    ) -> None:
+        if st_name == "互联网热点海":
+            draw.arc([(cx - 10, cy - 8), (cx + 10, cy + 12)], start=200, end=340, fill=(*accent, 255), width=2)
+            draw.arc([(cx - 6, cy - 3), (cx + 6, cy + 9)], start=200, end=340, fill=(186, 230, 253, 255), width=2)
+            draw.ellipse([(cx - 2, cy + 4), (cx + 2, cy + 8)], fill=(255, 255, 255, 255))
+        elif st_name == "角色抓捕屋":
+            draw.rounded_rectangle([(cx - 9, cy - 8), (cx + 9, cy + 8)], radius=3, outline=(*accent, 255), width=2)
+            draw.ellipse([(cx - 3, cy - 3), (cx + 3, cy + 3)], fill=(253, 164, 175, 255))
+        elif st_name == "可灵炼丹房":
+            pts = [(cx, cy - 9), (cx + 8, cy), (cx, cy + 9), (cx - 8, cy)]
+            draw.polygon(pts, fill=(*accent, 90), outline=(*accent, 255))
+            draw.ellipse([(cx - 3, cy - 3), (cx + 3, cy + 3)], fill=(254, 243, 199, 255))
+        else:
+            draw.rounded_rectangle([(cx - 9, cy - 7), (cx + 9, cy + 7)], radius=3, outline=(*accent, 255), width=2)
+            draw.polygon([(cx - 2, cy - 4), (cx + 5, cy), (cx - 2, cy + 4)], fill=(233, 213, 255, 255))
+
+    def _get_world_level_layer(self, level: int, active_stage: str = "internet_sea") -> Image.Image:
         lvl = max(1, min(4, int(level)))
-        if lvl in self._world_level_layers:
-            return self._world_level_layers[lvl]
+        stage_key = active_stage if active_stage in PRODUCTION_STAGE_TO_STATION else "internet_sea"
+        ckey = (lvl, stage_key)
+        if ckey in self._world_level_layers:
+            return self._world_level_layers[ckey]
 
-        # Cozy warm-bright isometric/pixel workshop backdrop
-        palettes = {
-            1: ((248, 250, 252), (226, 232, 240)),
-            2: ((239, 246, 255), (219, 234, 254)),
-            3: ((245, 243, 255), (237, 233, 254)),
-            4: ((255, 251, 235), (254, 243, 199)),
+        lvl_accents = {
+            1: (56, 189, 248),
+            2: (99, 102, 241),
+            3: (168, 85, 247),
+            4: (250, 204, 21),
         }
-        floor_c, tile_c = palettes[lvl]
+        ring_col = lvl_accents[lvl]
+        active_station = PRODUCTION_STAGE_TO_STATION[stage_key]
         img = Image.new("RGBA", (WORLD_WIDTH, WORLD_HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
+        # Outer translucent obsidian cyber deck
         draw.rounded_rectangle(
             [(0, 0), (WORLD_WIDTH - 1, WORLD_HEIGHT - 1)],
-            radius=24,
-            fill=(*floor_c, 246),
-            outline=(59, 130, 246, 220),
-            width=3,
+            radius=22,
+            fill=(7, 11, 24, 118),
+            outline=(*ring_col, 215),
+            width=2,
         )
-        # Soft sky wall strip across top of workshop
-        draw.rounded_rectangle([(3, 3), (WORLD_WIDTH - 4, 112)], radius=20, fill=(219, 234, 254, 210))
-        # Subtle floor grid tiles
-        for gx in range(28, WORLD_WIDTH - 24, 56):
-            draw.line([(gx, 118), (gx, WORLD_HEIGHT - 18)], fill=(*tile_c, 190), width=1)
-        for gy in range(118, WORLD_HEIGHT - 18, 56):
-            draw.line([(20, gy), (WORLD_WIDTH - 20, gy)], fill=(*tile_c, 190), width=1)
+        # Left production floor zone frame & blueprint grid (x=14..744, y=78..524)
+        draw.rounded_rectangle(
+            [(14, 78), (MAP_LEFT_WIDTH, 524)],
+            radius=18,
+            fill=(8, 14, 30, 118),
+            outline=(*ring_col, 130),
+            width=1,
+        )
+        for gx in range(56, MAP_LEFT_WIDTH - 18, 68):
+            draw.line([(gx, 86), (gx, 518)], fill=(*ring_col, 28), width=1)
+        for gy in range(118, 516, 56):
+            draw.line([(20, gy), (MAP_LEFT_WIDTH - 6, gy)], fill=(*ring_col, 28), width=1)
 
-        # Draw the 4 interactive pixel workshop stations
-        for st_name, (sx, sy, st_sub, accent) in STATIONS.items():
-            # Station pad
+        # Subtle left-zone header pill
+        draw.rounded_rectangle([(24, 86), (254, 110)], radius=8, fill=(15, 23, 42, 215), outline=(56, 189, 248, 120))
+        draw.text((34, 90), "2D 制片厂平面图 · 实时走位", font=self._font_xs, fill=(186, 230, 253, 255))
+
+        # Sleek luminous circuit traces along CORRIDOR_Y connecting all 4 production buildings
+        corridor_y = int(CORRIDOR_Y)
+        draw.line([(106, corridor_y), (646, corridor_y)], fill=(56, 189, 248, 145), width=3)
+        draw.line([(106, corridor_y), (646, corridor_y)], fill=(186, 230, 253, 95), width=1)
+        for sx in (196, 544):
+            draw.line([(sx, 205), (sx, 359)], fill=(56, 189, 248, 125), width=2)
+            draw.ellipse([(sx - 6, corridor_y - 6), (sx + 6, corridor_y + 6)], fill=(14, 165, 233, 235))
+            draw.ellipse([(sx - 3, corridor_y - 3), (sx + 3, corridor_y + 3)], fill=(240, 249, 255, 255))
+
+        # Active building radial halo + laser signal connector to right LIVE monitor (x=754)
+        asx, asy, _, a_accent = STATIONS[active_station]
+        halo = _draw_radial_halo((WORLD_WIDTH, WORLD_HEIGHT), (asx, asy), 118, a_accent, alpha_peak=104)
+        img = Image.alpha_composite(img, halo)
+        draw = ImageDraw.Draw(img)
+
+        ax1 = asx + 82
+        if asx < 370:
+            conn_pts = [(ax1, asy), (370, asy), (370, corridor_y), (MONITOR_X, corridor_y)]
+        else:
+            conn_pts = [(ax1, asy), (MONITOR_X, asy)]
+        draw.line(conn_pts, fill=(*a_accent, 95), width=6)
+        draw.line(conn_pts, fill=(*a_accent, 250), width=2)
+        end_x, end_y = conn_pts[-1]
+        draw.ellipse([(end_x - 6, end_y - 6), (end_x + 6, end_y + 6)], fill=(*a_accent, 255))
+        draw.ellipse([(end_x - 3, end_y - 3), (end_x + 3, end_y + 3)], fill=(255, 255, 255, 255))
+
+        # 4 Cyber-glass production building cards (164 x 74 centered on exact STATIONS coords)
+        step_codes = ("01", "02", "03", "04")
+        for b_idx, (st_name, (sx, sy, st_sub, accent)) in enumerate(STATIONS.items()):
+            is_act = st_name == active_station
+            x0, y0, x1, y1 = sx - 82, sy - 37, sx + 82, sy + 37
+            fill_bg = (14, 24, 52, 242) if is_act else (10, 16, 36, 226)
+            border_w = 3 if is_act else 2
+            border_col = (*accent, 255) if is_act else (*accent, 185)
+            draw.rounded_rectangle([(x0, y0), (x1, y1)], radius=14, fill=fill_bg, outline=border_col, width=border_w)
             draw.rounded_rectangle(
-                [(sx - 92, sy - 46), (sx + 92, sy + 44)],
-                radius=18,
-                fill=(255, 255, 255, 235),
-                outline=(*accent, 230),
-                width=3,
+                [(x0 + 3, y0 + 3), (x1 - 3, y0 + 30)],
+                radius=11,
+                fill=(*accent, 68 if is_act else 34),
             )
-            # Small pixel landmark illustration per station
-            if st_name == "代码工位":
-                draw.rectangle([(sx - 44, sy - 34), (sx + 44, sy - 6)], fill=(15, 23, 42, 255))
-                draw.rectangle([(sx - 38, sy - 30), (sx + 38, sy - 10)], fill=(56, 189, 248, 255))
-                draw.rectangle([(sx - 20, sy - 24), (sx + 16, sy - 20)], fill=(255, 255, 255, 255))
-            elif st_name == "算力机柜":
-                draw.rounded_rectangle([(sx - 28, sy - 38), (sx + 28, sy - 2)], radius=5, fill=(30, 41, 59, 255))
-                for ry in (-32, -22, -12):
-                    draw.rectangle([(sx - 20, sy + ry), (sx + 20, sy + ry + 5)], fill=(16, 185, 129, 255))
-            elif st_name == "电饭煲补给":
+            # Mini step icon box + title + subtitle
+            draw.rounded_rectangle(
+                [(x0 + 10, y0 + 7), (x0 + 34, y0 + 27)],
+                radius=6,
+                fill=(15, 23, 42, 235),
+                outline=(*accent, 230),
+                width=1,
+            )
+            self._draw_station_icon(draw, st_name, x0 + 22, y0 + 17, accent)
+            draw.text((x0 + 40, y0 + 8), st_name, font=self._font_sm, fill=(248, 250, 252, 255))
+            draw.text(
+                (x0 + 12, y0 + 43),
+                f"{step_codes[b_idx]} · {st_sub}",
+                font=self._font_xs,
+                fill=(224, 242, 254, 255) if is_act else (148, 197, 255, 255),
+            )
+            if is_act:
+                pill_w = int(draw.textlength("▶ 当前工序", font=self._font_xs)) + 16
+                px0 = x1 - pill_w - 4
+                py0 = (y0 - 21) if sy < 280 else (y1 + 1)
                 draw.rounded_rectangle(
-                    [(sx - 26, sy - 32), (sx + 26, sy - 2)],
-                    radius=10,
-                    fill=(254, 243, 199, 255),
-                    outline=(217, 119, 6, 255),
+                    [(px0, py0), (px0 + pill_w, py0 + 21)],
+                    radius=9,
+                    fill=(*accent, 255),
+                    outline=(255, 255, 255, 230),
+                    width=1,
+                )
+                draw.text(
+                    (px0 + pill_w // 2, py0 + 10),
+                    "▶ 当前工序",
+                    font=self._font_xs,
+                    fill=(255, 255, 255, 255),
+                    anchor="mm",
+                )
+
+        if len(self._world_level_layers) >= 16:
+            oldest_key = next(iter(self._world_level_layers))
+            self._world_level_layers.pop(oldest_key, None)
+        self._world_level_layers[ckey] = img
+        return img
+
+    def _resolve_preview_image(self, rel_path: str) -> Optional[Path]:
+        safe_rel = _sanitize_preview_path(rel_path)
+        if not safe_rel:
+            return None
+        for root in self._asset_roots:
+            try:
+                resolved_root = root.resolve()
+                candidate = (resolved_root / safe_rel).resolve()
+                if candidate.is_relative_to(resolved_root) and candidate.is_file():
+                    return candidate
+            except Exception:
+                continue
+        return None
+
+    def _get_preview_slide(self, rel_path: str, target_w: int, target_h: int) -> Optional[Image.Image]:
+        img_path = self._resolve_preview_image(rel_path)
+        if img_path is None:
+            return None
+        try:
+            mtime_ns = img_path.stat().st_mtime_ns
+        except OSError:
+            return None
+        ckey = (str(img_path), mtime_ns, target_w, target_h)
+        if ckey in self._preview_slide_cache:
+            return self._preview_slide_cache[ckey]
+        try:
+            with Image.open(img_path) as raw:
+                rgb = raw.convert("RGB")
+                sw, sh = rgb.size
+                scale = max(target_w / float(max(1, sw)), target_h / float(max(1, sh)))
+                nw = max(target_w, int(round(sw * scale)))
+                nh = max(target_h, int(round(sh * scale)))
+                resized = rgb.resize((nw, nh), Image.Resampling.LANCZOS)
+                left = (nw - target_w) // 2
+                top = (nh - target_h) // 2
+                cropped = resized.crop((left, top, left + target_w, top + target_h)).convert("RGBA")
+            mask = Image.new("L", (target_w, target_h), 0)
+            ImageDraw.Draw(mask).rounded_rectangle([(0, 0), (target_w - 1, target_h - 1)], radius=12, fill=255)
+            out = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+            out.paste(cropped, (0, 0), mask)
+            if len(self._preview_slide_cache) >= 12:
+                oldest = next(iter(self._preview_slide_cache))
+                self._preview_slide_cache.pop(oldest, None)
+            self._preview_slide_cache[ckey] = out
+            return out
+        except Exception:
+            return None
+
+    def _get_live_monitor_overlay(
+        self, prod: Dict[str, Any], t_sec: float
+    ) -> Tuple[Image.Image, Optional[Tuple[int, int]]]:
+        stage_key = str(prod.get("stage") or "internet_sea")
+        stage_title = str(prod.get("stage_title") or PRODUCTION_STAGE_TO_STATION.get(stage_key, "互联网热点海"))
+        episode = str(prod.get("episode") or "Ep024 筹备中")
+        detail = str(prod.get("detail") or "")
+        progress_pct = max(0, min(100, int(prod.get("progress_pct", 15))))
+        mode = "preview" if str(prod.get("monitor_mode") or "poll") == "preview" else "poll"
+        preview_paths = [str(p) for p in (prod.get("preview_paths") or []) if str(p).strip()]
+        preview_caption = str(prod.get("preview_caption") or detail or stage_title)
+        code_lines = [str(ln) for ln in (prod.get("code_lines") or []) if str(ln).strip()][:6]
+        raw_poll = prod.get("topic_poll")
+        poll_obj: Dict[str, Any] = raw_poll if isinstance(raw_poll, dict) else {}
+        poll_q = str(poll_obj.get("question") or "下期 Ep024 拍什么？发弹幕 A / B / C 投票！")
+        raw_opts = poll_obj.get("options")
+        poll_opts: List[Dict[str, Any]] = (
+            [o for o in raw_opts if isinstance(o, dict)] if isinstance(raw_opts, list) else []
+        )
+        total_votes = int(poll_obj.get("total_votes", 0))
+
+        slide_idx = int(t_sec // 4.5) % len(preview_paths) if (mode == "preview" and preview_paths) else 0
+        active_slide_path = preview_paths[slide_idx] if (mode == "preview" and preview_paths) else ""
+
+        key = (
+            stage_key,
+            stage_title,
+            episode,
+            detail,
+            progress_pct,
+            mode,
+            active_slide_path,
+            slide_idx,
+            len(preview_paths),
+            preview_caption,
+            tuple(code_lines),
+            poll_q,
+            tuple((o.get("key"), o.get("label"), int(o.get("votes", 0))) for o in poll_opts[:3]),
+            total_votes,
+        )
+        if self._monitor_overlay is not None and self._monitor_key == key:
+            return self._monitor_overlay, self._monitor_cursor_pos
+
+        stage_station = PRODUCTION_STAGE_TO_STATION.get(stage_key, "互联网热点海")
+        stage_accent = STATIONS.get(stage_station, STATIONS["互联网热点海"])[3]
+
+        img = Image.new("RGBA", (MONITOR_W, MONITOR_H), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # Monitor obsidian glass bezel
+        draw.rounded_rectangle(
+            [(0, 0), (MONITOR_W - 1, MONITOR_H - 1)],
+            radius=18,
+            fill=(8, 14, 31, 240),
+            outline=(*stage_accent, 230),
+            width=2,
+        )
+        draw.rounded_rectangle([(18, 0), (MONITOR_W - 18, 3)], radius=2, fill=(*stage_accent, 255))
+
+        # Top header bar: LIVE badge + episode + stage chip + progress_pct bar
+        draw.rounded_rectangle([(14, 10), (74, 33)], radius=8, fill=(239, 68, 68, 250))
+        draw.ellipse([(22, 17), (30, 25)], fill=(255, 255, 255, 255))
+        draw.text((35, 13), "LIVE", font=self._font_xs, fill=(255, 255, 255, 255))
+
+        stage_chip_w = int(draw.textlength(stage_title, font=self._font_xs)) + 18
+        chip_x0 = MONITOR_W - 14 - stage_chip_w
+        draw.rounded_rectangle([(chip_x0, 10), (MONITOR_W - 14, 33)], radius=8, fill=(*stage_accent, 230))
+        draw.text(
+            (chip_x0 + stage_chip_w // 2, 21),
+            stage_title,
+            font=self._font_xs,
+            fill=(255, 255, 255, 255),
+            anchor="mm",
+        )
+
+        ep_title = f"制片大屏 · {episode}"
+        ep_wrapped = _wrap_text_by_width(draw, ep_title, self._font_sm, max_width=max(80, chip_x0 - 92), max_lines=1)
+        draw.text((82, 12), ep_wrapped[0] if ep_wrapped else ep_title, font=self._font_sm, fill=(248, 250, 252, 255))
+
+        # Progress bar row
+        bar_x0, bar_x1, bar_y0, bar_y1 = 14, 444, 41, 51
+        draw.rounded_rectangle([(bar_x0, bar_y0), (bar_x1, bar_y1)], radius=5, fill=(30, 41, 59, 240))
+        fill_w = max(10, int(round((bar_x1 - bar_x0) * (progress_pct / 100.0))))
+        draw.rounded_rectangle([(bar_x0, bar_y0), (bar_x0 + fill_w, bar_y1)], radius=5, fill=(*stage_accent, 255))
+        draw.text((MONITOR_W - 14, 37), f"{progress_pct}%", font=self._font_sm, fill=(224, 242, 254, 255), anchor="ra")
+        draw.line([(14, 58), (MONITOR_W - 14, 58)], fill=(*stage_accent, 85), width=1)
+
+        cursor_pos: Optional[Tuple[int, int]] = None
+
+        if mode == "poll":
+            # Question banner (y=66..112)
+            draw.rounded_rectangle(
+                [(14, 66), (MONITOR_W - 14, 112)],
+                radius=12,
+                fill=(16, 30, 62, 240),
+                outline=(56, 189, 248, 195),
+                width=2,
+            )
+            tot_lbl = f"总票 {total_votes}"
+            tot_w = int(draw.textlength(tot_lbl, font=self._font_xs)) + 16
+            draw.rounded_rectangle(
+                [(MONITOR_W - 22 - tot_w, 77), (MONITOR_W - 22, 101)],
+                radius=8,
+                fill=(30, 41, 59, 240),
+                outline=(56, 189, 248, 160),
+                width=1,
+            )
+            draw.text(
+                (MONITOR_W - 22 - tot_w // 2, 89),
+                tot_lbl,
+                font=self._font_xs,
+                fill=(186, 230, 253, 255),
+                anchor="mm",
+            )
+            q_wrapped = _wrap_text_by_width(draw, poll_q, self._font_sm, max_width=MONITOR_W - 58 - tot_w, max_lines=1)
+            draw.text((24, 79), q_wrapped[0] if q_wrapped else poll_q, font=self._font_sm, fill=(248, 250, 252, 255))
+
+            # 3 High-Contrast A(Cyan)/B(Pink)/C(Purple) Vote Progress Cards
+            max_votes = max((int(o.get("votes", 0)) for o in poll_opts[:3]), default=0)
+            card_y = 120
+            for idx_opt in range(3):
+                if idx_opt < len(poll_opts):
+                    opt = poll_opts[idx_opt]
+                    okey = str(opt.get("key") or ("A", "B", "C")[idx_opt]).upper()
+                    olbl = str(opt.get("label") or f"候选方案 {okey}")
+                    ovotes = max(0, int(opt.get("votes", 0)))
+                else:
+                    okey, olbl = _DEFAULT_POLL_OPTIONS[idx_opt]
+                    ovotes = 0
+                ocol = _POLL_OPTION_COLORS.get(okey, (14, 165, 233))
+                pct = int(round((ovotes * 100.0) / total_votes)) if total_votes > 0 else 0
+                is_lead = ovotes > 0 and ovotes == max_votes
+
+                draw.rounded_rectangle(
+                    [(14, card_y), (MONITOR_W - 14, card_y + 58)],
+                    radius=12,
+                    fill=(20, 32, 64, 242) if is_lead else (13, 21, 44, 234),
+                    outline=(*ocol, 255 if is_lead else 210),
+                    width=3 if is_lead else 2,
+                )
+                draw.rounded_rectangle([(22, card_y + 10), (60, card_y + 48)], radius=10, fill=(*ocol, 250))
+                draw.text((41, card_y + 29), okey, font=self._font_lg, fill=(255, 255, 255, 255), anchor="mm")
+
+                stat_str = f"{ovotes}票 · {pct}%"
+                stat_w = int(draw.textlength(stat_str, font=self._font_sm))
+                lbl_wrapped = _wrap_text_by_width(
+                    draw, olbl, self._font_sm, max_width=max(100, MONITOR_W - 104 - stat_w), max_lines=1
+                )
+                draw.text(
+                    (70, card_y + 9),
+                    lbl_wrapped[0] if lbl_wrapped else olbl,
+                    font=self._font_sm,
+                    fill=(248, 250, 252, 255),
+                )
+                draw.text(
+                    (MONITOR_W - 24, card_y + 9), stat_str, font=self._font_sm, fill=(224, 242, 254, 255), anchor="ra"
+                )
+
+                pbar_x0, pbar_x1, pbar_y0, pbar_y1 = 70, MONITOR_W - 24, card_y + 36, card_y + 48
+                draw.rounded_rectangle([(pbar_x0, pbar_y0), (pbar_x1, pbar_y1)], radius=6, fill=(30, 41, 59, 240))
+                if ovotes > 0 and total_votes > 0:
+                    pfw = max(12, int(round((pbar_x1 - pbar_x0) * (ovotes / float(total_votes)))))
+                    draw.rounded_rectangle([(pbar_x0, pbar_y0), (pbar_x0 + pfw, pbar_y1)], radius=6, fill=(*ocol, 255))
+                else:
+                    draw.rounded_rectangle([(pbar_x0, pbar_y0), (pbar_x0 + 10, pbar_y1)], radius=5, fill=(*ocol, 130))
+                card_y += 66
+
+            # Bottom 3-line sanitized terminal ticker (y=322..434)
+            term_y0, term_y1 = 322, 434
+            draw.rounded_rectangle(
+                [(14, term_y0), (MONITOR_W - 14, term_y1)],
+                radius=12,
+                fill=(6, 10, 22, 246),
+                outline=(56, 189, 248, 155),
+                width=1,
+            )
+            for idx_d, dcol in enumerate(((244, 63, 94), (245, 158, 11), (16, 185, 129))):
+                draw.ellipse([(24 + idx_d * 13, term_y0 + 9), (32 + idx_d * 13, term_y0 + 17)], fill=(*dcol, 230))
+            draw.text(
+                (68, term_y0 + 6),
+                "LIVE TERMINAL · 实时制片日志",
+                font=self._font_xs,
+                fill=(125, 211, 252, 255),
+            )
+            term_lines = (
+                code_lines[-3:]
+                if code_lines
+                else [
+                    f"$ stage={stage_key} ep={episode}",
+                    f"> {detail or stage_title}",
+                    f"> waiting danmaku A / B / C ({total_votes} votes)",
+                ]
+            )
+            ly = term_y0 + 30
+            for idx_ln, raw_ln in enumerate(term_lines[:3]):
+                clean_ln = raw_ln.rstrip("_")
+                wrapped = _wrap_text_by_width(draw, clean_ln, self._font_xs, max_width=MONITOR_W - 56, max_lines=1)
+                shown = wrapped[0] if wrapped else clean_ln
+                lcol = (125, 211, 252, 255) if shown.startswith("$") else (110, 231, 183, 255)
+                draw.text((24, ly), shown, font=self._font_xs, fill=lcol)
+                if idx_ln == len(term_lines[:3]) - 1:
+                    cx = min(MONITOR_W - 26, 24 + int(draw.textlength(shown, font=self._font_xs)) + 4)
+                    cursor_pos = (cx, ly)
+                ly += 25
+        else:
+            # Preview mode: Upper viewport (~490x248 at x=14..504, y=66..314) + Lower 4-line CLI terminal
+            vp_x0, vp_y0, vp_w, vp_h = 14, 66, MONITOR_W - 28, 248
+            vp_x1, vp_y1 = vp_x0 + vp_w, vp_y0 + vp_h
+            slide_img = self._get_preview_slide(active_slide_path, vp_w, vp_h) if active_slide_path else None
+            if slide_img is not None:
+                img.paste(slide_img, (vp_x0, vp_y0), slide_img)
+                draw = ImageDraw.Draw(img)
+            else:
+                draw.rounded_rectangle(
+                    [(vp_x0, vp_y0), (vp_x1, vp_y1)],
+                    radius=12,
+                    fill=(13, 21, 44, 242),
+                    outline=(*stage_accent, 190),
                     width=2,
                 )
-                draw.ellipse([(sx - 12, sy - 22), (sx + 12, sy - 10)], fill=(245, 158, 11, 255))
-            else:
-                draw.polygon([(sx, sy - 42), (sx - 24, sy - 4), (sx + 24, sy - 4)], fill=(124, 58, 237, 230))
-                draw.ellipse([(sx - 8, sy - 46), (sx + 8, sy - 30)], fill=(250, 204, 21, 255))
+                for gx in range(vp_x0 + 36, vp_x1 - 16, 48):
+                    draw.line([(gx, vp_y0 + 8), (gx, vp_y1 - 36)], fill=(*stage_accent, 34), width=1)
+                for gy in range(vp_y0 + 32, vp_y1 - 36, 40):
+                    draw.line([(vp_x0 + 8, gy), (vp_x1 - 8, gy)], fill=(*stage_accent, 34), width=1)
+                draw.ellipse(
+                    [(vp_x0 + vp_w // 2 - 26, vp_y0 + 54), (vp_x0 + vp_w // 2 + 26, vp_y0 + 106)],
+                    fill=(*stage_accent, 45),
+                    outline=(*stage_accent, 230),
+                    width=2,
+                )
+                self._draw_station_icon(draw, stage_station, vp_x0 + vp_w // 2, vp_y0 + 80, stage_accent)
+                draw.text(
+                    (vp_x0 + vp_w // 2, vp_y0 + 132),
+                    f"{stage_title} · 实景样片待同步",
+                    font=self._font_md,
+                    fill=(248, 250, 252, 255),
+                    anchor="mm",
+                )
+                det_w = _wrap_text_by_width(
+                    draw, detail or preview_caption, self._font_sm, max_width=vp_w - 44, max_lines=1
+                )
+                draw.text(
+                    (vp_x0 + vp_w // 2, vp_y0 + 164),
+                    det_w[0] if det_w else stage_title,
+                    font=self._font_sm,
+                    fill=(186, 230, 253, 255),
+                    anchor="mm",
+                )
 
-            nw = draw.textlength(st_name, font=self._font_sm)
-            draw.text((sx - nw / 2, sy - 2), st_name, font=self._font_sm, fill=(15, 23, 42, 255))
-            sw = draw.textlength(st_sub, font=self._font_xs)
-            draw.text((sx - sw / 2, sy + 20), st_sub, font=self._font_xs, fill=(71, 85, 105, 255))
+            # Bottom frosted caption strip inside viewport
+            cap_overlay = Image.new("RGBA", (vp_w - 2, 34), (7, 11, 24, 208))
+            img.alpha_composite(cap_overlay, (vp_x0 + 1, vp_y1 - 35))
+            draw = ImageDraw.Draw(img)
+            cap_wrapped = _wrap_text_by_width(draw, preview_caption, self._font_sm, max_width=vp_w - 28, max_lines=1)
+            draw.text(
+                (vp_x0 + 12, vp_y1 - 28),
+                cap_wrapped[0] if cap_wrapped else preview_caption,
+                font=self._font_sm,
+                fill=(248, 250, 252, 255),
+            )
+            # Crisp rounded outline + top-right i/N corner badge
+            draw.rounded_rectangle([(vp_x0, vp_y0), (vp_x1, vp_y1)], radius=12, outline=(*stage_accent, 235), width=2)
+            idx_lbl = f"{slide_idx + 1}/{len(preview_paths)}" if preview_paths else "0/0"
+            idx_w = int(draw.textlength(idx_lbl, font=self._font_xs)) + 16
+            draw.rounded_rectangle(
+                [(vp_x1 - idx_w - 8, vp_y0 + 8), (vp_x1 - 8, vp_y0 + 30)],
+                radius=8,
+                fill=(10, 16, 34, 224),
+                outline=(*stage_accent, 225),
+                width=1,
+            )
+            draw.text(
+                (vp_x1 - idx_w // 2 - 8, vp_y0 + 19),
+                idx_lbl,
+                font=self._font_xs,
+                fill=(248, 250, 252, 255),
+                anchor="mm",
+            )
 
-        self._world_level_layers[lvl] = img
-        return img
+            # Lower 4-line CLI / Code Terminal Box (~490x114 at x=14..504, y=322..436)
+            term_y0, term_y1 = 322, 436
+            draw.rounded_rectangle(
+                [(14, term_y0), (MONITOR_W - 14, term_y1)],
+                radius=12,
+                fill=(6, 10, 22, 248),
+                outline=(*stage_accent, 165),
+                width=1,
+            )
+            for idx_d, dcol in enumerate(((244, 63, 94), (245, 158, 11), (16, 185, 129))):
+                draw.ellipse([(24 + idx_d * 13, term_y0 + 8), (31 + idx_d * 13, term_y0 + 15)], fill=(*dcol, 235))
+            draw.text(
+                (68, term_y0 + 5),
+                f"CLI TERMINAL · {stage_title}",
+                font=self._font_xs,
+                fill=(125, 211, 252, 255),
+            )
+            term_lines = (
+                code_lines[-4:]
+                if code_lines
+                else [
+                    f"$ ./cli.py studio-stage --stage {stage_key}",
+                    f"[EP] {episode} | progress={progress_pct}%",
+                    f"[INFO] {detail or stage_title}",
+                    "[OK] zero-PII live production feed synced",
+                ]
+            )
+            ly = term_y0 + 25
+            for idx_ln, raw_ln in enumerate(term_lines[:4]):
+                clean_ln = raw_ln.rstrip("_")
+                wrapped = _wrap_text_by_width(draw, clean_ln, self._font_xs, max_width=MONITOR_W - 56, max_lines=1)
+                shown = wrapped[0] if wrapped else clean_ln
+                lcol = (125, 211, 252, 255) if shown.startswith("$") else (110, 231, 183, 255)
+                draw.text((24, ly), shown, font=self._font_xs, fill=lcol)
+                if idx_ln == len(term_lines[:4]) - 1:
+                    cx = min(MONITOR_W - 26, 24 + int(draw.textlength(shown, font=self._font_xs)) + 4)
+                    cursor_pos = (cx, ly)
+                ly += 21
+
+        self._monitor_key = key
+        self._monitor_overlay = img
+        self._monitor_cursor_pos = cursor_pos
+        return img, cursor_pos
 
     def _get_telemetry_overlay(self, online: int, watched_text: str, f_count: int, f_goal: int) -> Image.Image:
         key = (online, watched_text, f_count, f_goal)
         if self._telemetry_overlay is not None and self._telemetry_key == key:
             return self._telemetry_overlay
 
-        w, h = 840, 62
+        w, h = 840, 58
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         draw.rounded_rectangle(
-            [(0, 0), (w - 1, h - 1)], radius=20, fill=(255, 255, 255, 240), outline=(59, 130, 246, 225), width=3
+            [(0, 0), (w - 1, h - 1)], radius=18, fill=(11, 18, 36, 224), outline=(56, 189, 248, 195), width=2
         )
-        draw.rounded_rectangle([(12, 11), (100, 51)], radius=16, fill=(239, 68, 68, 255))
-        draw.ellipse([(24, 25), (36, 37)], fill=(255, 255, 255, 255))
-        draw.text((44, 18), "LIVE", font=self._font_md, fill=(255, 255, 255, 255))
-        short_brand = "AI活工坊 · 铁三角"
-        info = f"{short_brand}   在线 {online} · {watched_text} · {f_count}/{f_goal}粉"
+        draw.rounded_rectangle([(10, 10), (96, 48)], radius=14, fill=(239, 68, 68, 255))
+        draw.ellipse([(22, 23), (34, 35)], fill=(255, 255, 255, 255))
+        draw.text((42, 16), "LIVE", font=self._font_md, fill=(255, 255, 255, 255))
+        info = f"AI 现场制片厂 · 铁三角   在线 {online} · {watched_text} · 冲粉 {f_count}/{f_goal}"
         lines = _wrap_text_by_width(draw, info, self._font_md, max_width=w - 130, max_lines=1)
-        draw.text((114, 18), lines[0] if lines else info, font=self._font_md, fill=(15, 23, 42, 255))
+        draw.text((112, 16), lines[0] if lines else info, font=self._font_md, fill=(241, 245, 249, 255))
 
         self._telemetry_key = key
         self._telemetry_overlay = img
@@ -1770,16 +2744,16 @@ class WorldStageRenderer:
         if self._countdown_overlay is not None and self._countdown_key == key:
             return self._countdown_overlay
 
-        w, h = 445, 62
+        w, h = 445, 58
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        bg = (254, 226, 226, 246) if in_crisis else (255, 255, 255, 242)
-        outline = (220, 38, 38, 255) if in_crisis else (124, 58, 237, 230)
-        draw.rounded_rectangle([(0, 0), (w - 1, h - 1)], radius=20, fill=bg, outline=outline, width=3)
-        label = "危机耗能加倍!" if in_crisis else "工坊续命倒计时"
-        draw.text((18, 19), label, font=self._font_sm, fill=(185, 28, 28, 255) if in_crisis else (109, 40, 217, 255))
+        bg = (69, 10, 26, 232) if in_crisis else (11, 18, 36, 224)
+        outline = (248, 113, 113, 255) if in_crisis else (167, 139, 250, 200)
+        draw.rounded_rectangle([(0, 0), (w - 1, h - 1)], radius=18, fill=bg, outline=outline, width=2)
+        label = "危机双倍耗能!" if in_crisis else "工坊续命倒计时"
+        draw.text((18, 18), label, font=self._font_sm, fill=(254, 202, 202, 255) if in_crisis else (196, 181, 253, 255))
         clock_str = _fmt_hhmmss(countdown_sec)
-        draw.text((w - 22, 11), clock_str, font=self._font_xl, fill=(15, 23, 42, 255), anchor="ra")
+        draw.text((w - 22, 9), clock_str, font=self._font_xl, fill=(248, 250, 252, 255), anchor="ra")
 
         self._countdown_key = key
         self._countdown_overlay = img
@@ -1787,43 +2761,90 @@ class WorldStageRenderer:
 
     def _get_world_hud_overlay(self, ws: Dict[str, Any]) -> Image.Image:
         wstate = ws["world"]
+        raw_prod = ws.get("production")
+        prod: Dict[str, Any] = raw_prod if isinstance(raw_prod, dict) else {}
         key = (
             wstate["level"],
             wstate["build_xp"],
+            wstate["next_level_xp"],
             wstate["code_pts"],
             wstate["compute_pts"],
             wstate["rice_bowls"],
             wstate["active_worker_count"],
             wstate["active_event"]["title"] if wstate.get("active_event") else "",
+            prod.get("stage_title", ""),
+            prod.get("episode", ""),
+            prod.get("progress_pct", 0),
         )
         if self._world_hud_overlay is not None and self._world_hud_key == key:
             return self._world_hud_overlay
 
-        img = Image.new("RGBA", (WORLD_WIDTH, 88), (0, 0, 0, 0))
+        img = Image.new("RGBA", (WORLD_WIDTH, 76), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         draw.rounded_rectangle(
-            [(14, 10), (770, 74)], radius=16, fill=(255, 255, 255, 236), outline=(59, 130, 246, 200), width=2
+            [(14, 10), (MAP_LEFT_WIDTH, 68)], radius=15, fill=(10, 16, 34, 226), outline=(56, 189, 248, 185), width=2
         )
-        title = f"Lv.{wstate['level']} {wstate['level_name']}  |  在线小人 {wstate['active_worker_count']} 名"
-        draw.text((28, 16), title, font=self._font_md, fill=(15, 23, 42, 255))
-        stats_line = (
-            f"代码 {wstate['code_pts']} · 算力 {wstate['compute_pts']} · 白米饭 {wstate['rice_bowls']} · "
-            f"建造经验 {wstate['build_xp']}/{wstate['next_level_xp']}"
-        )
-        draw.text((28, 44), stats_line, font=self._font_sm, fill=(37, 99, 235, 255))
+        title = f"Lv.{wstate['level']} {wstate['level_name']}   在线小人 {wstate['active_worker_count']} 名"
+        draw.text((28, 14), title, font=self._font_md, fill=(248, 250, 252, 255))
+        stats_line = f"代码 {wstate['code_pts']} · 算力 {wstate['compute_pts']} · 白米饭 {wstate['rice_bowls']}"
+        draw.text((28, 42), stats_line, font=self._font_sm, fill=(125, 211, 252, 255))
+
+        # Integrated XP bar + label on the right half of the left HUD pill
+        xp_lbl = f"升级 XP {wstate['build_xp']}/{wstate['next_level_xp']}"
+        draw.text((728, 16), xp_lbl, font=self._font_sm, fill=(224, 242, 254, 255), anchor="ra")
+        bar_x0, bar_x1, bar_y0, bar_y1 = 498, 728, 42, 54
+        draw.rounded_rectangle([(bar_x0, bar_y0), (bar_x1, bar_y1)], radius=6, fill=(30, 41, 59, 240))
+        ratio = max(0.05, min(1.0, float(wstate["build_xp"]) / max(1.0, float(wstate["next_level_xp"]))))
+        fill_x1 = bar_x0 + max(12, int(round((bar_x1 - bar_x0) * ratio)))
+        draw.rounded_rectangle([(bar_x0, bar_y0), (fill_x1, bar_y1)], radius=6, fill=(56, 189, 248, 255))
 
         ev = wstate.get("active_event")
         if ev:
             draw.rounded_rectangle(
-                [(786, 10), (WORLD_WIDTH - 14, 74)],
-                radius=16,
-                fill=(254, 226, 226, 246),
-                outline=(220, 38, 38, 255),
+                [(MONITOR_X, 10), (WORLD_WIDTH - 14, 68)],
+                radius=15,
+                fill=(69, 10, 26, 232),
+                outline=(248, 113, 113, 245),
                 width=2,
             )
-            draw.text((804, 15), f"告警: {ev['title']}", font=self._font_md, fill=(185, 28, 28, 255))
-            desc_line = _wrap_text_by_width(draw, ev["desc"], self._font_sm, max_width=WORLD_WIDTH - 835, max_lines=1)
-            draw.text((804, 44), desc_line[0] if desc_line else ev["desc"], font=self._font_sm, fill=(127, 29, 29, 255))
+            draw.text((MONITOR_X + 16, 14), f"突发: {ev['title']}", font=self._font_md, fill=(254, 202, 202, 255))
+            desc_line = _wrap_text_by_width(
+                draw, ev["desc"], self._font_sm, max_width=WORLD_WIDTH - MONITOR_X - 44, max_lines=1
+            )
+            draw.text(
+                (MONITOR_X + 16, 41),
+                desc_line[0] if desc_line else ev["desc"],
+                font=self._font_sm,
+                fill=(252, 165, 165, 255),
+            )
+        else:
+            st_title = str(prod.get("stage_title") or "互联网热点海")
+            ep_str = str(prod.get("episode") or "Ep024 筹备中")
+            prog_val = int(prod.get("progress_pct", 15))
+            accent = STATIONS.get(st_title, STATIONS["互联网热点海"])[3]
+            draw.rounded_rectangle(
+                [(MONITOR_X, 10), (WORLD_WIDTH - 14, 68)],
+                radius=15,
+                fill=(10, 16, 34, 226),
+                outline=(*accent, 205),
+                width=2,
+            )
+            draw.text(
+                (MONITOR_X + 16, 14),
+                f"AI 现场制片厂 · {ep_str}",
+                font=self._font_md,
+                fill=(248, 250, 252, 255),
+            )
+            sub_str = f"当前工序：{st_title}（进度 {prog_val}%）· 弹幕发 A/B/C 选下期"
+            sub_wrapped = _wrap_text_by_width(
+                draw, sub_str, self._font_sm, max_width=WORLD_WIDTH - MONITOR_X - 38, max_lines=1
+            )
+            draw.text(
+                (MONITOR_X + 16, 42),
+                sub_wrapped[0] if sub_wrapped else sub_str,
+                font=self._font_sm,
+                fill=(186, 230, 253, 255),
+            )
 
         self._world_hud_key = key
         self._world_hud_overlay = img
@@ -1839,48 +2860,63 @@ class WorldStageRenderer:
         if self._workbench_overlay is not None and self._workbench_key == key:
             return self._workbench_overlay
 
-        w, h = WORLD_WIDTH, 240
+        w, h = 786, 238
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         draw.rounded_rectangle(
-            [(0, 0), (w - 1, h - 1)], radius=22, fill=(15, 23, 42, 238), outline=(56, 189, 248, 210), width=3
+            [(0, 0), (w - 1, h - 1)], radius=22, fill=(9, 14, 29, 232), outline=(56, 189, 248, 185), width=2
         )
 
-        # Header + 4-stage pipeline pills
-        draw.rounded_rectangle([(18, 14), (448, 50)], radius=12, fill=(30, 58, 138, 240))
-        draw.text((32, 20), "AI Agent 实时工作台 · 此刻正在工作", font=self._font_md, fill=(224, 242, 254, 255))
+        # Subtle window dots + header chip + compact 4-stage pipeline
+        for idx_dot, dot_col in enumerate(((244, 63, 94), (245, 158, 11), (16, 185, 129))):
+            dx = 20 + idx_dot * 16
+            draw.ellipse([(dx, 22), (dx + 9, 31)], fill=(*dot_col, 230))
+        draw.rounded_rectangle(
+            [(72, 12), (318, 44)], radius=10, fill=(23, 37, 84, 230), outline=(59, 130, 246, 150), width=1
+        )
+        draw.text((84, 17), "AI Agent 实时工作台", font=self._font_md, fill=(224, 242, 254, 255))
 
-        px = 470
+        px = 330
         for s_idx, stage_lbl in enumerate(PIPELINE_STAGES):
             is_cur = s_idx == int(wb["pipeline_stage"])
-            sw = int(draw.textlength(stage_lbl, font=self._font_sm)) + 26
-            fill_c = (16, 185, 129, 255) if is_cur else (51, 65, 85, 220)
+            sw = int(draw.textlength(stage_lbl, font=self._font_sm)) + 20
+            fill_c = (16, 185, 129, 245) if is_cur else (30, 41, 59, 220)
             txt_c = (255, 255, 255, 255) if is_cur else (148, 163, 184, 255)
-            draw.rounded_rectangle([(px, 15), (px + sw, 49)], radius=12, fill=fill_c)
-            draw.text((px + 13, 21), stage_lbl, font=self._font_sm, fill=txt_c)
-            px += sw + 10
+            draw.rounded_rectangle([(px, 13), (px + sw, 43)], radius=10, fill=fill_c)
+            draw.text((px + 10, 18), stage_lbl, font=self._font_sm, fill=txt_c)
+            px += sw + 8
 
         task_line = _wrap_text_by_width(
-            draw, f"当前任务：{wb['active_task']}", self._font_md, max_width=w - 52, max_lines=1
+            draw, f"当前任务：{wb['active_task']}", self._font_md, max_width=w - 44, max_lines=1
         )
         draw.text(
-            (24, 60), task_line[0] if task_line else wb["active_task"], font=self._font_md, fill=(250, 204, 21, 255)
+            (22, 56), task_line[0] if task_line else wb["active_task"], font=self._font_md, fill=(251, 191, 36, 255)
         )
 
-        ly = 94
-        for row in list(logs)[-5:]:
+        ly = 92
+        for row in list(logs)[-4:]:
             tag = row["tag"]
             tag_bg = (
                 (220, 38, 38, 240)
                 if tag in ("ALERT", "ERROR")
-                else ((16, 185, 129, 235) if tag in ("FIX", "CODE", "TEST") else (37, 99, 235, 235))
+                else (
+                    (217, 119, 6, 240)
+                    if tag == "STAGE"
+                    else (
+                        (219, 39, 119, 240)
+                        if tag == "VOTE"
+                        else (
+                            (16, 185, 129, 235) if tag in ("FIX", "CODE", "TEST", "OPT", "UI") else (37, 99, 235, 235)
+                        )
+                    )
+                )
             )
-            draw.text((24, ly + 2), row["ts"], font=self._font_sm, fill=(148, 163, 184, 255))
-            draw.rounded_rectangle([(112, ly), (186, ly + 24)], radius=8, fill=tag_bg)
-            draw.text((120, ly + 2), tag[:6], font=self._font_xs, fill=(255, 255, 255, 255))
-            line = _wrap_text_by_width(draw, row["text"], self._font_sm, max_width=w - 220, max_lines=1)
-            draw.text((198, ly + 1), line[0] if line else row["text"], font=self._font_sm, fill=(226, 232, 240, 255))
-            ly += 28
+            draw.text((22, ly + 3), row["ts"], font=self._font_sm, fill=(148, 163, 184, 255))
+            draw.rounded_rectangle([(104, ly), (176, ly + 24)], radius=8, fill=tag_bg)
+            draw.text((140, ly + 12), tag[:6], font=self._font_xs, fill=(255, 255, 255, 255), anchor="mm")
+            line = _wrap_text_by_width(draw, row["text"], self._font_sm, max_width=w - 204, max_lines=1)
+            draw.text((186, ly + 2), line[0] if line else row["text"], font=self._font_sm, fill=(226, 232, 240, 255))
+            ly += 33
 
         self._workbench_key = key
         self._workbench_overlay = img
@@ -1898,103 +2934,93 @@ class WorldStageRenderer:
         if self._right_overlay is not None and self._right_key == key:
             return self._right_overlay
 
-        pw, ph = 538, 636
+        pw, ph = 534, 636
         img = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        # Section 1: Today Contributors & Memory Badges (y=0..202)
+        # Section 1: Today Contributors & Memory Badges (y=0..198)
         draw.rounded_rectangle(
-            [(0, 0), (pw - 1, 198)], radius=16, fill=(248, 250, 252, 238), outline=(148, 163, 184, 185), width=2
+            [(0, 0), (pw - 1, 198)], radius=16, fill=(17, 26, 52, 224), outline=(56, 189, 248, 155), width=2
         )
         known_viewers = int(ws["world"]["total_known_viewers"])
-        board_title = (
-            "今日共建榜 · 抢占第 1 席！" if known_viewers == 0 else f"今日共建榜 · 记住 {known_viewers} 位小伙伴"
-        )
-        draw.text(
-            (16, 10),
-            board_title,
-            font=self._font_md,
-            fill=(15, 23, 42, 255),
-        )
-        y = 42
+        board_title = "今日共建榜 · 抢占第 1 席!" if known_viewers == 0 else f"今日共建榜 · 记住 {known_viewers} 位工友"
+        draw.text((16, 11), board_title, font=self._font_md, fill=(248, 250, 252, 255))
+        y = 44
         if not builders:
-            draw.text(
-                (18, 62), "发个数字「1」或「开工」生成你的像素小人，", font=self._font_sm, fill=(37, 99, 235, 255)
-            )
-            draw.text(
-                (18, 92), "成为工坊首批共建元老，地图永久记住你的ID！", font=self._font_sm, fill=(100, 116, 139, 255)
-            )
+            draw.text((16, 68), "发个「1」或「开工」生成像素小人上墙，", font=self._font_sm, fill=(125, 211, 252, 255))
+            draw.text((16, 98), "工坊永久记住你的 ID 与共建贡献!", font=self._font_sm, fill=(148, 163, 184, 255))
         else:
+            rank_cols = ((250, 204, 21), (203, 213, 225), (251, 146, 60))
             for idx, b in enumerate(builders[:5], 1):
+                r_col = rank_cols[idx - 1] if idx <= 3 else (99, 102, 241)
+                draw.rounded_rectangle([(14, y + 1), (36, y + 23)], radius=6, fill=(*r_col, 235))
+                draw.text((25, y + 12), str(idx), font=self._font_xs, fill=(15, 23, 42, 255), anchor="mm")
                 badge_str = f" [{b['badge']}]" if b.get("badge") else f" · {b['tier']}"
-                left_txt = f"{idx}. {b['alias']}{badge_str}"
-                left_wrapped = _wrap_text_by_width(draw, left_txt, self._font_sm, max_width=pw - 120, max_lines=1)
+                left_txt = f"{b['alias']}{badge_str}"
+                left_wrapped = _wrap_text_by_width(draw, left_txt, self._font_sm, max_width=pw - 138, max_lines=1)
                 draw.text(
-                    (16, y), left_wrapped[0] if left_wrapped else left_txt, font=self._font_sm, fill=(30, 41, 59, 255)
+                    (46, y + 2),
+                    left_wrapped[0] if left_wrapped else left_txt,
+                    font=self._font_sm,
+                    fill=(241, 245, 249, 255),
                 )
-                draw.text((pw - 16, y), f"{b['score']}分", font=self._font_sm, fill=(37, 99, 235, 255), anchor="ra")
+                draw.text(
+                    (pw - 16, y + 2), f"{b['score']}分", font=self._font_sm, fill=(125, 211, 252, 255), anchor="ra"
+                )
                 y += 30
 
-        # Section 2: Viewer Suggestions Queue (y=210..378)
+        # Section 2: Viewer Suggestions Queue (y=210..376)
         draw.rounded_rectangle(
-            [(0, 210), (pw - 1, 376)], radius=16, fill=(245, 243, 255, 238), outline=(167, 139, 250, 195), width=2
+            [(0, 210), (pw - 1, 376)], radius=16, fill=(22, 20, 54, 226), outline=(167, 139, 250, 170), width=2
         )
-        draw.text((16, 220), "观众建议单（真采纳 · 署名上墙）", font=self._font_md, fill=(91, 33, 182, 255))
-        sy = 252
+        draw.text((16, 220), "观众建议单（真采纳 · 现场改）", font=self._font_md, fill=(221, 214, 254, 255))
+        sy = 254
         if not suggestions:
             draw.text(
-                (16, 282),
-                "发「建议 加个新建筑/功能」，Agent 现场看弹幕就改！",
-                font=self._font_sm,
-                fill=(107, 114, 128, 255),
+                (16, 282), "发「建议 加个新功能/改画面」，Agent 立刻改！", font=self._font_sm, fill=(196, 181, 253, 255)
             )
         else:
             for s in list(suggestions)[-3:]:
                 done_flag = s["status"] == "已采纳"
                 pill_bg = (16, 185, 129, 255) if done_flag else (124, 58, 237, 255)
-                draw.rounded_rectangle([(14, sy + 2), (82, sy + 24)], radius=8, fill=pill_bg)
+                draw.rounded_rectangle([(14, sy + 1), (82, sy + 24)], radius=8, fill=pill_bg)
                 draw.text((22, sy + 3), s["status"], font=self._font_xs, fill=(255, 255, 255, 255))
                 s_txt = _wrap_text_by_width(
                     draw, f"{s['id']} {s['author']}: {s['text']}", self._font_sm, max_width=pw - 110, max_lines=1
                 )
-                draw.text((92, sy + 2), s_txt[0] if s_txt else s["text"], font=self._font_sm, fill=(30, 41, 59, 255))
+                draw.text((92, sy + 2), s_txt[0] if s_txt else s["text"], font=self._font_sm, fill=(241, 245, 249, 255))
                 sy += 38
 
         # Section 3: Live Sanitized Danmaku Feed (y=388..636)
         draw.rounded_rectangle(
-            [(0, 388), (pw - 1, ph - 1)], radius=16, fill=(241, 245, 249, 235), outline=(148, 163, 184, 185), width=2
+            [(0, 388), (pw - 1, ph - 1)], radius=16, fill=(17, 26, 52, 224), outline=(56, 189, 248, 155), width=2
         )
-        draw.text((16, 398), "实时弹幕流", font=self._font_md, fill=(15, 23, 42, 255))
-        dy = 430
+        draw.text((16, 398), "实时弹幕流", font=self._font_md, fill=(248, 250, 252, 255))
+        dy = 434
         if not dm:
             draw.text(
-                (16, 456),
-                "弹幕直连畅通！扣个「1」或「开工」立即响应：",
-                font=self._font_sm,
-                fill=(37, 99, 235, 255),
+                (16, 462), "弹幕直连畅通！扣「1」或发建议立即响应：", font=self._font_sm, fill=(125, 211, 252, 255)
             )
-            draw.text(
-                (16, 488),
-                "女声实时喊你进工坊 + 画面生成像素打工人！",
-                font=self._font_sm,
-                fill=(100, 116, 139, 255),
-            )
+            draw.text((16, 492), "女声实时回应 + 像素工友立刻出场干活！", font=self._font_sm, fill=(148, 163, 184, 255))
         else:
             for item in list(dm)[-4:]:
                 et = item["event_type"]
                 t_col = (
                     (217, 119, 6, 255)
                     if et == "gift"
-                    else ((2, 132, 199, 255) if et == "enter" else (37, 99, 235, 255))
+                    else ((2, 132, 199, 255) if et == "enter" else (59, 130, 246, 255))
                 )
                 t_lbl = "投喂" if et == "gift" else ("进场" if et == "enter" else "弹幕")
-                draw.rounded_rectangle([(14, dy + 2), (62, dy + 24)], radius=8, fill=t_col)
-                draw.text((21, dy + 3), t_lbl, font=self._font_xs, fill=(255, 255, 255, 255))
+                draw.rounded_rectangle([(14, dy + 1), (62, dy + 24)], radius=8, fill=t_col)
+                draw.text((22, dy + 3), t_lbl, font=self._font_xs, fill=(255, 255, 255, 255))
                 msg_line = _wrap_text_by_width(
                     draw, f"{item['user_alias']}: {item['text']}", self._font_sm, max_width=pw - 86, max_lines=1
                 )
                 draw.text(
-                    (70, dy + 2), msg_line[0] if msg_line else item["text"], font=self._font_sm, fill=(15, 23, 42, 255)
+                    (70, dy + 2),
+                    msg_line[0] if msg_line else item["text"],
+                    font=self._font_sm,
+                    fill=(241, 245, 249, 255),
                 )
                 dy += 44
 
@@ -2006,7 +3032,7 @@ class WorldStageRenderer:
         text = (
             turn.text
             if turn is not None
-            else "欢迎来到 AI 活工坊！发「开工」「写代码」「修Bug」就能在地图里生成你的专属小人一起建设！"
+            else "欢迎来到 AI 活工坊！发「1」「开工」「写代码」或「建议」就能一起建设直播间！"
         )
         text = redact_pii(text).replace("@", "").strip()
         speaker = turn.speaker_id if turn is not None else active_speaker
@@ -2020,31 +3046,33 @@ class WorldStageRenderer:
         if self._subtitle_overlay is not None and self._subtitle_key == key:
             return self._subtitle_overlay
 
-        w, h = 1830, 160
+        w, h = 1830, 154
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         token = self._dock_portraits[speaker]
-        img.paste(token, (0, 12), token)
+        img.paste(token, (0, 14), token)
 
-        sx0 = token.width + 20
-        accent = SPEAKER_ACCENT_RGB.get(speaker, (37, 99, 235))
+        sx0 = token.width + 22
+        accent = SPEAKER_ACCENT_RGB.get(speaker, (56, 189, 248))
         s_name = PERSONAS[speaker].display_name
-        nw = int(draw.textlength(s_name, font=self._font_lg)) + 36
-        draw.rounded_rectangle([(sx0, 8), (sx0 + nw, 46)], radius=16, fill=(*accent, 255))
-        draw.text((sx0 + 18, 12), s_name, font=self._font_lg, fill=(255, 255, 255, 255))
+        nw = int(draw.textlength(s_name, font=self._font_lg)) + 34
+        draw.rounded_rectangle([(sx0, 8), (sx0 + nw, 44)], radius=14, fill=(*accent, 255))
+        draw.text((sx0 + 17, 12), s_name, font=self._font_lg, fill=(255, 255, 255, 255))
 
         mood_lbl = MOOD_LABELS.get(mood, "实时解说")
-        mw = int(draw.textlength(mood_lbl, font=self._font_sm)) + 26
+        mw = int(draw.textlength(mood_lbl, font=self._font_sm)) + 24
         mx0 = sx0 + nw + 12
-        draw.rounded_rectangle([(mx0, 11), (mx0 + mw, 43)], radius=12, fill=(51, 65, 85, 240))
-        draw.text((mx0 + 13, 16), mood_lbl, font=self._font_sm, fill=(226, 232, 240, 255))
+        draw.rounded_rectangle(
+            [(mx0, 10), (mx0 + mw, 42)], radius=12, fill=(30, 41, 59, 235), outline=(99, 102, 241, 160), width=1
+        )
+        draw.text((mx0 + 12, 16), mood_lbl, font=self._font_sm, fill=(226, 232, 240, 255))
 
         lines = _wrap_text_by_width(draw, text, self._font_sub, max_width=w - sx0 - 30, max_lines=2)
-        ty = 58
+        ty = 56
         for line in lines:
-            draw.text((sx0 + 2, ty + 2), line, font=self._font_sub, fill=(2, 6, 23, 210))
-            draw.text((sx0, ty), line, font=self._font_sub, fill=(255, 255, 255, 255))
-            ty += 46
+            draw.text((sx0 + 2, ty + 2), line, font=self._font_sub, fill=(2, 6, 23, 225))
+            draw.text((sx0, ty), line, font=self._font_sub, fill=(248, 250, 252, 255))
+            ty += 45
 
         self._subtitle_key = key
         self._subtitle_overlay = img
@@ -2064,7 +3092,7 @@ class WorldStageRenderer:
         celebration_text: str = "",
     ) -> np.ndarray:
         """Render a single `1920x1080` RGB24 frame (`uint8` ndarray `(1080, 1920, 3)`)."""
-        del poll_snapshot  # Unused in World mode; kept in signature for HeadlessLiveStreamer compatibility
+        del poll_snapshot, recent_danmaku  # Managed via LiveAgentWorld state snapshot
         t = frame_index / float(self.fps)
         level = max(0.0, min(1.0, float(audio_level)))
         ws = self.world.export_state_dict()
@@ -2075,21 +3103,58 @@ class WorldStageRenderer:
         )
         f_goal = telem["follower_goal"] if follower_goal is None else max(1, int(follower_goal))
 
-        frame = self._static_bg.copy()
+        resolved_active: SpeakerId = active_speaker if active_speaker in self._host_tokens else self.cast[0]
+        raw_prod = ws.get("production")
+        prod: Dict[str, Any] = raw_prod if isinstance(raw_prod, dict) else {}
+        stage_key = str(prod.get("stage") or "internet_sea")
 
-        # 1) Top telemetry pill & giant countdown clock
+        # 1) Fetch or reuse all cached panel overlays (zero per-frame redraw when state is unchanged)
         tel_overlay = self._get_telemetry_overlay(telem["online"], telem["watched_text"], f_count, f_goal)
-        frame.paste(tel_overlay, (24, 14), tel_overlay)
-
         cd_overlay = self._get_countdown_overlay(int(wstate["countdown_sec"]), wstate.get("active_event") is not None)
-        frame.paste(cd_overlay, (876, 14), cd_overlay)
-
-        # 2) Upper-left 2D Living Workshop Map (x=24..1310, y=92..628)
-        world_canvas = self._get_world_level_layer(wstate["level"]).copy()
+        world_layer = self._get_world_level_layer(wstate["level"], stage_key)
         hud_overlay = self._get_world_hud_overlay(ws)
-        world_canvas.paste(hud_overlay, (0, 0), hud_overlay)
+        monitor_overlay, cursor_pos = self._get_live_monitor_overlay(prod, t)
+        wb_overlay = self._get_workbench_overlay(ws["workbench"])
+        right_overlay = self._get_right_panel_overlay(ws)
+        sub_overlay = self._get_subtitle_overlay(resolved_active, current_turn)
 
-        wdraw = ImageDraw.Draw(world_canvas)
+        base_key = (
+            wstate["level"],
+            stage_key,
+            resolved_active,
+            self._telemetry_key,
+            self._countdown_key,
+            self._world_hud_key,
+            self._monitor_key,
+            self._workbench_key,
+            self._right_key,
+            self._subtitle_key,
+        )
+        if self._frame_base_rgb is None or self._frame_base_key != base_key:
+            base = self._get_stage_canvas(wstate["level"], resolved_active).copy()
+            base.paste(tel_overlay, (24, 14), tel_overlay)
+            base.paste(cd_overlay, (876, 14), cd_overlay)
+            base.paste(world_layer, (24, 88), world_layer)
+            base.paste(hud_overlay, (24, 88), hud_overlay)
+            base.paste(monitor_overlay, (24 + MONITOR_X, 88 + MONITOR_Y), monitor_overlay)
+            base.paste(wb_overlay, (24, 638), wb_overlay)
+            base.paste(right_overlay, (1346, 228), right_overlay)
+            base.paste(sub_overlay, (44, 898), sub_overlay)
+            self._frame_base_rgb = base
+            self._frame_base_key = base_key
+
+        frame = self._frame_base_rgb.copy()
+        fdraw = ImageDraw.Draw(frame, "RGBA")
+        ox_map, oy_map = 24, 88
+
+        if cursor_pos is not None and int(t * 2.0) % 2 == 0:
+            fdraw.text(
+                (ox_map + MONITOR_X + cursor_pos[0], oy_map + MONITOR_Y + cursor_pos[1]),
+                "_",
+                font=self._font_xs,
+                fill=(110, 231, 183, 255),
+            )
+
         with self.world._lock:
             hosts_snapshot = [(sid, h.x, h.y, h.action_label, h.phase) for sid, h in self.world.host_actors.items()]
             bots_snapshot = [(b.name, b.x, b.y, b.action_label, b.color, b.phase) for b in self.world.ambient_bots]
@@ -2098,113 +3163,141 @@ class WorldStageRenderer:
             ]
             popups_snapshot = [(p.text, p.x, p.y, p.color) for p in self.world.popups]
 
-        # Draw resident AI helper bots (keeps empty workshop lively, never counted as real viewers)
+        # Draw resident AI helper bots inside left map (x <= MAP_LEFT_WIDTH, never occluding building cards)
         for bname, bx, by, bact, bcol, bphase in bots_snapshot:
             bob = int(round(2.5 * abs(math.sin(t * 4.5 + bphase))))
             btok = self._bot_tokens.get(bcol)
             if btok is None:
-                btok = self._build_bot_token(bcol, size=38)
+                btok = self._build_bot_token(bcol, size=36)
                 self._bot_tokens[bcol] = btok
             px = int(round(bx - btok.width / 2))
             py = int(round(by - btok.height + 6 - bob))
-            world_canvas.paste(btok, (px, py), btok)
-            tag = f"{bname[:7]}·{bact[:5]}"
-            tw = int(wdraw.textlength(tag, font=self._font_xs)) + 12
-            tx0 = max(6, min(WORLD_WIDTH - tw - 6, int(round(bx - tw / 2))))
-            ty0 = max(78, py - 21)
-            wdraw.rounded_rectangle([(tx0, ty0), (tx0 + tw, ty0 + 20)], radius=8, fill=(30, 41, 59, 215))
-            wdraw.text((tx0 + 6, ty0 + 2), tag, font=self._font_xs, fill=(224, 242, 254, 255))
-            b_lbl = "AI助手"
-            bw = int(wdraw.textlength(b_lbl, font=self._font_xs)) + 8
-            wdraw.rounded_rectangle([(tx0, ty0 - 17), (tx0 + bw, ty0 - 1)], radius=6, fill=(*bcol, 235))
-            wdraw.text((tx0 + 4, ty0 - 16), b_lbl, font=self._font_xs, fill=(255, 255, 255, 255))
+            frame.paste(btok, (ox_map + px, oy_map + py), btok)
+            short_bot = "小鱼" if "鱼" in bname else "电饭煲"
+            tag = f"AI·{short_bot}"
+            tw = int(fdraw.textlength(tag, font=self._font_xs)) + 14
+            tx0 = max(18, min(MAP_LEFT_WIDTH - tw - 8, int(round(bx - tw / 2))))
+            ty0 = min(334, int(round(by + 7))) if by < 285.0 else max(210, py - 22)
+            fdraw.rounded_rectangle(
+                [(ox_map + tx0, oy_map + ty0), (ox_map + tx0 + tw, oy_map + ty0 + 20)],
+                radius=8,
+                fill=(10, 16, 34, 224),
+                outline=(*bcol, 220),
+                width=1,
+            )
+            fdraw.text((ox_map + tx0 + 7, oy_map + ty0 + 2), tag, font=self._font_xs, fill=(224, 242, 254, 255))
 
-        # Draw viewer pixel workers
+        # Draw viewer pixel workers inside left map (labels kept strictly outside top/bottom building cards)
         for alias, vx, vy, vact, cidx, vbadge in viewers_snapshot:
             bob = int(round(3.0 * abs(math.sin(t * 6.0 + cidx))))
             tok = self._viewer_tokens[cidx % len(self._viewer_tokens)]
             px = int(round(vx - tok.width / 2))
             py = int(round(vy - tok.height + 6 - bob))
-            world_canvas.paste(tok, (px, py), tok)
-            tag = f"{alias[:7]}·{vact[:6]}" if vact else alias[:8]
-            tw = int(wdraw.textlength(tag, font=self._font_xs)) + 12
-            tx0 = max(6, min(WORLD_WIDTH - tw - 6, int(round(vx - tw / 2))))
-            ty0 = max(78, py - 22)
-            wdraw.rounded_rectangle([(tx0, ty0), (tx0 + tw, ty0 + 20)], radius=8, fill=(15, 23, 42, 215))
-            wdraw.text((tx0 + 6, ty0 + 2), tag, font=self._font_xs, fill=(255, 255, 255, 255))
+            frame.paste(tok, (ox_map + px, oy_map + py), tok)
+            short_act = vact[:4] if vact else ""
+            tag = f"{alias[:4]}·{short_act}" if short_act else alias[:6]
+            tw = int(fdraw.textlength(tag, font=self._font_xs)) + 12
+            tx0 = max(18, min(MAP_LEFT_WIDTH - tw - 8, int(round(vx - tw / 2))))
+            if vy > 440.0:
+                ty0 = min(WORLD_HEIGHT - 24, int(round(vy + 7)))
+            elif vy <= 286.0:
+                ty0 = min(334, int(round(vy + 7)))
+            else:
+                ty0 = max(210, py - 22)
+            fdraw.rounded_rectangle(
+                [(ox_map + tx0, oy_map + ty0), (ox_map + tx0 + tw, oy_map + ty0 + 20)],
+                radius=8,
+                fill=(15, 23, 42, 235),
+                outline=(56, 189, 248, 220),
+                width=1,
+            )
+            fdraw.text((ox_map + tx0 + 6, oy_map + ty0 + 2), tag, font=self._font_xs, fill=(248, 250, 252, 255))
             if vbadge:
-                bw = int(wdraw.textlength(vbadge, font=self._font_xs)) + 8
-                wdraw.rounded_rectangle([(tx0, ty0 - 17), (tx0 + bw, ty0 - 1)], radius=6, fill=(217, 119, 6, 240))
-                wdraw.text((tx0 + 4, ty0 - 16), vbadge, font=self._font_xs, fill=(255, 255, 255, 255))
+                bw = int(fdraw.textlength(vbadge, font=self._font_xs)) + 10
+                bx_badge = max(18, min(MAP_LEFT_WIDTH - bw - 8, int(round(vx - bw / 2))))
+                by_badge = (ty0 - 20) if (vy > 440.0 or ty0 >= 232) else (ty0 + 22)
+                fdraw.rounded_rectangle(
+                    [(ox_map + bx_badge, oy_map + by_badge), (ox_map + bx_badge + bw, oy_map + by_badge + 18)],
+                    radius=6,
+                    fill=(217, 119, 6, 245),
+                )
+                fdraw.text(
+                    (ox_map + bx_badge + 5, oy_map + by_badge + 1),
+                    vbadge,
+                    font=self._font_xs,
+                    fill=(255, 255, 255, 255),
+                )
 
-        # Draw AI host actors
-        resolved_active: SpeakerId = active_speaker if active_speaker in self._host_tokens else self.cast[0]
+        # Draw patrolling host tokens along left production map (strictly inside corridor y=210..354)
         for sid, hx, hy, hact, hphase in hosts_snapshot:
             if sid not in self._host_tokens:
                 continue
             tok = self._host_tokens[sid]
             is_act = sid == resolved_active
-            bob = int(round((8.0 if is_act else 3.0) * abs(math.sin(t * 5.0 + hphase))))
+            bob = int(round((6.0 if is_act else 3.0) * abs(math.sin(t * 5.0 + hphase))))
             px = int(round(hx - tok.width / 2))
-            py = int(round(hy - tok.height + 8 - bob))
-            world_canvas.paste(tok, (px, py), tok)
+            py = int(round(hy - tok.height + 6 - bob))
+            frame.paste(tok, (ox_map + px, oy_map + py), tok)
             accent = SPEAKER_ACCENT_RGB.get(sid, (37, 99, 235))
-            lbl = f"{PERSONAS[sid].short_name}·{hact}"
-            lw = int(wdraw.textlength(lbl, font=self._font_xs)) + 14
-            lx0 = max(6, min(WORLD_WIDTH - lw - 6, int(round(hx - lw / 2))))
-            ly0 = min(WORLD_HEIGHT - 24, int(round(hy + 10)))
-            wdraw.rounded_rectangle(
-                [(lx0, ly0), (lx0 + lw, ly0 + 22)], radius=9, fill=(*accent, 242), outline=(255, 255, 255, 255), width=1
+            lbl = f"{PERSONAS[sid].short_name}·{hact[:4]}"
+            lw = int(fdraw.textlength(lbl, font=self._font_xs)) + 12
+            lx0 = max(18, min(MAP_LEFT_WIDTH - lw - 8, int(round(hx - lw / 2))))
+            ly0 = min(334, int(round(hy + 7))) if hy <= 354.0 else min(WORLD_HEIGHT - 24, int(round(hy + 7)))
+            fdraw.rounded_rectangle(
+                [(ox_map + lx0, oy_map + ly0), (ox_map + lx0 + lw, oy_map + ly0 + 19)],
+                radius=8,
+                fill=(10, 16, 34, 232),
+                outline=(*accent, 240),
+                width=1,
             )
-            wdraw.text((lx0 + 7, ly0 + 2), lbl, font=self._font_xs, fill=(255, 255, 255, 255))
+            fdraw.text((ox_map + lx0 + 6, oy_map + ly0 + 2), lbl, font=self._font_xs, fill=(248, 250, 252, 255))
 
-        # Draw floating popups inside the 2D world
+        # Draw floating popups strictly within open corridor / promenade bands (never covering building cards)
         for ptext, popx, popy, pcol in popups_snapshot:
-            pw = int(wdraw.textlength(ptext, font=self._font_sm)) + 16
-            px0 = max(8, min(WORLD_WIDTH - pw - 8, int(round(popx - pw / 2))))
-            py0 = max(78, min(WORLD_HEIGHT - 30, int(round(popy))))
-            wdraw.rounded_rectangle(
-                [(px0, py0), (px0 + pw, py0 + 26)], radius=10, fill=(255, 255, 255, 245), outline=(*pcol, 255), width=2
+            pw = int(fdraw.textlength(ptext, font=self._font_sm)) + 16
+            px0 = max(18, min(MAP_LEFT_WIDTH - pw - 8, int(round(popx - pw / 2))))
+            raw_py = int(round(popy))
+            if raw_py < 210:
+                py0 = 210
+            elif 330 < raw_py < 436:
+                py0 = 330
+            else:
+                py0 = min(WORLD_HEIGHT - 30, raw_py)
+            fdraw.rounded_rectangle(
+                [(ox_map + px0, oy_map + py0), (ox_map + px0 + pw, oy_map + py0 + 25)],
+                radius=10,
+                fill=(10, 16, 34, 238),
+                outline=(*pcol, 255),
+                width=2,
             )
-            wdraw.text((px0 + 8, py0 + 3), ptext, font=self._font_sm, fill=(*pcol, 255))
+            fdraw.text((ox_map + px0 + 8, oy_map + py0 + 3), ptext, font=self._font_sm, fill=(248, 250, 252, 255))
 
-        # Optional world/follower celebration banner inside bottom of map
+        # Optional world/follower celebration banner inside bottom of left map (never obscures LIVE monitor)
         active_banner = celebration_text.strip() or wstate.get("active_banner") or ""
         if active_banner:
-            bw = min(WORLD_WIDTH - 40, int(wdraw.textlength(active_banner, font=self._font_md)) + 60)
-            bx0 = (WORLD_WIDTH - bw) // 2
-            wdraw.rounded_rectangle(
-                [(bx0, WORLD_HEIGHT - 56), (bx0 + bw, WORLD_HEIGHT - 12)],
-                radius=18,
-                fill=(254, 243, 199, 248),
-                outline=(245, 158, 11, 255),
-                width=3,
+            ban_max = MAP_LEFT_WIDTH - 48
+            ban_lines = _wrap_text_by_width(fdraw, active_banner, self._font_sm, max_width=ban_max - 28, max_lines=1)
+            ban_shown = ban_lines[0] if ban_lines else active_banner
+            bw = min(ban_max, int(fdraw.textlength(ban_shown, font=self._font_sm)) + 40)
+            bx0 = 14 + (MAP_LEFT_WIDTH - 14 - bw) // 2
+            fdraw.rounded_rectangle(
+                [(ox_map + bx0, oy_map + WORLD_HEIGHT - 52), (ox_map + bx0 + bw, oy_map + WORLD_HEIGHT - 16)],
+                radius=14,
+                fill=(15, 23, 42, 242),
+                outline=(250, 204, 21, 245),
+                width=2,
             )
-            wdraw.text(
-                (WORLD_WIDTH // 2, WORLD_HEIGHT - 34),
-                active_banner,
-                font=self._font_md,
-                fill=(120, 53, 15, 255),
+            fdraw.text(
+                (ox_map + bx0 + bw // 2, oy_map + WORLD_HEIGHT - 34),
+                ban_shown,
+                font=self._font_sm,
+                fill=(254, 240, 138, 255),
                 anchor="mm",
             )
 
-        frame.paste(world_canvas, (24, 92), world_canvas)
-
-        # 3) Lower-left Real-Time Agent Workbench (x=24..1310, y=640..880)
-        wb_overlay = self._get_workbench_overlay(ws["workbench"])
-        frame.paste(wb_overlay, (24, 640), wb_overlay)
-
-        # 4) Right-side dynamic Builders / Suggestions / Live Danmaku (inside shell at y=228..864)
-        right_overlay = self._get_right_panel_overlay(ws)
-        frame.paste(right_overlay, (1342, 228), right_overlay)
-
-        # 5) Bottom subtitle dock + animated audio waveform bars
-        sub_overlay = self._get_subtitle_overlay(resolved_active, current_turn)
-        frame.paste(sub_overlay, (46, 898), sub_overlay)
-
+        # 5) Animated audio waveform bars along bottom subtitle dock
         eq_color = SPEAKER_EQ_LIGHT_RGB.get(resolved_active, (56, 189, 248))
         eq_peak = SPEAKER_EQ_PEAK_RGB.get(resolved_active, (37, 99, 235))
-        fdraw = ImageDraw.Draw(frame)
         bar_count, bar_w, bar_gap = 20, 7, 5
         eq_x0 = 1868 - (bar_count * bar_w + (bar_count - 1) * bar_gap)
         eq_base_y, max_h = 942, 32.0
@@ -2229,6 +3322,8 @@ __all__ = [
     "DEFAULT_MEMORY_PATH",
     "LEVEL_THRESHOLDS",
     "PIPELINE_STAGES",
+    "PRODUCTION_STAGE_META",
+    "PRODUCTION_STAGE_TO_STATION",
     "STATIONS",
     "WORLD_HEIGHT",
     "WORLD_WIDTH",

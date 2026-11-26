@@ -557,37 +557,37 @@ _IDLE_BANTER_BY_SPEAKER: Final[Dict[SpeakerId, Tuple[Tuple[SpeakerId, str, str, 
 _WORLD_IDLE_BANTER_BANK: Final[Tuple[Tuple[SpeakerId, str, str, str], ...]] = (
     (
         "dafeiyu",
-        "AI活工坊已升到Lv.{level}{level_name}！现在发个数字1或「开工」直接给你生成像素小人，发「写代码」还能全员续命，目前{followers}/{goal}粉！",
+        "AI活工坊正在「{stage_title}」实况制片中({episode})！发弹幕 A/B/C 就能决定下期拍什么，发「1」还能领像素小人！",
         "lively",
         "script_pitch",
     ),
     (
         "gemini",
-        "快看工坊中央！电饭煲补给站还剩{countdown}倒计时，大家发「投喂」或「修Bug」就能瞬间涨电续命，还差{goal}粉冲刺哦！",
+        "大家看右侧实况监看屏呀！正在推进「{stage_title}」，进度 {progress_pct}%，发 A/B/C 投票或「建议 你的点子」就能改写剧情！",
         "hype",
         "",
     ),
     (
         "yowane",
-        "右下角工作台全透明播报中：发「建议 你想要的新功能」直接上墙待办队列，我来盯算力和代码产出。",
+        "左侧地图角色正在各栋工作房联动奔走，右下工作台实时打印脚本与进度；发「建议 内容」或「修Bug」都会直接进执行队列。",
         "focused",
         "script_pitch",
     ),
     (
         "dafeiyu",
-        "目前工坊代码值{code_pts}、算力{compute_pts}，谁敢发条「写代码」跟大肥鱼同屏搬砖？这可比自己瞎逛好玩多了！",
+        "目前代码值{code_pts}、算力{compute_pts}，倒计时还剩{countdown}！发条 A/B/C 或「写代码」一起把 {episode} 推进到放映厅！",
         "teasing",
         "roast_battle",
     ),
     (
         "gemini",
-        "现在工坊里已经累计接待过{known_viewers}位共建工友啦，回归老朋友发条弹幕就能触发欢迎卡片，冲击{goal}粉冲鸭！",
+        "工坊已经记住过 {known_viewers} 位共建工友啦，回归老朋友发弹幕就能亮名牌，离 {goal} 粉冲刺又近一步！",
         "lively",
         "",
     ),
     (
         "yowane",
-        "友情提醒：倒计时归零工坊就会停电，平时发「开工」报到、「修Bug」排查突发警报，每个人都能在地图里跑起来。",
+        "友好提醒：下期 {episode} 选题大权就在屏幕上，发「A」「B」「C」都能上墙并延长工坊倒计时，目前进度 {progress_pct}%。",
         "focused",
         "",
     ),
@@ -601,7 +601,7 @@ _WORLD_IDLE_BANTER_BY_SPEAKER: Final[Dict[SpeakerId, Tuple[Tuple[SpeakerId, str,
 
 
 def format_world_context_summary(state: Dict[str, Any]) -> str:
-    """Format a compact, zero-PII live workshop snapshot for dialogue & autonomous prompts."""
+    """Format a compact, zero-PII live workshop & video-production snapshot for LLM commentary."""
     if not isinstance(state, dict):
         return ""
     raw_world = state.get("world")
@@ -610,6 +610,8 @@ def format_world_context_summary(state: Dict[str, Any]) -> str:
     wb: Dict[str, Any] = raw_wb if isinstance(raw_wb, dict) else {}
     raw_tel = state.get("telemetry")
     tel: Dict[str, Any] = raw_tel if isinstance(raw_tel, dict) else {}
+    raw_prod = state.get("production")
+    prod: Dict[str, Any] = raw_prod if isinstance(raw_prod, dict) else {}
     raw_sugs = state.get("suggestions")
     sugs: List[Any] = raw_sugs if isinstance(raw_sugs, list) else []
     open_sugs = [
@@ -629,14 +631,25 @@ def format_world_context_summary(state: Dict[str, Any]) -> str:
         ", ".join(f"{b.get('alias', '工友')}({b.get('score', 0)}分)" for b in builders[:3] if isinstance(b, dict))
         or "暂无"
     )
+    raw_poll = prod.get("topic_poll")
+    poll_obj: Dict[str, Any] = raw_poll if isinstance(raw_poll, dict) else {}
+    raw_opts = poll_obj.get("options")
+    opts: List[Any] = raw_opts if isinstance(raw_opts, list) else []
+    poll_str = " / ".join(
+        f"{o.get('key', '?')}.{str(o.get('label', ''))[:16]}({o.get('votes', 0)}票)"
+        for o in opts[:3]
+        if isinstance(o, dict)
+    )
+    logs = wb.get("work_log") if isinstance(wb.get("work_log"), list) else []
+    latest_log = str(logs[-1].get("text", ""))[:36] if logs and isinstance(logs[-1], dict) else "暂无"
     return (
-        f"工坊Lv.{world.get('level', 1)}「{world.get('level_name', '破旧电饭煲工位')}」 | "
-        f"倒计时{world.get('countdown_hhmmss', '00:00:00')} | "
-        f"代码{world.get('code_pts', 0)} 算力{world.get('compute_pts', 0)} 白米饭{world.get('rice_bowls', 0)} | "
-        f"工友数{world.get('active_worker_count', 0)}/累计{world.get('total_known_viewers', 0)}人 | "
-        f"实时状态:{ev_str} | 工作台任务:「{wb.get('active_task', '巡查工坊')}」({wb.get('pipeline_label', '')}) | "
-        f"待采纳建议:{', '.join(open_sugs[:3]) if open_sugs else '暂无'} | "
-        f"人气{tel.get('online', 0)} {tel.get('watched_text', '0人看过')} | 贡献榜:{top_str}"
+        f"当前制片阶段:{prod.get('stage_title', '互联网热点海')}({prod.get('episode', 'Ep024筹备')} {prod.get('progress_pct', 0)}%) | "
+        f"实时画面:{prod.get('preview_caption', '')} | 进度说明:{prod.get('detail', '')} | "
+        f"题材投票:{poll_str or '暂无'} | 最近动态:{latest_log} | "
+        f"工坊Lv.{world.get('level', 1)}「{world.get('level_name', '破旧电饭煲工位')}」 倒计时{world.get('countdown_hhmmss', '00:00:00')} | "
+        f"代码{world.get('code_pts', 0)} 算力{world.get('compute_pts', 0)} | 工友{world.get('active_worker_count', 0)}人 | "
+        f"警报:{ev_str} | 任务:「{wb.get('active_task', '巡查工坊')}」 | "
+        f"建议:{', '.join(open_sugs[:2]) if open_sugs else '暂无'} | 人气{tel.get('online', 0)} {tel.get('watched_text', '0人看过')} | 榜:{top_str}"
     )
 
 
@@ -650,6 +663,8 @@ class OfflineBanterResponder:
     ) -> None:
         self._variant_idx = 0
         self._speaker_idle_cursor: Dict[SpeakerId, int] = {"dafeiyu": 0, "gemini": 0, "yowane": 0}
+        self._crisis_idle_hits: int = 0
+        self._last_crisis_title: str = ""
         self.world_context_provider = world_context_provider
 
     @property
@@ -686,12 +701,29 @@ class OfflineBanterResponder:
                 active_ev = world_data.get("active_event")
                 if isinstance(active_ev, dict) and active_ev.get("title"):
                     title = str(active_ev.get("title"))
-                    if sid == "dafeiyu":
-                        return f"紧急告警「{title}」正在扣时间！快发「修Bug」跟大肥鱼一起抢修续命三百秒！", "shocked"
-                    if sid == "yowane":
-                        return f"算力警报「{title}」双倍掉时间中，请大家发「修Bug」或「投喂」稳住工坊！", "focused"
-                    return f"哎呀「{title}」闪红灯啦！观众快发「修Bug」救场，保住我的漂亮工坊呀！", "shocked"
+                    if title != self._last_crisis_title:
+                        self._last_crisis_title = title
+                        self._crisis_idle_hits = 0
+                    hit = self._crisis_idle_hits
+                    self._crisis_idle_hits += 1
+                    if hit % 4 == 0:
+                        if sid == "dafeiyu":
+                            return (
+                                f"突发状况「{title}」出现啦！发条「修Bug」就能跟大肥鱼一起抢修续命三百秒！",
+                                "shocked",
+                            )
+                        if sid == "yowane":
+                            return (
+                                f"注意「{title}」双倍耗能中，发「修Bug」或「投喂」稳住工坊，稍后小鱼也会自动排查。",
+                                "focused",
+                            )
+                        return f"呀「{title}」闪提醒啦！发一句「修Bug」就能立刻救场保护工坊哦！", "shocked"
+                else:
+                    self._crisis_idle_hits = 0
+                    self._last_crisis_title = ""
 
+                raw_prod_ctx = world_ctx.get("production")
+                prod_data: Dict[str, Any] = raw_prod_ctx if isinstance(raw_prod_ctx, dict) else {}
                 w_bank = _WORLD_IDLE_BANTER_BY_SPEAKER.get(sid) or _WORLD_IDLE_BANTER_BANK
                 idx = self._speaker_idle_cursor.get(sid, 0)
                 self._speaker_idle_cursor[sid] = idx + 1
@@ -706,6 +738,9 @@ class OfflineBanterResponder:
                         code_pts=world_data.get("code_pts", 0),
                         compute_pts=world_data.get("compute_pts", 0),
                         known_viewers=world_data.get("total_known_viewers", 0),
+                        stage_title=prod_data.get("stage_title", "互联网热点海"),
+                        episode=prod_data.get("episode", "Ep024筹备"),
+                        progress_pct=prod_data.get("progress_pct", 25),
                     ),
                     mood,
                 )
@@ -786,7 +821,92 @@ class OfflineBanterResponder:
 
         # Viewer danmaku topic-aware comedic replies
         msg = event.text
+        lowered = msg.lower().strip()
+        stripped_token = lowered.strip("！!。. ~～")
         alias = event.user_alias or "这位观众"
+        if world_ctx is not None:
+            snippet = msg[:24]
+            if stripped_token in ("a", "b", "c", "选a", "选b", "选c", "投a", "投b", "投c", "a方案", "b方案", "c方案"):
+                choice = "A" if "a" in stripped_token else ("B" if "b" in stripped_token else "C")
+                if sid == "dafeiyu":
+                    return (
+                        f"{alias}果断把宝贵一票投给 {choice} 方案啦！大肥鱼这就往热点海记上一笔，大家继续投 A/B/C！",
+                        "hype",
+                    )
+                if sid == "yowane":
+                    return (
+                        f"{alias}投票给 {choice} 方案(+120s)，右侧监看屏票条已经刷新，最终胜出题材直接立项开做。",
+                        "focused",
+                    )
+                return (
+                    f"收到{alias}选的 {choice} 方案呀！好期待接下来走进可灵炼丹房把它拍成正片，其他人也快发 A/B/C 吧！",
+                    "grateful",
+                )
+            if stripped_token in ("1", "来", "来了", "在") or any(
+                k in lowered for k in ("开工", "打工", "加入", "打卡", "报到")
+            ):
+                if sid == "dafeiyu":
+                    return (
+                        f"太好了{alias}进工坊报到啦！像素小人已上岗代码工位续命一百二十秒，再发「写代码」或「建议」继续玩！",
+                        "hype",
+                    )
+                if sid == "yowane":
+                    return (
+                        f"欢迎{alias}加入工坊，工位已登记(+120s)，发「写代码」或「建议 你的想法」就能直接调度 Agent。",
+                        "focused",
+                    )
+                return (
+                    f"收到{alias}的数字1开工信号啦！专属像素小人上线施工中，发「建议 点子」还能现场改直播间哦！",
+                    "grateful",
+                )
+            if any(k in lowered for k in ("写代码", "代码", "伐木", "施工", "建塔")):
+                if sid == "dafeiyu":
+                    return f"{alias}冲进代码工位一起搬砖啦！代码值和建造经验双倍上涨，冲 Lv.4 千粉塔！", "hype"
+                if sid == "yowane":
+                    return f"{alias}提交的代码工单已记账(+180s)，工坊升级进度条又往前推了一大截。", "focused"
+                return f"哇谢谢{alias}帮忙写代码呀！赛博霓虹工坊又亮了一圈，顺便点个赞更好看哦！", "lively"
+            if any(k in lowered for k in ("修bug", "抢修", "快跑")):
+                if sid == "dafeiyu":
+                    return f"{alias}神兵天降抢修成功！工坊直接续命加满，这波救场大肥鱼给你记头功！", "hype"
+                if sid == "yowane":
+                    return f"多亏{alias}及时发「修Bug」稳住算力机柜，算力条和倒计时都安全了。", "grateful"
+                return f"{alias}救场太帅啦！警报解除，欢迎继续发「建议 内容」指挥我们改画面！", "grateful"
+            if any(k in lowered for k in ("投喂", "加餐", "白米饭")):
+                if sid == "dafeiyu":
+                    return f"{alias}太暖了！电饭煲白米饭加满三百秒续命，大肥鱼干活更有力气啦！", "grateful"
+                if sid == "yowane":
+                    return f"收到{alias}的加餐补给(+300s)，电饭煲稳稳供电中。", "grateful"
+                return f"谢谢{alias}的白米饭补给～电饭煲冒热气啦，工坊继续元气开工！", "grateful"
+            if any(k in lowered for k in ("建议", "提案", "需求", "点子", "丑", "画面", "ui", "页面", "优化", "改")):
+                if sid == "dafeiyu":
+                    return (
+                        f"收到{alias}的建议「{snippet}」！工坊右侧和 Agent 工作台已经接单，马上照着改起来！",
+                        "focused",
+                    )
+                if sid == "yowane":
+                    return (
+                        f"记录{alias}的改进意见「{snippet}」，后台工程队列优先处理，改完直接现场热更新展示。",
+                        "focused",
+                    )
+                return (
+                    f"谢谢{alias}提的「{snippet}」呀！我们最听观众劝了，发「建议 具体点子」立刻进工坊待办！",
+                    "grateful",
+                )
+            if sid == "dafeiyu":
+                return (
+                    f"收到{alias}的弹幕「{snippet}」！欢迎发「开工」「写代码」或「建议 你的点子」一起建工坊！",
+                    "lively",
+                )
+            if sid == "yowane":
+                return (
+                    f"看到{alias}发来「{snippet}」，工坊实时收单中，发「建议 内容」就能让右侧工作台直接执行。",
+                    "focused",
+                )
+            return (
+                f"看到{alias}说「{snippet}」啦！喜欢工坊的话发「1」领像素小人，想怎么改随时发「建议」告诉我！",
+                "lively",
+            )
+
         if any(
             k in msg
             for k in ("018", "剧本", "策划", "投票", "下期", "拍什么", "扣1", "扣2", "扣3", "投1", "投2", "投3")
@@ -915,6 +1035,7 @@ class OpenAICompatibleResponder:
         model: Optional[str] = None,
         timeout_sec: float = 12.0,
         max_calls: Optional[int] = None,
+        idle_call_interval_sec: float = 0.0,
         fallback: Optional[OfflineBanterResponder] = None,
         http_client: Optional[httpx.AsyncClient] = None,
         world_context_provider: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -931,6 +1052,9 @@ class OpenAICompatibleResponder:
         self.model = (model or os.getenv("LIVE_LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
         self.timeout_sec = timeout_sec
         self.max_calls: Optional[int] = None if max_calls is None else max(0, int(max_calls))
+        self.idle_call_interval_sec: float = max(0.0, float(idle_call_interval_sec))
+        self._last_idle_llm_ts: float = 0.0
+        self._last_commented_stage_seq: int = -1
         self.calls_made: int = 0
         self.world_context_provider = world_context_provider
         self.fallback = fallback or OfflineBanterResponder(world_context_provider=world_context_provider)
@@ -982,12 +1106,37 @@ class OpenAICompatibleResponder:
             )
 
         world_ctx = self._safe_world_state()
+        prod_ctx = (
+            world_ctx.get("production")
+            if isinstance(world_ctx, dict) and isinstance(world_ctx.get("production"), dict)
+            else {}
+        )
+        cur_stage_seq = int(prod_ctx.get("stage_change_seq", 0)) if prod_ctx else 0
+        if event is None and self.idle_call_interval_sec > 0.0:
+            now_mono = time.monotonic()
+            stage_changed = cur_stage_seq != self._last_commented_stage_seq
+            if (
+                not stage_changed
+                and self._last_idle_llm_ts > 0.0
+                and (now_mono - self._last_idle_llm_ts) < self.idle_call_interval_sec
+            ):
+                return await self.fallback.generate_line(
+                    speaker=speaker,
+                    event=event,
+                    history=history,
+                    follower_count=follower_count,
+                    follower_goal=follower_goal,
+                    idle_step=idle_step,
+                )
+
         world_summary = format_world_context_summary(world_ctx) if world_ctx is not None else ""
         sys_content = speaker.system_prompt
         if world_summary:
             sys_content += (
-                "\n当前已切换为「2D AI 活工坊」实时生存建造模式：观众发「开工」「写代码」「修Bug」「投喂」可生成像素小人并续命，"
-                "发「建议 内容」会上墙给 AI 工作台实时执行。禁止再提旧版 017-020 或扣 1/2/3 公投台词，严格围绕工坊现状与观众即兴互动（不超过 55 字）。"
+                "\n当前已进入「AI 全自动做下期视频 · 幕后实况解说」世界模式！你会看着实时地图里角色在【互联网热点海 / 角色抓捕屋 / 可灵炼丹房 / 剪辑放映厅】穿梭，"
+                "以及右侧监看屏正在做的真实视频筹备/画面/代码/A-B-C题材投票。"
+                "请像机智幽默的幕后解说员一样，具体锐评、吐槽或讲解后台Agent此刻正在推进的制片步骤与屏幕画面，引导观众发 A/B/C 选下期题材、发「1」领小人或发「建议 内容」改剧情；"
+                "禁止提 017-020 旧公投套话，禁止任何@或隐私信息（55字内）。"
             )
 
         messages: List[Dict[str, str]] = [{"role": "system", "content": sys_content}]
@@ -999,9 +1148,8 @@ class OpenAICompatibleResponder:
             if event is None:
                 user_prompt = (
                     f"粉丝进度 {follower_count}/{follower_goal}。\n"
-                    f"实时工坊快照：{world_summary}\n"
-                    "当前暂无新弹幕。请根据上方工坊实时等级、倒计时、警报、工作台任务或观众贡献接话吐槽，"
-                    "自然号召观众发「开工」「写代码」「修Bug」「投喂」或「建议」参与互动（55字内，不带@）。"
+                    f"实时制片与工坊快照：{world_summary}\n"
+                    "当前暂无新弹幕。请结合上方【当前制片阶段】【实时画面】【进度说明】或【题材投票】直接解说吐槽一句，别只念数字（55字内，不带@）。"
                 )
                 default_mood = "lively"
             elif event.event_type == "system":
@@ -1064,6 +1212,9 @@ class OpenAICompatibleResponder:
 
         try:
             self.calls_made += 1
+            if event is None:
+                self._last_idle_llm_ts = time.monotonic()
+                self._last_commented_stage_seq = cur_stage_seq
             if self._external_client is not None:
                 resp = await self._external_client.post(url, headers=headers, json=body, timeout=self.timeout_sec)
             else:

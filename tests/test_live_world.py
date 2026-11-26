@@ -36,7 +36,13 @@ from core.live_studio import (
     scrub_rtmp_secrets,
 )
 from core.live_studio.danmaku import parse_bilibili_command, parse_room_stats_command
-from core.live_studio.world_engine import CORRIDOR_Y, CRISIS_COOLDOWN_SEC, STATIONS
+from core.live_studio.world_engine import (
+    CORRIDOR_Y,
+    CRISIS_COOLDOWN_SEC,
+    PRODUCTION_STAGE_META,
+    PRODUCTION_STAGE_TO_STATION,
+    STATIONS,
+)
 from scripts import launch_headless_live, live_agent_ctl
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -96,6 +102,7 @@ def _make_vault_with_cookies(tmp_path: Path) -> AuthVault:
 
 def test_zero_mic_guarantee_for_world_modules() -> None:
     targets = [
+        REPO_ROOT / "core" / "live_studio" / "danmaku.py",
         REPO_ROOT / "core" / "live_studio" / "world_engine.py",
         REPO_ROOT / "core" / "live_studio" / "headless_streamer.py",
         REPO_ROOT / "core" / "live_studio" / "director.py",
@@ -977,3 +984,450 @@ def test_live_room_hot_update_partition_rank_and_ctl_cli(
     out2 = json.loads(capsys.readouterr().out)
     assert out2["ok"] is True and out2["total_rooms"] == 41 and out2["my_rank"] == 1
     assert "22334455" not in json.dumps(out2)
+
+
+def test_interact_v2_crisis_autoheal_antispam_and_world_danmaku_replies(tmp_path: Path) -> None:
+    """Verify INTERACT_WORD_V2, 180s crisis auto-heal, crisis anti-spam, and workshop danmaku banter."""
+    # 1. INTERACT_WORD_V2 parses cleanly without raw UID
+    ev2 = parse_bilibili_command({"cmd": "INTERACT_WORD_V2", "data": {"pb": "mock"}})
+    assert ev2 is not None
+    assert ev2.event_type == "enter"
+    assert ev2.user_alias == "路过小伙伴"
+
+    # 2. 180s crisis auto-heal in LiveAgentWorld.tick()
+    world = LiveAgentWorld(memory_path=tmp_path / "autoheal_mem.json", follower_count=15, follower_goal=1000)
+    world.world_time_sec = 500.0
+    world.apply_agent_command({"cmd": "world_action", "action": "trigger_event", "title": "测试供电告警"})
+    assert world.active_event is not None
+    world.tick(90.0)
+    assert world.active_event is not None
+    world.tick(95.0)
+    assert world.active_event is None
+    assert "AI巡检小鱼自动排查完成了" in world.work_log[-1]["text"]
+
+    # 3. Crisis anti-spam: 1st idle turn announces crisis, 2nd switches to normal workshop banter
+    world.apply_agent_command({"cmd": "world_action", "action": "trigger_event", "title": "24G内存告警"})
+    resp = OfflineBanterResponder(world_context_provider=world.export_state_dict)
+    dir_world = DualAILiveDirector(
+        responder=resp, follower_count=15, follower_goal=1000, world_context_provider=world.export_state_dict
+    )
+    t1 = asyncio.run(dir_world.next_turn())
+    t2 = asyncio.run(dir_world.next_turn())
+    assert "24G内存告警" in t1.text and "修Bug" in t1.text
+    assert "24G内存告警" not in t2.text
+
+    # 4. World-mode danmaku replies for "1" and general UI feedback never leak stale poll lines
+    world.apply_agent_command({"cmd": "world_action", "action": "resolve_event"})
+    world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="热心观众", text="1"))
+    dir_world.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="热心观众", text="1"))
+    reply_1 = asyncio.run(dir_world.next_turn())
+    assert "公投" not in reply_1.text and "评委席" not in reply_1.text
+    assert "开工" in reply_1.text or "像素小人" in reply_1.text or "工位" in reply_1.text
+
+    dir_world.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="热心观众", text="页面很丑"))
+    reply_ui = asyncio.run(dir_world.next_turn())
+    assert "公投" not in reply_ui.text
+    assert "页面很丑" in reply_ui.text
+
+
+def test_studio_stage_switching_collision_safety_and_ctl_cli(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify v3 studio_stage 4-stage switching, doorway movement, collision safety, and CLI persistence."""
+    world = LiveAgentWorld(memory_path=tmp_path / "stage_mem.json", follower_count=15, follower_goal=1000)
+
+    init_snap = world.export_state_dict()
+    assert init_snap["production"]["stage"] == "internet_sea"
+    assert init_snap["production"]["stage_title"] == "互联网热点海"
+    assert init_snap["production"]["stage_change_seq"] == 0
+    assert init_snap["production"]["monitor_mode"] == "poll"
+    assert init_snap["workbench"]["pipeline_stage"] == 0
+
+    bad = world.apply_agent_command({"cmd": "studio_stage", "stage": "nonexistent_stage"})
+    assert bad["ok"] is False
+    assert bad["error"] == "invalid_stage"
+    assert world.export_state_dict()["production"]["stage_change_seq"] == 0
+
+    stage_sequence: List[Tuple[str, Dict[str, Any]]] = [
+        (
+            "character_catch",
+            {
+                "episode": "Ep024 抓角色",
+                "detail": "锁定铁三角立绘 @全体 uid=123456",
+                "progress_pct": 45,
+                "monitor_mode": "preview",
+                "preview_paths": [
+                    "library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png",
+                    "../secret_escape.png",
+                    "/etc/passwd",
+                    "bad@mention.png",
+                    "uid=998877.png",
+                ],
+                "preview_caption": "铁三角定型立绘轮播",
+                "code_lines": [f"line_{i} @spam uid=556677" for i in range(8)],
+            },
+        ),
+        (
+            "kling_forge",
+            {
+                "episode": "Ep024 可灵房",
+                "detail": "异步提交可灵4.0关键帧",
+                "progress_pct": 70,
+                "monitor_mode": "preview",
+                "preview_paths": ["assets/kling_anchor.png"],
+                "preview_caption": "可灵炼丹房实时参考",
+            },
+        ),
+        (
+            "edit_theater",
+            {
+                "episode": "Ep024 剪辑厅",
+                "detail": "60FPS光流装配与质检门禁",
+                "progress_pct": 90,
+                "monitor_mode": "preview",
+            },
+        ),
+        (
+            "internet_sea",
+            {
+                "episode": "Ep024 热点海",
+                "detail": "收集弹幕A/B/C选题投票",
+                "progress_pct": 20,
+                "monitor_mode": "poll",
+            },
+        ),
+    ]
+
+    for expected_seq, (stage_key, extra) in enumerate(stage_sequence, start=1):
+        res = world.apply_agent_command({"cmd": "studio_stage", "stage": stage_key, **extra})
+        expected_station, expected_pipeline_idx, _, _ = PRODUCTION_STAGE_META[stage_key]
+        assert res["ok"] is True
+        assert res["stage"] == stage_key
+        assert res["stage_title"] == expected_station
+        assert res["pipeline_stage"] == expected_pipeline_idx
+        assert res["stage_change_seq"] == expected_seq
+
+        snap = world.export_state_dict()
+        prod = snap["production"]
+        assert prod["stage"] == stage_key
+        assert prod["stage_title"] == PRODUCTION_STAGE_TO_STATION[stage_key]
+        assert prod["stage_change_seq"] == expected_seq
+        assert snap["workbench"]["pipeline_stage"] == expected_pipeline_idx
+        assert world.work_log[-1]["tag"] == "STAGE"
+        assert "@" not in json.dumps(snap, ensure_ascii=False)
+        assert "123456" not in prod["detail"]
+
+        if stage_key == "character_catch":
+            assert prod["preview_paths"] == ["library/characters/deepseek_dafeiyu/dafeiyu_canonical_front.png"]
+            assert len(prod["code_lines"]) == 6
+            assert all("@" not in ln and "556677" not in ln for ln in prod["code_lines"])
+
+        # Tick 12s and verify all hosts & bots stay strictly inside left map and outside station hitboxes
+        for _ in range(48):
+            world.tick(0.25)
+            actor_coords: List[Tuple[str, float, float]] = [
+                *((h.name, h.x, h.y) for h in world.host_actors.values()),
+                *((b.name, b.x, b.y) for b in world.ambient_bots),
+            ]
+            for aname, ax, ay in actor_coords:
+                assert 68.0 <= ax <= 712.0, f"Actor {aname} left map bounds at x={ax}"
+                for sx, sy, _, _ in STATIONS.values():
+                    inside_station = (sx - 82 <= ax <= sx + 82) and (sy - 40 <= ay <= sy + 38)
+                    assert not inside_station, f"Actor {aname} entered station box at ({ax}, {ay})"
+
+        for host in world.host_actors.values():
+            assert host.target_station == expected_station
+            assert abs(host.x - host.target_x) < 12.0
+            assert abs(host.y - host.target_y) < 12.0
+
+    # Verify scripts/live_agent_ctl.py studio-stage CLI argument parsing & scrubbed JSONL persistence
+    rec_dir = tmp_path / "ctl_stage_rec"
+    rc = live_agent_ctl.main(
+        [
+            "--record-dir",
+            str(rec_dir),
+            "studio-stage",
+            "--stage",
+            "kling_forge",
+            "--episode",
+            "Ep024 @测试",
+            "--detail",
+            "炼制关键帧 uid=123456 @全体",
+            "--progress",
+            "125",
+            "--mode",
+            "preview",
+            "--preview",
+            "assets/a.png,assets/b.png",
+            "--preview",
+            "assets/c.png",
+            "--caption",
+            "高明度封面 @spam",
+            "--code-line",
+            "$ kling submit @owner",
+            "--code-line",
+            "uid=998877 ok",
+            "--poll-question",
+            "下期选哪集 @全体",
+            "--poll-options",
+            "方案一@x,方案二,方案三,多余第四项",
+        ]
+    )
+    assert rc == 0
+    cli_out = json.loads(capsys.readouterr().out)
+    assert cli_out["ok"] is True
+
+    cmd_lines = [
+        json.loads(line)
+        for line in (rec_dir / "agent_commands.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(cmd_lines) == 1
+    queued = cmd_lines[0]
+    assert queued["cmd"] == "studio_stage"
+    assert queued["stage"] == "kling_forge"
+    assert queued["progress_pct"] == 100
+    assert queued["monitor_mode"] == "preview"
+    assert queued["preview_paths"] == ["assets/a.png", "assets/b.png", "assets/c.png"]
+    assert len(queued["code_lines"]) == 2
+    assert len(queued["topic_poll"]["options"]) == 3
+
+    serialized = json.dumps(queued, ensure_ascii=False)
+    for forbidden in ("@", "123456", "998877"):
+        assert forbidden not in serialized
+
+    applied = world.apply_agent_command(queued)
+    assert applied["ok"] is True
+    assert applied["stage"] == "kling_forge"
+    assert applied["stage_change_seq"] == 5
+
+
+def test_topic_abc_danmaku_voting_dedup_and_offline_comedy_replies(tmp_path: Path) -> None:
+    """Verify A/B/C danmaku topic voting, single-user vote switch dedup, +120s life, and OfflineBanterResponder."""
+    world = LiveAgentWorld(memory_path=tmp_path / "vote_mem.json", initial_countdown_sec=3600.0)
+    cd0 = world.countdown_sec
+
+    # 1. Viewer 1 votes lowercase "a" -> A=1, +120s, moves to 互联网热点海
+    r1 = world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="小蓝", text="a"))
+    assert r1["handled"] is True
+    assert r1["kind"] == "vote_topic"
+    assert r1["choice"] == "A"
+    assert r1["total_votes"] == 1
+    assert world.countdown_sec == pytest.approx(cd0 + 120.0)
+    assert world.viewer_actors["小蓝"].station == "互联网热点海"
+
+    # 2. Same viewer changes vote to "选B" -> total stays 1 (no double counting!), A=0, B=1, +120s
+    r2 = world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="小蓝", text="选B"))
+    assert r2["handled"] is True
+    assert r2["kind"] == "vote_topic"
+    assert r2["choice"] == "B"
+    assert r2["total_votes"] == 1
+    assert world.countdown_sec == pytest.approx(cd0 + 240.0)
+
+    # 3. Second and third viewers vote "C方案！" and "投A" -> A=1, B=1, C=1, total=3
+    r3 = world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="猫猫粉", text="C方案！"))
+    r4 = world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="路人甲", text="投A"))
+    assert r3["kind"] == "vote_topic" and r3["choice"] == "C" and r3["total_votes"] == 2
+    assert r4["kind"] == "vote_topic" and r4["choice"] == "A" and r4["total_votes"] == 3
+    assert world.countdown_sec == pytest.approx(cd0 + 480.0)
+
+    poll = world.export_state_dict()["production"]["topic_poll"]
+    votes_by_key = {opt["key"]: opt["votes"] for opt in poll["options"]}
+    assert votes_by_key == {"A": 1, "B": 1, "C": 1}
+    assert poll["total_votes"] == 3
+
+    # Re-sending identical poll options preserves votes; changing options resets tally to 0
+    same_labels = [opt["label"] for opt in poll["options"]]
+    world.apply_agent_command({"cmd": "studio_stage", "stage": "internet_sea", "topic_poll": {"options": same_labels}})
+    assert world.export_state_dict()["production"]["topic_poll"]["total_votes"] == 3
+
+    world.apply_agent_command(
+        {"cmd": "studio_stage", "stage": "internet_sea", "topic_poll": {"options": ["新选题A", "新选题B", "新选题C"]}}
+    )
+    assert world.export_state_dict()["production"]["topic_poll"]["total_votes"] == 0
+
+    # 4. OfflineBanterResponder comedic replies for A/B/C across trio hosts
+    resp = OfflineBanterResponder(world_context_provider=world.export_state_dict)
+    director = DualAILiveDirector(
+        responder=resp,
+        cast=TRIO_CAST,
+        world_context_provider=world.export_state_dict,
+    )
+
+    async def _collect_replies() -> List[PersonaTurn]:
+        turns: List[PersonaTurn] = []
+        for alias, vote_text in (("观众甲", "a"), ("观众乙", "选B"), ("观众丙", "C方案")):
+            director.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias=alias, text=vote_text))
+            turns.append(await director.next_turn())
+        return turns
+
+    replies = asyncio.run(_collect_replies())
+    assert [t.speaker_id for t in replies] == ["dafeiyu", "gemini", "yowane"]
+    assert "A" in replies[0].text and "热点海" in replies[0].text
+    assert "B" in replies[1].text and "可灵炼丹房" in replies[1].text
+    assert "C" in replies[2].text and "+120s" in replies[2].text
+    for turn in replies:
+        assert "@" not in turn.text
+        assert "扣 1" not in turn.text
+
+
+def test_openai_responder_idle_throttle_stage_breakthrough_and_danmaku_bypass(tmp_path: Path) -> None:
+    """Verify idle_call_interval_sec throttling, stage_change_seq instant breakthrough, and danmaku bypass."""
+    # Verify CLI default idle throttle interval
+    def_args = launch_headless_live.parse_args([])
+    assert def_args.deepseek_llm_idle_interval_sec == 75.0
+
+    world = LiveAgentWorld(memory_path=tmp_path / "throttle_mem.json")
+    http_calls = 0
+    captured_prompts: List[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal http_calls
+        http_calls += 1
+        body = json.loads(request.content.decode("utf-8"))
+        captured_prompts.append(json.dumps(body["messages"], ensure_ascii=False))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": f"LLM实时解说第{http_calls}轮：现场制片火力全开！"}}]},
+        )
+
+    async def _run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            responder = OpenAICompatibleResponder(
+                api_key="sk-throttle-secret",
+                idle_call_interval_sec=60.0,
+                http_client=client,
+                world_context_provider=world.export_state_dict,
+            )
+            director = DualAILiveDirector(
+                responder=responder,
+                cast=TRIO_CAST,
+                world_context_provider=world.export_state_dict,
+            )
+
+            # 1) First idle turn triggers LLM commentary
+            t1 = await director.next_turn()
+            assert "LLM实时解说第1轮" in t1.text
+            assert http_calls == 1 and responder.calls_made == 1
+
+            # 2) Immediate second idle turn within 60s with unchanged stage_change_seq is throttled to offline bank
+            t2 = await director.next_turn()
+            assert "LLM实时解说" not in t2.text and t2.text.strip() != ""
+            assert http_calls == 1 and responder.calls_made == 1
+
+            # 3) Real viewer danmaku/vote bypasses idle throttle immediately
+            director.enqueue_event(DanmakuEvent(event_type="danmaku", user_alias="选票观众", text="选B"))
+            t3 = await director.next_turn()
+            assert "LLM实时解说第2轮" in t3.text
+            assert http_calls == 2 and responder.calls_made == 2
+            assert "选B" in captured_prompts[-1]
+
+            # 4) Subsequent idle turn (still within 60s, same stage_change_seq=0) remains throttled
+            t4 = await director.next_turn()
+            assert "LLM实时解说" not in t4.text
+            assert http_calls == 2 and responder.calls_made == 2
+
+            # 5) Changing production stage_change_seq immediately breaks idle throttle
+            stage_res = world.apply_agent_command(
+                {
+                    "cmd": "studio_stage",
+                    "stage": "kling_forge",
+                    "detail": "正在炼制可灵4.0日间高明度关键帧",
+                    "progress_pct": 70,
+                }
+            )
+            assert stage_res["ok"] is True and stage_res["stage_change_seq"] == 1
+            t5 = await director.next_turn()
+            assert "LLM实时解说第3轮" in t5.text
+            assert http_calls == 3 and responder.calls_made == 3
+            assert "可灵炼丹房" in captured_prompts[-1]
+
+            # 6) Next idle turn at the same stage_change_seq=1 is throttled again
+            t6 = await director.next_turn()
+            assert "LLM实时解说" not in t6.text
+            assert http_calls == 3 and responder.calls_made == 3
+
+    asyncio.run(_run())
+
+
+def test_world_stage_renderer_poll_and_preview_monitor_modes_perf(tmp_path: Path) -> None:
+    """Verify WorldStageRenderer v3 poll & preview modes (carousel + missing-path fallback) at 1080p < 80ms."""
+    world = LiveAgentWorld(memory_path=tmp_path / "render_v3_mem.json", follower_count=15, follower_goal=1000)
+    world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="投票甲", text="A"))
+    world.handle_danmaku_event(DanmakuEvent(event_type="danmaku", user_alias="投票乙", text="选B"))
+
+    preview_dir = tmp_path / "previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    slide1 = preview_dir / "slide_cyan.png"
+    slide2 = preview_dir / "slide_magenta.png"
+    Image.new("RGB", (640, 360), (20, 190, 240)).save(slide1, format="PNG")
+    Image.new("RGB", (480, 640), (235, 70, 165)).save(slide2, format="PNG")
+
+    renderer = WorldStageRenderer(repo_root=tmp_path, world=world, fps=30)
+    turn = PersonaTurn(
+        turn_id=1, speaker_id="dafeiyu", speaker_name="DeepSeek 蓝色大肥鱼", text="欢迎收看AI现场制片厂！"
+    )
+
+    # 1) monitor_mode="poll"
+    _ = renderer.render_frame(frame_index=0, active_speaker="dafeiyu", current_turn=turn, audio_level=0.5)
+    t0 = time.monotonic()
+    for fi in range(1, 16):
+        poll_frame = renderer.render_frame(frame_index=fi, active_speaker="dafeiyu", current_turn=turn, audio_level=0.5)
+    poll_avg_ms = (time.monotonic() - t0) * 1000.0 / 15.0
+    assert poll_frame.shape == (1080, 1920, 3) and poll_frame.dtype == np.uint8
+    assert poll_avg_ms < 80.0, f"Poll mode render_frame too slow: {poll_avg_ms:.2f}ms"
+
+    # 2) monitor_mode="preview" with real PNG carousel (rotates every 4.5s)
+    world.apply_agent_command(
+        {
+            "cmd": "studio_stage",
+            "stage": "kling_forge",
+            "progress_pct": 70,
+            "monitor_mode": "preview",
+            "preview_paths": ["previews/slide_cyan.png", "previews/slide_magenta.png"],
+            "preview_caption": "可灵炼丹房实时参考图轮播",
+            "code_lines": [
+                "$ KLING_NONINTERACTIVE=1 ./vendor/kling_cli/node_modules/.bin/kling image_to_image -q",
+                "[OK] anchor slide 1/2 synced",
+            ],
+        }
+    )
+    frame_s1 = renderer.render_frame(frame_index=0, active_speaker="gemini", current_turn=turn, audio_level=0.6)
+    frame_s2 = renderer.render_frame(frame_index=150, active_speaker="gemini", current_turn=turn, audio_level=0.6)
+    assert frame_s1.shape == (1080, 1920, 3) and frame_s2.shape == (1080, 1920, 3)
+    # Monitor viewport region (ox_map=24, oy_map=88, MONITOR_X=754, MONITOR_Y=78, vp=(14, 66, 504, 314))
+    vp1 = frame_s1[240:440, 810:1260]
+    vp2 = frame_s2[240:440, 810:1260]
+    assert float(np.mean(np.abs(vp1.astype(np.float32) - vp2.astype(np.float32)))) > 25.0
+
+    t1 = time.monotonic()
+    for fi in range(1, 16):
+        prev_frame = renderer.render_frame(frame_index=fi, active_speaker="gemini", current_turn=turn, audio_level=0.6)
+    preview_avg_ms = (time.monotonic() - t1) * 1000.0 / 15.0
+    assert prev_frame.shape == (1080, 1920, 3) and prev_frame.dtype == np.uint8
+    assert preview_avg_ms < 80.0, f"Preview mode render_frame too slow: {preview_avg_ms:.2f}ms"
+
+    # 3) monitor_mode="preview" missing-path graceful degradation
+    world.apply_agent_command(
+        {
+            "cmd": "studio_stage",
+            "stage": "edit_theater",
+            "progress_pct": 90,
+            "monitor_mode": "preview",
+            "preview_paths": ["previews/missing_file_xyz.png"],
+            "preview_caption": "缺失预览图安全降级占位",
+        }
+    )
+    _ = renderer.render_frame(frame_index=0, active_speaker="yowane", current_turn=turn, audio_level=0.4)
+    t2 = time.monotonic()
+    for fi in range(1, 11):
+        fb_frame = renderer.render_frame(frame_index=fi, active_speaker="yowane", current_turn=turn, audio_level=0.4)
+    fallback_avg_ms = (time.monotonic() - t2) * 1000.0 / 10.0
+    assert fb_frame.shape == (1080, 1920, 3) and fb_frame.dtype == np.uint8
+    assert fallback_avg_ms < 80.0, f"Missing-preview fallback render_frame too slow: {fallback_avg_ms:.2f}ms"
+
+    print(
+        f"WorldStageRenderer v3 avg_ms: poll={poll_avg_ms:.2f}ms, "
+        f"preview={preview_avg_ms:.2f}ms, fallback={fallback_avg_ms:.2f}ms"
+    )

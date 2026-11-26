@@ -267,6 +267,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Hard per-session cap on DeepSeek Chat dialogue HTTP calls when enabled (default: 60).",
     )
     parser.add_argument(
+        "--deepseek-llm-idle-interval-sec",
+        type=float,
+        default=75.0,
+        help="Minimum seconds between periodic DeepSeek idle commentary calls (stage changes & real danmaku bypass throttle).",
+    )
+    parser.add_argument(
         "--enable-deepseek-brain",
         action="store_true",
         help="Opt-in to DeepSeek AutonomousWorldBrain ticks in world mode (disabled by default; Gemini Agent drives directly).",
@@ -389,8 +395,10 @@ async def run_headless_live(
     max_llm_calls = int(getattr(args, "max_deepseek_llm_calls", 60))
     responder: Any
     if enable_llm:
+        idle_interval = max(0.0, float(getattr(args, "deepseek_llm_idle_interval_sec", 75.0)))
         responder = OpenAICompatibleResponder(
             max_calls=max_llm_calls,
+            idle_call_interval_sec=idle_interval,
             world_context_provider=world_context_provider,
         )
     else:

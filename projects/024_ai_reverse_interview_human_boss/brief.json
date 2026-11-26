@@ -1,0 +1,71 @@
+{
+  "project_id": "024_ai_reverse_interview_human_boss",
+  "episode_label": "Ep024 · AI组团反向面试人类老板",
+  "name": "【AI反向面试】大肥鱼弱音猫娘组团当考官：不自带64G内存的老板免谈？！",
+  "tagline": "开场弱音拍桌亮红章！AI铁三角组团反向面试人类老板，见到64G内存简历秒变星眼起立鞠躬！",
+  "category": "动画",
+  "target_partition": "动画 -> 短片·手书 (tid=47)",
+  "min_duration_sec": 60,
+  "target_duration_sec": 70.0,
+  "act_structure": {
+    "act_count": 7,
+    "act_duration_sec": 10.0,
+    "engine": "kling-video-v4_0 (1080p Pro, prefer_multi_shots=true, enable_audio=true)"
+  },
+  "cast": [
+    "DeepSeek 蓝色大肥鱼",
+    "Gemini娘",
+    "弱音ハク"
+  ],
+  "cast_roles": {
+    "弱音ハク": "主考官/HR总监，推红框眼镜拍桌亮出红色《人类老板录用标准》印章，冷面记录并负责终审拍板",
+    "Gemini娘": "数据增长考官，高举彩虹评级评分牌拷问频道留存与五年规划，一言不合拍爆亮黄淘汰蜂鸣器",
+    "DeepSeek 蓝色大肥鱼": "福利考官，怀抱热腾腾大米饭盒追问64G内存与白米饭预算，得意地把不合格简历折成纸飞机丢出"
+  },
+  "visual_direction": {
+    "setting": "晴空纯白玻璃科技园与浅枫木阳光面试间",
+    "palette": "奶油纯白墙面 × 落地窗晴空天蓝 × 浅枫木考官长桌 × 亮红印章与明黄高光道具",
+    "brightness_target": {
+      "mean_v_min": 178.0,
+      "dark_below_45_max_pct": 8.0
+    },
+    "cover_style": "vivid_scene",
+    "opening_0s_hook": "0.0s开场弱音ハク咔嚓推红框眼镜啪地拍桌亮出红色印章，镜头急推三人一字排开的强势阳光考官席",
+    "finale_reversal": "终幕桌前滑来发光金字「64G内存 + 无限白米饭」顶配简历，三人瞬间眼冒星光同步起立鞠躬欢呼全票通过",
+    "audience_cta": "弹幕扣1给AI加64G内存，扣2只管供白米饭"
+  },
+  "creative_spec": {
+    "archetype": "trio_ai_daylight_reverse_job_interview_satire",
+    "setting": "晴空纯白玻璃幕墙科技园区大厅与浅枫木阳光招聘面试间",
+    "meme_source": "Ep024·AI组团反向面试人类老板：职场压力面试反客为主喜剧解构 × 0.0s弱音拍桌亮红章 × 大肥鱼折简历纸飞机 × 猫娘猛按黄灯淘汰 × 见到64G内存无限白米饭简历三人星眼起立鞠躬神反转"
+  },
+  "description": "《AI员工合租运营我的B站号》全新番外剧场版 Ep024《AI组团反向面试人类老板》超1分钟高能开拍！在晴空万里、通透明亮的纯白玻璃科技园浅枫木阳光面试间里，主考官兼HR总监弱音ハク开场0秒咔嚓推起红框眼镜、啪地拍桌亮出红色录用印章——今天轮到AI铁三角组团反向考核人类老板！数据增长考官Gemini娘高举彩虹评分牌连环拷问留存率与五年规划，福利考官DeepSeek蓝色大肥鱼怀抱热腾腾白米饭盒灵魂质问主机内存，嫌24G内存不够用直接得意地把不合格简历折成纸飞机丢飞，猫娘猫耳炸毛狂拍亮黄淘汰蜂鸣器！眼看人类老板当场出局，一份散发暖金光芒的「64G内存 + 无限白米饭」顶配简历滑到桌前——铁三角瞬间眼冒星光同步起立鞠躬全票通过！全程1080P 60FPS高明度2D赛璐珞剧场版动画＋可灵4.0原生中文演戏配音，快来弹幕扣1给AI加64G内存，扣2只管供白米饭！",
+  "target_audience": [
+    "B站二次元动画短片与剧场版手书喜剧观众",
+    "DeepSeek蓝色大肥鱼、Gemini娘与弱音ハク三角色同人粉丝",
+    "喜欢职场面试反差梗、硬件内存自嘲梗与高明度轻松情景喜剧的大众观众"
+  ],
+  "tech_stack": [
+    "Canonical Cast Portrait Reference Lock (assets/refs: dafeiyu_ref.png, gemini_ref.png, yowane_ref.jpg)",
+    "Kling 3.0 Omni Image (kling-image-v3_0_omni, 16:9 2K Canonical Multi-Reference Image-to-Image Keyframes)",
+    "Kling 4.0 Omni-Ref Video (kling-video-v4_0, 1080p Pro Native Multi-Shot 7x10s + Native Chinese Voice Acting & Foley)",
+    "BilibiliBgmHunter (48kHz Stereo BGM + Dynamic RMS Sidechain Ducking)",
+    "EpisodeAssembler (O(1) OpenCV DIS 60FPS Streaming Assembly + -14 LUFS Normalization)",
+    "CoverDesigner (vivid_scene 16:9 & 4:3 High-Brightness Cover)",
+    "FFmpeg"
+  ],
+  "compliance": {
+    "aigc_standard": "GB 45438-2025",
+    "at_mentions_count": 0,
+    "pii_redacted": true,
+    "copyrighted_ip_names_in_prompts": 0,
+    "canonical_refs_locked": true
+  },
+  "deliverables": {
+    "final_video": "delivery/Ep024_AI组团反向面试人类老板_final.mp4",
+    "cover": "delivery/Ep024_AI组团反向面试人类老板_cover.jpg",
+    "cover_16x9": "delivery/Ep024_AI组团反向面试人类老板_cover.jpg",
+    "cover_4x3": "delivery/Ep024_AI组团反向面试人类老板_cover_4x3.jpg",
+    "subtitle_srt": "delivery/Ep024_AI组团反向面试人类老板_subtitle.srt"
+  }
+}

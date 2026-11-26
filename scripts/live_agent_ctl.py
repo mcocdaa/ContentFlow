@@ -96,6 +96,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_rank.add_argument("--page-size", type=int, default=50)
     p_rank.add_argument("--top-k", type=int, default=10)
 
+    p_stage = sub.add_parser(
+        "studio-stage",
+        help="Switch live video-production stage building, live monitor mode/previews, code ticker, or Ep024 A/B/C topic poll",
+    )
+    p_stage.add_argument(
+        "--stage",
+        choices=("internet_sea", "character_catch", "kling_forge", "edit_theater"),
+        default="internet_sea",
+    )
+    p_stage.add_argument("--episode", type=str, default=None)
+    p_stage.add_argument("--detail", type=str, default=None)
+    p_stage.add_argument("--progress", type=int, default=None)
+    p_stage.add_argument("--mode", choices=("poll", "preview"), default=None)
+    p_stage.add_argument(
+        "--preview", action="append", default=None, help="Repo-relative preview image path (repeatable)"
+    )
+    p_stage.add_argument("--caption", type=str, default=None)
+    p_stage.add_argument(
+        "--code-line", action="append", default=None, help="Sanitized terminal/script line (repeatable)"
+    )
+    p_stage.add_argument("--poll-question", type=str, default=None)
+    p_stage.add_argument("--poll-options", type=str, default=None, help="Comma-separated 3 options (A,B,C)")
+
     sub.add_parser("stop", help="Request clean live stream shutdown and StopLiveData collection")
     return parser
 
@@ -210,6 +233,45 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0 if res.get("ok") else 1
+
+    if args.command == "studio-stage":
+        stage_payload: Dict[str, Any] = {
+            "cmd": "studio_stage",
+            "stage": args.stage,
+        }
+        if args.episode is not None:
+            stage_payload["episode"] = _scrub_clean(args.episode)
+        if args.detail is not None:
+            stage_payload["detail"] = _scrub_clean(args.detail)
+        if args.progress is not None:
+            stage_payload["progress_pct"] = max(0, min(100, int(args.progress)))
+        if args.mode is not None:
+            stage_payload["monitor_mode"] = args.mode
+        if args.preview:
+            flat_previews = []
+            for p in args.preview:
+                for piece in str(p).split(","):
+                    cleaned_p = piece.strip()
+                    if cleaned_p:
+                        flat_previews.append(cleaned_p)
+            if flat_previews:
+                stage_payload["preview_paths"] = flat_previews
+        if args.caption is not None:
+            stage_payload["preview_caption"] = _scrub_clean(args.caption)
+        if args.code_line:
+            stage_payload["code_lines"] = [_scrub_clean(ln) for ln in args.code_line if _scrub_clean(ln)][:6]
+        if args.poll_question is not None or args.poll_options is not None:
+            poll_cfg: Dict[str, Any] = {}
+            if args.poll_question is not None:
+                poll_cfg["question"] = _scrub_clean(args.poll_question)
+            if args.poll_options is not None:
+                poll_cfg["options"] = [
+                    _scrub_clean(opt) for opt in str(args.poll_options).split(",") if _scrub_clean(opt)
+                ][:3]
+            stage_payload["topic_poll"] = poll_cfg
+        cmd_path = _append_command(record_dir, stage_payload)
+        print(json.dumps({"ok": True, "queued": stage_payload, "cmd_path": str(cmd_path)}, ensure_ascii=False))
+        return 0
 
     if args.command == "stop":
         stop_payload: Dict[str, Any] = {"cmd": "stop"}
