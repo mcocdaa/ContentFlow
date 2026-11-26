@@ -369,8 +369,29 @@ def test_seedance_ark_prefix_tries_skill_then_falls_back_to_v3(monkeypatch: pyte
     out_mp4 = tmp_path / "fallback_v3.mp4"
 
     failed_proc = subprocess.CompletedProcess(
-        args=["node", "seedance.js"], returncode=1, stdout="", stderr="Error: 403 Forbidden"
+        args=["node", "seedance-wrapper.js"], returncode=1, stdout="", stderr="Error: 403 Forbidden"
     )
+
+    # 1) Pruned repo (no byted-ark-seedance-skill on disk): bypass subprocess cleanly and go straight to v3
+    with (
+        patch("core.video_api_router.subprocess.run", return_value=failed_proc) as mock_subproc_missing,
+        patch.object(router, "_dispatch_seedance_v3", return_value=out_mp4) as mock_v3_missing,
+    ):
+        res_missing = router.generate_video_from_image(
+            image_path=img,
+            prompt="test fallback missing skill",
+            provider="volcengine_seedance",
+            output_path=out_mp4,
+        )
+        assert res_missing == out_mp4
+        mock_subproc_missing.assert_not_called()
+        mock_v3_missing.assert_called_once()
+
+    # 2) Simulated skill script on disk fails -> falls back to _dispatch_seedance_v3
+    fake_script = tmp_path / ".agents" / "skills" / "byted-ark-seedance-skill" / "scripts" / "seedance-wrapper.js"
+    fake_script.parent.mkdir(parents=True, exist_ok=True)
+    fake_script.write_text("// stub", encoding="utf-8")
+    monkeypatch.setattr("core.video_api_router.__file__", str(tmp_path / "core" / "video_api_router.py"))
 
     with (
         patch("core.video_api_router.subprocess.run", return_value=failed_proc) as mock_subproc,

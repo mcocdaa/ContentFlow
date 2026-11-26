@@ -6,6 +6,7 @@
 
 * **共性全自动化（走 `core/` 标准管线，禁止每期手写重复胶水脚本）**：
   * 真实爆款伴奏检索与 `48kHz` 立体声切片：`./.venv/bin/python cli.py fetch-bgm --query <关键词> / --bvid <BV号>`（底层调用 `core/bgm_hunter.py`，自动提取音轨并生成借物表致谢行，告别单薄正弦波蜂鸣器）
+  * 小号黑马雷达与四赛道赛马收口：`./.venv/bin/python cli.py breakout-radar --save`（底层调用 `core/breakout_radar.py`，检索 `<=5万粉` 低粉高播高三连黑马、剖析移动端前 20 字标题钩子，并输出零 PII 四赛道赛马评分面板）
   * 市场对比与瓶颈诊断：`./.venv/bin/python cli.py benchmark --project <id> --online`
   * 多幕 1080P 60FPS 光流补帧 + 鼓点近景切镜（Beat Punch-In）+ `-14 LUFS` 装配：`./.venv/bin/python cli.py assemble-episode --spec <spec.json>`（底层调用 `core/episode_assembler.py` 的 `O(1)` 两帧滑窗流式管线）
   * B 站 16:9 / 4:3 高 CTR 封面生成：`./.venv/bin/python cli.py design-cover --project <id>`（娱乐/宅舞/鬼畜分类自动启用高明度 `vivid_scene`，科技科普沿用 `tech_split`）
@@ -48,4 +49,4 @@
 ## 4. 持续微进化协议（Kaizen Continuous Improvement）
 
 * 工作区长期演进任务清单维护在 `docs/EVOLUTION_BACKLOG.md`。
-* 每当定时任务巡检发现排队存货充足（`>= 2` 天待发）或用户指示自主优化工作区时，主动从 `docs/EVOLUTION_BACKLOG.md` 认领 **1 个最高优先级未完成切片（Kaizen Slice）**，编写代码与单测，顺序跑通 `ruff format --check .`、`ruff check .`、`mypy core cli.py` 与 `pytest -q`，随后更新 `EVOLUTION_BACKLOG.md` 实测结果并 `git commit && git push origin main`，确保经验与工具能力永久沉淀不丢失。
+* 每当定时任务巡检发现排队存货充足（`>= 2` 天待发）或用户指示自主优化工作区时，主动从 `docs/EVOLUTION_BACKLOG.md` 认领 **1 个最高优先级未完成切片（Kaizen Slice）**，编写代码与单测，顺序跑通与 `.github/workflows/ci.yml` 完全一致的全量门禁（`ruff check cli.py core/ config/ tests/`、`ruff format --check .`、`mypy cli.py core/ config/ tests/` 与 `pytest -v`），随后更新 `EVOLUTION_BACKLOG.md` 实测结果并 `git commit && git push origin main`，确保经验与工具能力永久沉淀不丢失。

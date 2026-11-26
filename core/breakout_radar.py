@@ -218,8 +218,9 @@ def score_breakout_candidate(
     replies_i = max(0, int(reply or 0))
 
     if follower_count is not None:
-        followers_clean: Optional[int] = max(0, int(follower_count))
-        views_per_follower = round(views_i / float(max(followers_clean, 100)), 2)
+        followers_val = max(0, int(follower_count))
+        followers_clean: Optional[int] = followers_val
+        views_per_follower = round(views_i / float(max(followers_val, 100)), 2)
     else:
         followers_clean = None
         views_per_follower = 0.0
