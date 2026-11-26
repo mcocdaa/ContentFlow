@@ -26,6 +26,7 @@ import logging
 import math
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -1236,6 +1237,10 @@ class SyntheticAudioMixer:
         bgm_idle_gain: float = 0.72,
         bgm_duck_gain: float = 0.22,
         speech_gain: float = 0.92,
+        edge_tts_timeout_sec: float = 5.0,
+        edge_failure_threshold: int = 2,
+        edge_cooldown_sec: float = 60.0,
+        edge_max_attempts: int = 2,
     ) -> None:
         self.sample_rate = sample_rate
         self.channels = channels
@@ -1272,7 +1277,19 @@ class SyntheticAudioMixer:
         self._deepseek_lock: Optional[asyncio.Lock] = None
         self._deepseek_lock_loop: Optional[asyncio.AbstractEventLoop] = None
 
-        self.tts_stats: Dict[str, int] = {"deepseek": 0, "deepseek_cache": 0, "edge": 0, "offline": 0}
+        self.tts_stats: Dict[str, int] = {
+            "deepseek": 0,
+            "deepseek_cache": 0,
+            "edge": 0,
+            "edge_skipped_cooldown": 0,
+            "offline": 0,
+        }
+        self.edge_tts_timeout_sec: float = max(0.1, float(edge_tts_timeout_sec))
+        self.edge_failure_threshold: int = max(1, int(edge_failure_threshold))
+        self.edge_cooldown_sec: float = max(0.0, float(edge_cooldown_sec))
+        self.edge_max_attempts: int = max(1, int(edge_max_attempts))
+        self._edge_consecutive_failures: int = 0
+        self._edge_cooldown_until: float = 0.0
         self.ffmpeg_bin = shutil.which(ffmpeg_bin) or ffmpeg_bin
         self.bgm_idle_gain = float(bgm_idle_gain)
         self.bgm_duck_gain = float(bgm_duck_gain)
@@ -1496,8 +1513,12 @@ class SyntheticAudioMixer:
     async def _synthesize_edge_tts_pcm(self, safe_text: str, speaker_id: SpeakerId) -> Optional[np.ndarray]:
         if not self.use_edge_tts:
             return None
+        if time.monotonic() < self._edge_cooldown_until:
+            self.tts_stats["edge_skipped_cooldown"] = self.tts_stats.get("edge_skipped_cooldown", 0) + 1
+            return None
+
         last_exc: Optional[Exception] = None
-        for attempt in range(2):
+        for attempt in range(self.edge_max_attempts):
             try:
                 import edge_tts
 
@@ -1505,7 +1526,7 @@ class SyntheticAudioMixer:
                 rate, pitch = VOICE_STYLE_MAP.get(speaker_id, ("+0%", "+0Hz"))
                 comm = edge_tts.Communicate(text=safe_text, voice=voice, rate=rate, pitch=pitch)
                 mp3_buf = io.BytesIO()
-                async with asyncio.timeout(8.0):
+                async with asyncio.timeout(self.edge_tts_timeout_sec):
                     async for chunk in comm.stream():
                         if chunk.get("type") == "audio":
                             data = chunk.get("data")
@@ -1513,12 +1534,24 @@ class SyntheticAudioMixer:
                                 mp3_buf.write(data)
                 decoded = await self._decode_mp3_bytes_to_stereo(mp3_buf.getvalue())
                 if decoded is not None and len(decoded) > self.samples_per_frame:
+                    self._edge_consecutive_failures = 0
+                    self._edge_cooldown_until = 0.0
                     return decoded
             except Exception as exc:
                 last_exc = exc
-                if attempt == 0:
-                    await asyncio.sleep(0.25)
-        if last_exc is not None:
+                if attempt + 1 < self.edge_max_attempts:
+                    await asyncio.sleep(0.15)
+
+        self._edge_consecutive_failures += 1
+        if self._edge_consecutive_failures >= self.edge_failure_threshold:
+            self._edge_cooldown_until = time.monotonic() + self.edge_cooldown_sec
+            logger.info(
+                "edge-tts circuit breaker opened for %.1fs after %d consecutive failures (%s)",
+                self.edge_cooldown_sec,
+                self._edge_consecutive_failures,
+                type(last_exc).__name__ if last_exc is not None else "empty_audio",
+            )
+        elif last_exc is not None:
             logger.info(
                 "edge-tts unavailable for %s (%s); checking next audio fallback",
                 speaker_id,
@@ -1653,6 +1686,24 @@ class SyntheticAudioMixer:
 StatusCallback = Callable[[str, Dict[str, Any]], Any]
 
 
+class RtmpStreamDisconnectedError(RuntimeError):
+    """Raised when the live RTMP push sink disconnects or Bilibili reports the room offline."""
+
+    def __init__(self, reason: str) -> None:
+        safe_reason = scrub_rtmp_secrets(str(reason or "rtmp_stream_disconnected")).strip()
+        if not safe_reason:
+            safe_reason = "rtmp_stream_disconnected"
+        self.reason: str = safe_reason
+        super().__init__(safe_reason)
+
+
+RTMP_FATAL_STDERR_RE: Final[re.Pattern[str]] = re.compile(
+    r"slave muxer #0 failed|broken pipe|connection reset by peer|failed to update header|"
+    r"av_interleaved_write_frame.*error|rtmp.*(?:error|disconnect|eof|broken)",
+    re.IGNORECASE,
+)
+
+
 class HeadlessLiveStreamer:
     """Autonomous headless dual-pipe FFmpeg broadcaster supporting `dry-stream` and `go-live`."""
 
@@ -1669,6 +1720,11 @@ class HeadlessLiveStreamer:
         video_encoder: Optional[Literal["h264_nvenc", "libx264"]] = None,
         fps: int = DEFAULT_FPS,
         status_callback: Optional[StatusCallback] = None,
+        max_rtmp_reconnects: int = 2,
+        rtmp_reconnect_backoff_sec: float = 5.0,
+        live_status_grace_sec: float = 45.0,
+        offline_strikes_threshold: int = 2,
+        telemetry_poll_interval_sec: float = 30.0,
     ) -> None:
         self.fps = max(1, int(fps))
         self.ffmpeg_bin = shutil.which(ffmpeg_bin) or ffmpeg_bin
@@ -1681,8 +1737,17 @@ class HeadlessLiveStreamer:
         self.video_encoder: Literal["h264_nvenc", "libx264"] = video_encoder or detect_video_encoder(self.ffmpeg_bin)
         self.status_callback = status_callback
 
+        self.max_rtmp_reconnects: int = max(0, int(max_rtmp_reconnects))
+        self.rtmp_reconnect_backoff_sec: float = max(0.5, float(rtmp_reconnect_backoff_sec))
+        self.live_status_grace_sec: float = max(5.0, float(live_status_grace_sec))
+        self.offline_strikes_threshold: int = max(1, int(offline_strikes_threshold))
+        self.telemetry_poll_interval_sec: float = max(0.05, float(telemetry_poll_interval_sec))
+
         self._stop_event = asyncio.Event()
         self._stderr_lines: Deque[str] = deque(maxlen=120)
+        self._rtmp_fault_reason: Optional[str] = None
+        self._last_segment_frames_written: int = 0
+        self._last_segment_duration_sec: float = 0.0
 
     def request_stop(self) -> None:
         """Signal the streaming loop to exit cleanly."""
@@ -1721,7 +1786,7 @@ class HeadlessLiveStreamer:
             "-analyzeduration",
             "0",
             "-thread_queue_size",
-            "512",
+            "2048",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -1737,7 +1802,7 @@ class HeadlessLiveStreamer:
             "-analyzeduration",
             "0",
             "-thread_queue_size",
-            "512",
+            "2048",
             "-f",
             "s16le",
             "-ar",
@@ -1817,14 +1882,19 @@ class HeadlessLiveStreamer:
                 raise ValueError("rtmp_url is required for go-live mode")
             if record_path is not None:
                 fmt = "matroska" if record_path.suffix.lower() == ".mkv" else "mp4"
-                tee_target = f"[f=flv:onfail=ignore]{rtmp_url}|[f={fmt}]{record_path}"
+                tee_target = f"[f=flv]{rtmp_url}|[f={fmt}:onfail=ignore]{record_path}"
                 cmd.extend(["-flags", "+global_header", "-f", "tee", tee_target])
             else:
                 cmd.extend(["-f", "flv", rtmp_url])
 
         return cmd
 
-    def _spawn_stderr_reader(self, proc: subprocess.Popen[bytes]) -> threading.Thread:
+    def _spawn_stderr_reader(
+        self,
+        proc: subprocess.Popen[bytes],
+        *,
+        detect_rtmp_fault: bool = False,
+    ) -> threading.Thread:
         def _reader() -> None:
             if proc.stderr is None:
                 return
@@ -1836,6 +1906,12 @@ class HeadlessLiveStreamer:
                     safe_line = scrub_rtmp_secrets(decoded)
                     self._stderr_lines.append(safe_line)
                     logger.debug("ffmpeg: %s", safe_line)
+                    if (
+                        detect_rtmp_fault
+                        and self._rtmp_fault_reason is None
+                        and RTMP_FATAL_STDERR_RE.search(safe_line) is not None
+                    ):
+                        self._rtmp_fault_reason = safe_line[:200]
             finally:
                 with contextlib.suppress(Exception):
                     proc.stderr.close()
@@ -1904,6 +1980,9 @@ class HeadlessLiveStreamer:
         """Execute the dual-pipe video+audio render & FFmpeg encoding loop."""
         self._stop_event.clear()
         self._stderr_lines.clear()
+        self._rtmp_fault_reason = None
+        self._last_segment_frames_written = 0
+        self._last_segment_duration_sec = 0.0
 
         if output_mp4 is not None:
             output_mp4.parent.mkdir(parents=True, exist_ok=True)
@@ -1972,11 +2051,14 @@ class HeadlessLiveStreamer:
                 )
 
         async def _world_control_and_telemetry_loop() -> None:
+            loop_start_mono = time.monotonic()
+            offline_strikes = 0
             cmd_offset = 0
             last_state_write = 0.0
-            last_telemetry_poll = -30.0
+            poll_interval = max(0.05, float(self.telemetry_poll_interval_sec))
+            last_telemetry_poll = loop_start_mono - poll_interval
             brain_interval = max(1.0, float(self.world_brain.interval_sec)) if self.world_brain is not None else 75.0
-            last_brain_tick = time.monotonic() - max(0.0, brain_interval - 3.0)
+            last_brain_tick = loop_start_mono - max(0.0, brain_interval - 3.0)
             cmd_path = (record_dir / "agent_commands.jsonl") if record_dir is not None else None
             state_path = (record_dir / "world_state.json") if record_dir is not None else None
             try:
@@ -2027,13 +2109,13 @@ class HeadlessLiveStreamer:
                         except Exception as exc:
                             logger.debug("AutonomousWorldBrain loop skipped (%s)", type(exc).__name__)
 
-                    # 3) Poll Bilibili live telemetry every 30s during go-live
+                    # 3) Poll Bilibili live telemetry every 30s during go-live (includes live_status heartbeat)
                     if (
                         mode == "go-live"
                         and telemetry_ctrl is not None
                         and telemetry_room_id is not None
                         and telemetry_room_id > 0
-                        and (now - last_telemetry_poll) >= 30.0
+                        and (now - last_telemetry_poll) >= poll_interval
                     ):
                         last_telemetry_poll = now
                         try:
@@ -2052,6 +2134,24 @@ class HeadlessLiveStreamer:
                                     ice = self.world.consume_visitor_icebreaker()
                                     if ice is not None:
                                         self.director.enqueue_agent_speech(ice[0], ice[1], ice[2])
+                                if (now - loop_start_mono) >= self.live_status_grace_sec:
+                                    raw_live_status = tel.get("live_status")
+                                    live_status_val = 1 if raw_live_status is None else int(raw_live_status)
+                                    if live_status_val != 1:
+                                        offline_strikes += 1
+                                        logger.warning(
+                                            "Bilibili room telemetry offline strike %d/%d (live_status=%d)",
+                                            offline_strikes,
+                                            self.offline_strikes_threshold,
+                                            live_status_val,
+                                        )
+                                        if (
+                                            offline_strikes >= self.offline_strikes_threshold
+                                            and self._rtmp_fault_reason is None
+                                        ):
+                                            self._rtmp_fault_reason = "bilibili_room_live_status_offline"
+                                    else:
+                                        offline_strikes = 0
                         except Exception as exc:
                             logger.debug("Telemetry poll skipped (%s)", type(exc).__name__)
 
@@ -2061,20 +2161,55 @@ class HeadlessLiveStreamer:
                         with contextlib.suppress(Exception):
                             self._write_json_atomic(state_path, self.world.export_state_dict())
 
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(min(0.5, poll_interval))
             except asyncio.CancelledError:
                 return
 
         async def _prepare_next_turn() -> Tuple[PersonaTurn, np.ndarray]:
             turn = await self.director.next_turn(wait_timeout=0.0)
-            pcm = await self.audio_mixer.synthesize_turn_pcm(turn)
+            try:
+                pcm = await asyncio.wait_for(self.audio_mixer.synthesize_turn_pcm(turn), timeout=12.0)
+            except (asyncio.TimeoutError, Exception) as exc:
+                logger.warning(
+                    "Turn TTS synthesis timed out/failed (%s); falling back to offline synth",
+                    type(exc).__name__,
+                )
+                safe_text = redact_pii(turn.text).replace("@", "").strip() or "直播间互动继续进行中"
+                self.audio_mixer.tts_stats["offline"] = self.audio_mixer.tts_stats.get("offline", 0) + 1
+                pcm = synthesize_offline_fallback_pcm(
+                    safe_text,
+                    turn.speaker_id,
+                    sample_rate=self.audio_mixer.sample_rate,
+                )
             return turn, pcm
 
         async def _produce_one_audio_frame() -> None:
             nonlocal audio_frames_generated, audio_cur_turn, synth_task
             if synth_task is not None and synth_task.done() and self.audio_mixer.speech_remaining_sec() <= 0.08:
-                next_turn, next_pcm = synth_task.result()
+                done_task = synth_task
                 synth_task = None
+                try:
+                    next_turn, next_pcm = done_task.result()
+                except Exception as exc:
+                    logger.warning(
+                        "Background TTS turn synthesis failed (%s); falling back to offline synth",
+                        type(exc).__name__,
+                    )
+                    fallback_speaker: SpeakerId = (
+                        audio_cur_turn.speaker_id if audio_cur_turn is not None else self.director.cast[0]
+                    )
+                    next_turn = audio_cur_turn or PersonaTurn(
+                        turn_id=0,
+                        speaker_id=fallback_speaker,
+                        speaker_name=PERSONAS[fallback_speaker].display_name,
+                        text="直播间互动继续进行中！",
+                    )
+                    self.audio_mixer.tts_stats["offline"] = self.audio_mixer.tts_stats.get("offline", 0) + 1
+                    next_pcm = synthesize_offline_fallback_pcm(
+                        next_turn.text,
+                        next_turn.speaker_id,
+                        sample_rate=self.audio_mixer.sample_rate,
+                    )
                 audio_cur_turn = next_turn
                 self.audio_mixer.enqueue_speech(next_pcm, pad_silence_sec=0.35)
             elif synth_task is None and self.audio_mixer.speech_remaining_sec() < 1.2:
@@ -2167,7 +2302,7 @@ class HeadlessLiveStreamer:
             os.close(audio_r)
             audio_r = -1
 
-            stderr_thread = self._spawn_stderr_reader(proc)
+            stderr_thread = self._spawn_stderr_reader(proc, detect_rtmp_fault=(mode == "go-live"))
             writer_threads = [
                 self._spawn_pipe_writer(video_w, video_q, "headless-video-writer", pipe_errors),
                 self._spawn_pipe_writer(audio_w, audio_q, "headless-audio-writer", pipe_errors),
@@ -2190,12 +2325,32 @@ class HeadlessLiveStreamer:
             for frame_idx in range(total_frames):
                 if self._stop_event.is_set():
                     break
+                if mode == "go-live" and self._rtmp_fault_reason is not None:
+                    raise RtmpStreamDisconnectedError(self._rtmp_fault_reason)
                 if proc.poll() is not None:
+                    if stderr_thread is not None and stderr_thread.is_alive():
+                        stderr_thread.join(timeout=0.2)
+                    if mode == "go-live":
+                        if self._rtmp_fault_reason is not None:
+                            raise RtmpStreamDisconnectedError(self._rtmp_fault_reason)
+                        for line in list(self._stderr_lines)[-8:]:
+                            if RTMP_FATAL_STDERR_RE.search(line) is not None:
+                                self._rtmp_fault_reason = line[:200]
+                                raise RtmpStreamDisconnectedError(self._rtmp_fault_reason)
                     raise RuntimeError(
                         f"ffmpeg exited prematurely with code {proc.returncode}: "
                         + " | ".join(list(self._stderr_lines)[-4:])
                     )
                 if pipe_errors:
+                    if mode == "go-live":
+                        if stderr_thread is not None and stderr_thread.is_alive():
+                            stderr_thread.join(timeout=0.2)
+                        if self._rtmp_fault_reason is not None:
+                            raise RtmpStreamDisconnectedError(self._rtmp_fault_reason)
+                        for line in list(self._stderr_lines)[-8:]:
+                            if RTMP_FATAL_STDERR_RE.search(line) is not None:
+                                self._rtmp_fault_reason = line[:200]
+                                raise RtmpStreamDisconnectedError(self._rtmp_fault_reason)
                     raise RuntimeError(f"Pipe write error: {scrub_rtmp_secrets(str(pipe_errors[0]))}")
 
                 if audio_frames_generated < total_frames:
@@ -2252,6 +2407,9 @@ class HeadlessLiveStreamer:
                 dumped_frame = True
 
         finally:
+            self._last_segment_frames_written = frames_written
+            self._last_segment_duration_sec = round(frames_written / float(self.fps), 2)
+
             if control_task is not None:
                 control_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -2274,11 +2432,18 @@ class HeadlessLiveStreamer:
                 with contextlib.suppress(Exception):
                     await danmaku_source.close()
 
+            # If aborting on a live RTMP fault while FFmpeg is still stuck, terminate FFmpeg first so pipe writers unblock promptly
+            if self._rtmp_fault_reason is not None and proc is not None and proc.poll() is None:
+                with contextlib.suppress(Exception):
+                    proc.terminate()
+
             # Signal EOF to pipe writer threads so FFmpeg flushes and closes output cleanly
             if writer_threads:
+                put_timeout = 2.0 if self._rtmp_fault_reason is not None else 10.0
+                join_timeout = 4.0 if self._rtmp_fault_reason is not None else 15.0
                 for q in (audio_q, video_q):
                     try:
-                        q.put(None, timeout=10.0)
+                        q.put(None, timeout=put_timeout)
                     except queue.Full:
                         while True:
                             try:
@@ -2288,7 +2453,7 @@ class HeadlessLiveStreamer:
                         with contextlib.suppress(Exception):
                             q.put_nowait(None)
                 for th in writer_threads:
-                    th.join(timeout=15.0)
+                    th.join(timeout=join_timeout)
 
             for fd in (video_r, video_w, audio_r, audio_w):
                 if fd >= 0:
@@ -2310,6 +2475,14 @@ class HeadlessLiveStreamer:
                 stderr_thread.join(timeout=3.0)
 
         returncode = proc.returncode if proc is not None else -1
+        if mode == "go-live" and not self._stop_event.is_set():
+            if self._rtmp_fault_reason is not None:
+                raise RtmpStreamDisconnectedError(self._rtmp_fault_reason)
+            if returncode != 0:
+                for line in list(self._stderr_lines)[-8:]:
+                    if RTMP_FATAL_STDERR_RE.search(line) is not None:
+                        self._rtmp_fault_reason = line[:200]
+                        raise RtmpStreamDisconnectedError(self._rtmp_fault_reason)
         if returncode != 0 and not self._stop_event.is_set():
             raise RuntimeError(f"ffmpeg exited with status {returncode}: " + " | ".join(list(self._stderr_lines)[-6:]))
 
@@ -2398,6 +2571,8 @@ class HeadlessLiveStreamer:
         frame_dump_path: Optional[Path] = None,
         danmaku_client_factory: Optional[Callable[[int], Any]] = None,
         realtime_pacing: bool = True,
+        max_reconnects: Optional[int] = None,
+        reconnect_backoff_sec: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Start Bilibili live room, stream headless zero-mic A/V to RTMP, and ALWAYS call `stop_live` in `finally:`."""
         ctrl = self.controller or BilibiliLiveController()
@@ -2469,16 +2644,31 @@ class HeadlessLiveStreamer:
             elif st_type == "online":
                 self.world.update_telemetry(online=stat_ev.get("online"))
 
-        danmaku_source = (
-            danmaku_client_factory(room_id)
-            if danmaku_client_factory is not None
-            else BilibiliDanmakuClient(
-                room_id=room_id,
-                cookies=ctrl.vault.load_bilibili_cookies(),
-                stats_callback=_on_room_stats,
-                reconnect=True,
+        def _make_danmaku_source() -> Any:
+            return (
+                danmaku_client_factory(room_id)
+                if danmaku_client_factory is not None
+                else BilibiliDanmakuClient(
+                    room_id=room_id,
+                    cookies=ctrl.vault.load_bilibili_cookies(),
+                    stats_callback=_on_room_stats,
+                    reconnect=True,
+                )
             )
+
+        eff_max_reconnects = self.max_rtmp_reconnects if max_reconnects is None else max(0, int(max_reconnects))
+        eff_backoff = (
+            self.rtmp_reconnect_backoff_sec if reconnect_backoff_sec is None else max(0.0, float(reconnect_backoff_sec))
         )
+        session_deadline = time.monotonic() + max(1.0, float(duration_sec))
+        reconnect_attempts = 0
+        disconnect_reasons: List[str] = []
+        total_frames_written = 0
+        total_duration_sec = 0.0
+        current_rtmp_url = start_res.rtmp_url
+        latest_live_key = start_res.live_key
+        min_remaining_for_reconnect = 2.0
+
         stream_stats: Dict[str, Any] = {
             "frames_written": 0,
             "duration_sec": 0.0,
@@ -2496,26 +2686,140 @@ class HeadlessLiveStreamer:
         clip_plan_path: Optional[Path] = None
         clip_plan_count = 0
 
+        self._stop_event.clear()
         try:
-            stream_stats = await self._run_av_pipeline(
-                mode="go-live",
-                duration_sec=duration_sec,
-                rtmp_url=start_res.rtmp_url,
-                record_path=record_mkv,
-                record_dir=rec_dir_path,
-                telemetry_ctrl=ctrl,
-                telemetry_room_id=room_id,
-                realtime_pacing=realtime_pacing,
-                frame_dump_path=frame_dump_path,
-                danmaku_source=danmaku_source,
-            )
+            while not self._stop_event.is_set():
+                remaining_sec = session_deadline - time.monotonic()
+                if duration_sec > 30.0:
+                    effective_dur = max(1.0, remaining_sec)
+                elif reconnect_attempts == 0:
+                    effective_dur = float(duration_sec)
+                else:
+                    effective_dur = max(1.0, remaining_sec)
+
+                self._last_segment_frames_written = 0
+                self._last_segment_duration_sec = 0.0
+                danmaku_source = _make_danmaku_source()
+                try:
+                    seg_stats = await self._run_av_pipeline(
+                        mode="go-live",
+                        duration_sec=effective_dur,
+                        rtmp_url=current_rtmp_url,
+                        record_path=record_mkv,
+                        record_dir=rec_dir_path,
+                        telemetry_ctrl=ctrl,
+                        telemetry_room_id=room_id,
+                        realtime_pacing=realtime_pacing,
+                        frame_dump_path=frame_dump_path,
+                        danmaku_source=danmaku_source,
+                    )
+                    total_frames_written += int(seg_stats.get("frames_written", 0))
+                    total_duration_sec = round(total_duration_sec + float(seg_stats.get("duration_sec", 0.0)), 2)
+                    stream_stats = {
+                        **seg_stats,
+                        "frames_written": total_frames_written,
+                        "duration_sec": total_duration_sec,
+                    }
+                    break
+                except RtmpStreamDisconnectedError as exc:
+                    total_frames_written += self._last_segment_frames_written
+                    total_duration_sec = round(total_duration_sec + self._last_segment_duration_sec, 2)
+                    stream_stats["frames_written"] = total_frames_written
+                    stream_stats["duration_sec"] = total_duration_sec
+                    stream_stats["stderr_tail"] = list(self._stderr_lines)[-6:]
+
+                    safe_reason = scrub_rtmp_secrets(str(exc))
+                    disconnect_reasons.append(safe_reason)
+                    remaining_sec = session_deadline - time.monotonic()
+
+                    if self._stop_event.is_set():
+                        break
+
+                    if reconnect_attempts >= eff_max_reconnects or remaining_sec <= min_remaining_for_reconnect:
+                        stream_error = scrub_rtmp_secrets(
+                            f"RTMP stream disconnected ({safe_reason}); "
+                            f"reconnects={reconnect_attempts}/{eff_max_reconnects}"
+                        )
+                        logger.error("Headless live stream stopped after RTMP drop: %s", stream_error)
+                        break
+
+                    reconnect_attempts += 1
+                    backoff_sec = eff_backoff * reconnect_attempts
+                    self._emit_status(
+                        "LIVE_RECONNECTING",
+                        {
+                            "ok": False,
+                            "mode": "go-live",
+                            "status": "reconnecting",
+                            "room_id": REDACTED_TOKEN,
+                            "rtmp_url": REDACTED_RTMP_TOKEN,
+                            "reason": safe_reason,
+                            "attempt": reconnect_attempts,
+                            "max_reconnects": eff_max_reconnects,
+                            "backoff_sec": round(backoff_sec, 2),
+                            "remaining_sec": round(max(0.0, remaining_sec), 2),
+                        },
+                    )
+                    logger.warning(
+                        "RTMP drop detected (%s); reconnecting attempt %d/%d after %.1fs backoff",
+                        safe_reason,
+                        reconnect_attempts,
+                        eff_max_reconnects,
+                        backoff_sec,
+                    )
+                    if backoff_sec > 0.0:
+                        try:
+                            await asyncio.wait_for(self._stop_event.wait(), timeout=backoff_sec)
+                            break
+                        except asyncio.TimeoutError:
+                            pass
+
+                    if self._stop_event.is_set():
+                        break
+
+                    try:
+                        reconnect_res: StartLiveResult = ctrl.start_live(room_id, area_v2=area_id)
+                    except Exception as reconnect_exc:
+                        stream_error = scrub_rtmp_secrets(f"Reconnect startLive error: {reconnect_exc}")
+                        logger.error("Reconnect startLive threw (%s): %s", type(reconnect_exc).__name__, stream_error)
+                        break
+
+                    if reconnect_res.status == "face_auth_required":
+                        self._emit_status(
+                            "FACE_AUTH_REQUIRED",
+                            {
+                                **reconnect_res.to_safe_dict(),
+                                "mode": "go-live",
+                                "area_id": area_id,
+                                "reconnect_attempt": reconnect_attempts,
+                            },
+                        )
+                        stream_error = scrub_rtmp_secrets(reconnect_res.message or "face_auth_required")
+                        break
+
+                    if not reconnect_res.ok or not reconnect_res.rtmp_url:
+                        stream_error = scrub_rtmp_secrets(
+                            reconnect_res.message or f"Reconnect startLive failed (code={reconnect_res.code})"
+                        )
+                        logger.error("Reconnect startLive failed: %s", stream_error)
+                        break
+
+                    current_rtmp_url = reconnect_res.rtmp_url
+                    latest_live_key = reconnect_res.live_key or latest_live_key
+                    if rec_dir_path is not None:
+                        record_mkv = rec_dir_path / f"live_recording_part{reconnect_attempts + 1}.mkv"
         except Exception as exc:
+            total_frames_written += self._last_segment_frames_written
+            total_duration_sec = round(total_duration_sec + self._last_segment_duration_sec, 2)
+            stream_stats["frames_written"] = total_frames_written
+            stream_stats["duration_sec"] = total_duration_sec
+            stream_stats["stderr_tail"] = list(self._stderr_lines)[-6:]
             stream_error = scrub_rtmp_secrets(str(exc))
             logger.error("Headless live stream interrupted (%s): %s", type(exc).__name__, stream_error)
         finally:
             stop_result = ctrl.stop_live(room_id)
-            if start_res.live_key:
-                stop_live_data = ctrl.get_stop_live_data(start_res.live_key)
+            if latest_live_key:
+                stop_live_data = ctrl.get_stop_live_data(latest_live_key)
             clip_plan_path, clip_plan_count = self._export_highlights(
                 rec_dir_path,
                 str(record_mkv or "live_recording.mkv"),
@@ -2528,6 +2832,8 @@ class HeadlessLiveStreamer:
                     "turns_emitted": stream_stats.get("turns_emitted", 0),
                     "danmaku_count": stream_stats.get("danmaku_count", 0),
                     "gift_count": stream_stats.get("gift_count", 0),
+                    "reconnect_attempts": reconnect_attempts,
+                    "disconnect_reasons": list(disconnect_reasons),
                     "clip_plan_path": str(clip_plan_path) if clip_plan_path else None,
                     "stop_result": stop_result,
                     "cover_result": cover_result,
@@ -2548,6 +2854,8 @@ class HeadlessLiveStreamer:
                     "stop_ok": bool(stop_result.get("ok")),
                     "stop_code": stop_result.get("code"),
                     "error": stream_error,
+                    "reconnect_attempts": reconnect_attempts,
+                    "disconnect_reasons": list(disconnect_reasons),
                     "clip_plan_path": str(clip_plan_path) if clip_plan_path else None,
                     "clip_plan_count": clip_plan_count,
                     "stop_live_data": stop_live_data,
@@ -2566,6 +2874,8 @@ class HeadlessLiveStreamer:
             "stop_live_data": stop_live_data,
             "cover_result": cover_result,
             "error": stream_error,
+            "reconnect_attempts": reconnect_attempts,
+            "disconnect_reasons": list(disconnect_reasons),
             "clip_plan_path": str(clip_plan_path) if clip_plan_path else None,
             "clip_plan_count": clip_plan_count,
             "ai_disclosure_banner": AI_DISCLOSURE_BANNER,

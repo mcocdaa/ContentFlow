@@ -300,6 +300,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds between AutonomousWorldBrain ticks when `--enable-deepseek-brain` is set (default: 75).",
     )
     parser.add_argument(
+        "--max-rtmp-reconnects",
+        type=int,
+        default=2,
+        help="Maximum bounded automatic RTMP reconnect attempts during go-live (default: 2).",
+    )
+    parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
@@ -329,6 +335,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--max-deepseek-llm-calls must be >= 0.")
     if args.max_deepseek_brain_calls < 0:
         parser.error("--max-deepseek-brain-calls must be >= 0.")
+    if args.max_rtmp_reconnects < 0:
+        parser.error("--max-rtmp-reconnects must be >= 0.")
     try:
         args.parsed_poll_options = parse_poll_options(args.poll_options)
     except ValueError as exc:
@@ -447,6 +455,7 @@ async def run_headless_live(
         world_brain = AutonomousWorldBrain(interval_sec=brain_interval, max_calls=max_brain_calls)
 
     cb = status_callback if status_callback is not None else emit_status_line
+    max_rtmp_reconnects = int(getattr(args, "max_rtmp_reconnects", 2))
     streamer = HeadlessLiveStreamer(
         renderer=renderer,
         audio_mixer=mixer,
@@ -456,6 +465,7 @@ async def run_headless_live(
         world_brain=world_brain,
         fps=args.fps,
         status_callback=cb,
+        max_rtmp_reconnects=max_rtmp_reconnects,
     )
 
     loop = asyncio.get_running_loop()

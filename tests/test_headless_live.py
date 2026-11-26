@@ -21,11 +21,13 @@ Verifies:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import json
 import os
 import re
 import subprocess
+import threading
 import wave
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -54,6 +56,7 @@ from core.live_studio import (
     OfflineBanterResponder,
     PersonaTurn,
     RoomStatus,
+    RtmpStreamDisconnectedError,
     StartLiveResult,
     SyntheticAudioMixer,
     scrub_rtmp_secrets,
@@ -166,8 +169,10 @@ def test_ffmpeg_command_uses_dual_os_pipes_and_zero_mic(tmp_path: Path) -> None:
     )
     joined_dry = " ".join(dry_cmd)
     assert FORBIDDEN_MIC_RE.search(joined_dry) is None
-    assert "-f rawvideo -pix_fmt rgb24 -s 1920x1080 -r 30 -i pipe:11" in joined_dry
-    assert "-f s16le -ar 48000 -ac 2 -i pipe:12" in joined_dry
+    assert dry_cmd.count("-thread_queue_size") == 2
+    assert "-thread_queue_size 2048 -f rawvideo -pix_fmt rgb24 -s 1920x1080 -r 30 -i pipe:11" in joined_dry
+    assert "-thread_queue_size 2048 -f s16le -ar 48000 -ac 2 -i pipe:12" in joined_dry
+    assert "-thread_queue_size 512" not in joined_dry
     assert "-c:v h264_nvenc" in joined_dry
     assert "-b:v 4500k" in joined_dry
     assert "-g 60" in joined_dry
@@ -184,9 +189,13 @@ def test_ffmpeg_command_uses_dual_os_pipes_and_zero_mic(tmp_path: Path) -> None:
     )
     joined_live = " ".join(live_cmd_x264)
     assert FORBIDDEN_MIC_RE.search(joined_live) is None
+    assert "-thread_queue_size 2048 -f rawvideo" in joined_live
+    assert "-thread_queue_size 2048 -f s16le" in joined_live
     assert "-c:v libx264" in joined_live
     assert "-f tee" in joined_live
-    assert "[f=flv:onfail=ignore]" in joined_live
+    assert "[f=flv:onfail=ignore]" not in joined_live
+    assert "[f=flv]rtmp://" in joined_live
+    assert f"[f=matroska:onfail=ignore]{tmp_path / 'rec.mkv'}" in joined_live
 
 
 # ---------------------------------------------------------------------------
@@ -860,3 +869,528 @@ def test_launch_headless_live_cli_cast_and_poll_args() -> None:
 
     with pytest.raises(SystemExit):
         launch_headless_live.parse_args(["--poll-options", "只有一个选项"])
+
+    assert default_args.max_rtmp_reconnects == 2
+    reconnect_args = launch_headless_live.parse_args(["--max-rtmp-reconnects", "4"])
+    assert reconnect_args.max_rtmp_reconnects == 4
+    with pytest.raises(SystemExit):
+        launch_headless_live.parse_args(["--max-rtmp-reconnects", "-1"])
+
+
+# ---------------------------------------------------------------------------
+# 8. Kaizen K15: RTMP Fault Watchdog, Bounded Reconnect & TTS Circuit Breaker
+# ---------------------------------------------------------------------------
+
+
+def test_k15_ffmpeg_stderr_rtmp_drop_raises_scrubbed_disconnect_error(tmp_path: Path) -> None:
+    secret_key = "k15_super_secret_drop_key_999"
+    streamer = HeadlessLiveStreamer(
+        renderer=HeadlessStageRenderer(repo_root=tmp_path),
+        audio_mixer=SyntheticAudioMixer(use_edge_tts=False),
+        director=DualAILiveDirector(responder=OfflineBanterResponder()),
+        video_encoder="libx264",
+    )
+
+    fake_proc = MagicMock(spec=subprocess.Popen)
+    fake_proc.poll.return_value = 1
+    fake_proc.returncode = 1
+    fake_proc.wait.return_value = 1
+    fake_proc.stderr = io.BytesIO(
+        (
+            "[tee @ 0xdeadbeef] Slave muxer #0 failed: Broken pipe "
+            f"rtmp://live-push.bilivideo.com/live-bvc/?streamname=live_12345&key={secret_key}\n"
+        ).encode("utf-8")
+    )
+
+    def _fake_popen(_cmd: List[str], **_kwargs: Any) -> MagicMock:
+        # Real Popen inherits dup'd FDs in child while parent still closes video_r/audio_r;
+        # returning immediately simulates an exited child without closing parent's FDs prematurely.
+        return fake_proc
+
+    with (
+        patch("core.live_studio.headless_streamer.subprocess.Popen", side_effect=_fake_popen),
+        pytest.raises(RtmpStreamDisconnectedError) as exc_info,
+    ):
+        asyncio.run(
+            streamer._run_av_pipeline(
+                mode="go-live",
+                duration_sec=2.0,
+                rtmp_url=f"rtmp://live-push.bilivideo.com/live-bvc/?streamname=live_12345&key={secret_key}",
+                realtime_pacing=False,
+            )
+        )
+
+    err = exc_info.value
+    assert "Slave muxer #0 failed" in err.reason
+    assert secret_key not in err.reason
+    assert secret_key not in str(err)
+    assert "live-push.bilivideo.com" not in err.reason
+    assert REDACTED_RTMP_TOKEN in err.reason
+    assert streamer._stop_event.is_set() is False
+
+
+def test_k15_live_status_offline_strikes_after_grace_triggers_disconnect(tmp_path: Path) -> None:
+    streamer = HeadlessLiveStreamer(
+        renderer=HeadlessStageRenderer(repo_root=tmp_path, fps=10),
+        audio_mixer=SyntheticAudioMixer(fps=10, use_edge_tts=False),
+        director=DualAILiveDirector(responder=OfflineBanterResponder()),
+        fps=10,
+        video_encoder="libx264",
+        live_status_grace_sec=1.0,
+        offline_strikes_threshold=2,
+        telemetry_poll_interval_sec=0.05,
+    )
+    # Verify __init__ enforces >= 5.0s minimum grace period by default
+    assert streamer.live_status_grace_sec == 5.0
+    # Shorten grace window on instance for fast deterministic test execution
+    streamer.live_status_grace_sec = 0.08
+
+    # Call 1 (during grace): offline -> ignored; Call 2 (post-grace): offline (strike 1);
+    # Call 3: online -> resets strikes to 0; Calls 4 & 5: offline -> hits threshold 2!
+    telemetry_responses = iter(
+        [
+            {"ok": True, "online": 0, "watched_num": 0, "watched_text": "0人看过", "attention": 15, "live_status": 0},
+            {"ok": True, "online": 0, "watched_num": 0, "watched_text": "0人看过", "attention": 15, "live_status": 0},
+            {"ok": True, "online": 2, "watched_num": 5, "watched_text": "5人看过", "attention": 16, "live_status": 1},
+            {"ok": True, "online": 0, "watched_num": 5, "watched_text": "5人看过", "attention": 16, "live_status": 0},
+            {"ok": True, "online": 0, "watched_num": 5, "watched_text": "5人看过", "attention": 16, "live_status": 0},
+        ]
+    )
+    telemetry_calls = 0
+
+    class _FakeTelemetryCtrl:
+        def get_live_telemetry(self, _room_id: int) -> Dict[str, Any]:
+            nonlocal telemetry_calls
+            telemetry_calls += 1
+            return next(
+                telemetry_responses,
+                {
+                    "ok": True,
+                    "online": 0,
+                    "watched_num": 5,
+                    "watched_text": "5人看过",
+                    "attention": 16,
+                    "live_status": 0,
+                },
+            )
+
+    terminated = threading.Event()
+    drain_threads: List[threading.Thread] = []
+
+    def _drain_fd(fd: int) -> None:
+        try:
+            while os.read(fd, 65536):
+                pass
+        except OSError:
+            pass
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+
+    fake_proc = MagicMock(spec=subprocess.Popen)
+    fake_proc.returncode = None
+    fake_proc.stderr = io.BytesIO(b"")
+
+    def _poll() -> Optional[int]:
+        return -15 if terminated.is_set() else None
+
+    def _terminate() -> None:
+        terminated.set()
+        fake_proc.returncode = -15
+
+    fake_proc.poll.side_effect = _poll
+    fake_proc.terminate.side_effect = _terminate
+    fake_proc.wait.side_effect = lambda timeout=None: -15
+
+    def _fake_popen(_cmd: List[str], **kwargs: Any) -> MagicMock:
+        for fd in kwargs.get("pass_fds", ()):
+            child_fd = os.dup(fd)
+            th = threading.Thread(target=_drain_fd, args=(child_fd,), daemon=True)
+            th.start()
+            drain_threads.append(th)
+        return fake_proc
+
+    with (
+        patch("core.live_studio.headless_streamer.subprocess.Popen", side_effect=_fake_popen),
+        pytest.raises(RtmpStreamDisconnectedError) as exc_info,
+    ):
+        asyncio.run(
+            streamer._run_av_pipeline(
+                mode="go-live",
+                duration_sec=5.0,
+                rtmp_url="rtmp://live-push.bilivideo.com/live-bvc/?streamname=live_1&key=secret",
+                telemetry_ctrl=_FakeTelemetryCtrl(),  # type: ignore[arg-type]
+                telemetry_room_id=123456,
+                realtime_pacing=True,
+            )
+        )
+
+    for th in drain_threads:
+        th.join(timeout=2.0)
+
+    assert exc_info.value.reason == "bilibili_room_live_status_offline"
+    assert telemetry_calls >= 5
+    assert streamer._stop_event.is_set() is False
+
+
+def test_k15_run_go_live_reconnects_once_and_rotates_recording(tmp_path: Path) -> None:
+    secret_key_1 = "secret_rtmp_key_seg_one_111"
+    secret_key_2 = "secret_rtmp_key_seg_two_222"
+    start_calls = 0
+    stop_calls = 0
+    stop_data_keys: List[str] = []
+
+    class _ReconnectCtrl:
+        def __init__(self) -> None:
+            self.vault = _make_vault_with_cookies(tmp_path)
+
+        def get_my_room_info(self) -> RoomStatus:
+            return RoomStatus(room_id=66778899, uid=11223344, title="K15 Reconnect Test", area_v2_id=1062)
+
+        def update_room_title(self, _room_id: int, title: str) -> Dict[str, Any]:
+            return {"ok": True, "code": 0, "room_id": REDACTED_TOKEN, "title": title, "message": "ok"}
+
+        def start_live(self, room_id: int, *, area_v2: int = 1062) -> StartLiveResult:
+            nonlocal start_calls
+            start_calls += 1
+            key = secret_key_1 if start_calls == 1 else secret_key_2
+            return StartLiveResult(
+                ok=True,
+                status="live",
+                code=0,
+                room_id=room_id,
+                rtmp_addr="rtmp://live-push.bilivideo.com/live-bvc/",
+                rtmp_code=f"?streamname=live_66778899&key={key}",
+                rtmp_url=f"rtmp://live-push.bilivideo.com/live-bvc/?streamname=live_66778899&key={key}",
+                live_key=f"live_key_part_{start_calls}",
+            )
+
+        def stop_live(self, _room_id: int) -> Dict[str, Any]:
+            nonlocal stop_calls
+            stop_calls += 1
+            return {"ok": True, "code": 0, "room_id": REDACTED_TOKEN, "message": "stopped"}
+
+        def get_stop_live_data(self, live_key: str) -> Dict[str, Any]:
+            stop_data_keys.append(live_key)
+            return {"ok": True, "code": 0, "live_time_sec": 10, "watched_count": 3}
+
+    class _DummyDanmaku:
+        async def events(self) -> Any:
+            if False:
+                yield None
+
+        async def close(self) -> None:
+            return
+
+    emitted: List[Tuple[str, Dict[str, Any]]] = []
+    streamer = HeadlessLiveStreamer(
+        renderer=HeadlessStageRenderer(repo_root=tmp_path),
+        audio_mixer=SyntheticAudioMixer(use_edge_tts=False),
+        director=DualAILiveDirector(responder=OfflineBanterResponder()),
+        controller=_ReconnectCtrl(),  # type: ignore[arg-type]
+        video_encoder="libx264",
+        status_callback=lambda tag, payload: emitted.append((tag, payload)),
+    )
+
+    seen_record_paths: List[Optional[Path]] = []
+    seen_rtmp_urls: List[Optional[str]] = []
+    pipeline_calls = 0
+
+    async def _fake_pipeline(**kwargs: Any) -> Dict[str, Any]:
+        nonlocal pipeline_calls
+        pipeline_calls += 1
+        seen_record_paths.append(kwargs.get("record_path"))
+        seen_rtmp_urls.append(kwargs.get("rtmp_url"))
+        if pipeline_calls == 1:
+            streamer._last_segment_frames_written = 30
+            streamer._last_segment_duration_sec = 1.0
+            raise RtmpStreamDisconnectedError(
+                f"Slave muxer #0 failed: Broken pipe rtmp://live-push.bilivideo.com/live-bvc/?key={secret_key_1}"
+            )
+        return {
+            "frames_written": 60,
+            "duration_sec": 2.0,
+            "encoder": "libx264",
+            "turns_emitted": 2,
+            "danmaku_count": 0,
+            "gift_count": 0,
+            "highlights_recorded": 0,
+            "frame_dump_path": None,
+            "stderr_tail": [],
+        }
+
+    record_dir = tmp_path / "rec_ok"
+    with patch.object(streamer, "_run_av_pipeline", side_effect=_fake_pipeline):
+        res = asyncio.run(
+            streamer.run_go_live(
+                duration_sec=10.0,
+                area_id=1062,
+                record_dir=record_dir,
+                danmaku_client_factory=lambda _rid: _DummyDanmaku(),
+                realtime_pacing=False,
+                max_reconnects=2,
+                reconnect_backoff_sec=0.01,
+            )
+        )
+
+    assert res["ok"] is True
+    assert res["status"] == "stopped"
+    assert res["reconnect_attempts"] == 1
+    assert len(res["disconnect_reasons"]) == 1
+    assert "Slave muxer #0 failed" in res["disconnect_reasons"][0]
+    assert res["frames_written"] == 90
+    assert res["duration_sec"] == 3.0
+    assert start_calls == 2
+    assert stop_calls == 1
+    assert stop_data_keys == ["live_key_part_2"]
+    assert seen_record_paths[0] == record_dir / "live_recording.mkv"
+    assert seen_record_paths[1] == record_dir / "live_recording_part2.mkv"
+    assert secret_key_1 in str(seen_rtmp_urls[0])
+    assert secret_key_2 in str(seen_rtmp_urls[1])
+
+    tags = [t for t, _ in emitted]
+    assert "LIVE_STARTED" in tags
+    assert "LIVE_RECONNECTING" in tags
+    assert "LIVE_STOPPED" in tags
+    reconn_payload = next(p for t, p in emitted if t == "LIVE_RECONNECTING")
+    assert reconn_payload["attempt"] == 1
+
+    report_path = record_dir / "live_session_report.json"
+    assert report_path.is_file()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["reconnect_attempts"] == 1
+    assert len(report["disconnect_reasons"]) == 1
+
+    serialized = json.dumps(res, ensure_ascii=False) + json.dumps(emitted, ensure_ascii=False) + json.dumps(report)
+    for forbidden in (secret_key_1, secret_key_2, "66778899", "11223344", "live-push.bilivideo.com"):
+        assert forbidden not in serialized
+
+
+def test_k15_run_go_live_exhausts_reconnects_and_stops_cleanly(tmp_path: Path) -> None:
+    start_calls = 0
+    stop_calls = 0
+
+    class _AlwaysDropCtrl:
+        def __init__(self) -> None:
+            self.vault = _make_vault_with_cookies(tmp_path)
+
+        def get_my_room_info(self) -> RoomStatus:
+            return RoomStatus(room_id=77889900, uid=99887766, title="Exhaust Test", area_v2_id=1062)
+
+        def start_live(self, room_id: int, *, area_v2: int = 1062) -> StartLiveResult:
+            nonlocal start_calls
+            start_calls += 1
+            return StartLiveResult(
+                ok=True,
+                status="live",
+                code=0,
+                room_id=room_id,
+                rtmp_addr="rtmp://live-push.bilivideo.com/live-bvc/",
+                rtmp_code=f"?streamname=live_77889900&key=exhaust_secret_{start_calls}",
+                rtmp_url=f"rtmp://live-push.bilivideo.com/live-bvc/?streamname=live_77889900&key=exhaust_secret_{start_calls}",
+                live_key=f"exhaust_lk_{start_calls}",
+            )
+
+        def stop_live(self, _room_id: int) -> Dict[str, Any]:
+            nonlocal stop_calls
+            stop_calls += 1
+            return {"ok": True, "code": 0, "room_id": REDACTED_TOKEN, "message": "stopped"}
+
+        def get_stop_live_data(self, _live_key: str) -> Dict[str, Any]:
+            return {"ok": True, "code": 0}
+
+    class _DummyDanmaku:
+        async def events(self) -> Any:
+            if False:
+                yield None
+
+        async def close(self) -> None:
+            return
+
+    streamer = HeadlessLiveStreamer(
+        renderer=HeadlessStageRenderer(repo_root=tmp_path),
+        audio_mixer=SyntheticAudioMixer(use_edge_tts=False),
+        director=DualAILiveDirector(responder=OfflineBanterResponder()),
+        controller=_AlwaysDropCtrl(),  # type: ignore[arg-type]
+        video_encoder="libx264",
+    )
+
+    with patch.object(
+        streamer,
+        "_run_av_pipeline",
+        side_effect=RtmpStreamDisconnectedError("Connection reset by peer"),
+    ):
+        res = asyncio.run(
+            streamer.run_go_live(
+                duration_sec=10.0,
+                area_id=1062,
+                record_dir=tmp_path / "rec_exhaust",
+                danmaku_client_factory=lambda _rid: _DummyDanmaku(),
+                realtime_pacing=False,
+                max_reconnects=2,
+                reconnect_backoff_sec=0.01,
+            )
+        )
+
+    assert res["ok"] is False
+    assert res["status"] == "error"
+    assert res["reconnect_attempts"] == 2
+    assert len(res["disconnect_reasons"]) == 3
+    assert start_calls == 3
+    assert stop_calls == 1
+    assert res["stop_result"]["ok"] is True
+    assert "exhaust_secret_" not in json.dumps(res, ensure_ascii=False)
+
+
+def test_k15_edge_tts_circuit_breaker_opens_and_recovers() -> None:
+    mixer = SyntheticAudioMixer(
+        use_edge_tts=True,
+        tts_backend="edge",
+        edge_tts_timeout_sec=1.0,
+        edge_failure_threshold=2,
+        edge_cooldown_sec=0.15,
+        edge_max_attempts=1,
+    )
+    turn = PersonaTurn(turn_id=1, speaker_id="dafeiyu", speaker_name="DeepSeek 蓝色大肥鱼", text="测试断路器回退")
+    communicate_calls = 0
+
+    def _failing_communicate(*_args: Any, **_kwargs: Any) -> Any:
+        nonlocal communicate_calls
+        communicate_calls += 1
+        raise RuntimeError("edge_tts_503")
+
+    class _OkCommunicate:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            nonlocal communicate_calls
+            communicate_calls += 1
+
+        async def stream(self) -> Any:
+            yield {"type": "audio", "data": b"fake_mp3_bytes"}
+
+    async def _run_scenario() -> None:
+        # 1) First two failures trip the circuit breaker (threshold=2)
+        with patch("edge_tts.Communicate", side_effect=_failing_communicate):
+            pcm1 = await mixer.synthesize_turn_pcm(turn)
+            assert len(pcm1) >= mixer.samples_per_frame
+            assert communicate_calls == 1
+            assert mixer.tts_stats["edge_skipped_cooldown"] == 0
+
+            pcm2 = await mixer.synthesize_turn_pcm(turn)
+            assert len(pcm2) >= mixer.samples_per_frame
+            assert communicate_calls == 2
+            assert mixer.tts_stats["edge_skipped_cooldown"] == 0
+
+            # 2) Third call during cooldown MUST skip edge_tts.Communicate immediately
+            pcm3 = await mixer.synthesize_turn_pcm(turn)
+            assert len(pcm3) >= mixer.samples_per_frame
+            assert communicate_calls == 2
+            assert mixer.tts_stats["edge_skipped_cooldown"] == 1
+            assert mixer.tts_stats["offline"] == 3
+
+        # 3) Once cooldown expires, probe edge_tts again and reset failure counter on success
+        await asyncio.sleep(0.18)
+        valid_stereo = np.full((mixer.samples_per_frame * 4, 2), 0.25, dtype=np.float32)
+        with (
+            patch("edge_tts.Communicate", side_effect=_OkCommunicate),
+            patch.object(mixer, "_decode_mp3_bytes_to_stereo", return_value=valid_stereo),
+        ):
+            pcm4 = await mixer.synthesize_turn_pcm(turn)
+            assert communicate_calls == 3
+            assert mixer.tts_stats["edge"] == 1
+            assert mixer._edge_consecutive_failures == 0
+            assert np.allclose(pcm4, valid_stereo)
+
+    asyncio.run(_run_scenario())
+
+
+def test_k15_run_go_live_reconnect_face_auth_60024_never_bypasses(tmp_path: Path) -> None:
+    start_calls = 0
+    stop_calls = 0
+    qr_path = tmp_path / "reconnect_face_auth.png"
+
+    class _FaceAuthOnReconnectCtrl:
+        def __init__(self) -> None:
+            self.vault = _make_vault_with_cookies(tmp_path)
+
+        def get_my_room_info(self) -> RoomStatus:
+            return RoomStatus(room_id=33445566, uid=55443322, title="Reconnect 60024 Test", area_v2_id=1062)
+
+        def start_live(self, room_id: int, *, area_v2: int = 1062) -> StartLiveResult:
+            nonlocal start_calls
+            start_calls += 1
+            if start_calls == 1:
+                return StartLiveResult(
+                    ok=True,
+                    status="live",
+                    code=0,
+                    room_id=room_id,
+                    rtmp_addr="rtmp://live-push.bilivideo.com/live-bvc/",
+                    rtmp_code="?streamname=live_33445566&key=first_seg_secret",
+                    rtmp_url="rtmp://live-push.bilivideo.com/live-bvc/?streamname=live_33445566&key=first_seg_secret",
+                    live_key="lk_seg_1",
+                )
+            return StartLiveResult(
+                ok=False,
+                status="face_auth_required",
+                code=FACE_AUTH_REQUIRED_CODE,
+                room_id=room_id,
+                face_auth_qr_path=qr_path,
+                message="Bilibili face authentication required (code=60024).",
+            )
+
+        def stop_live(self, _room_id: int) -> Dict[str, Any]:
+            nonlocal stop_calls
+            stop_calls += 1
+            return {"ok": True, "code": 0, "room_id": REDACTED_TOKEN, "message": "stopped"}
+
+        def get_stop_live_data(self, _live_key: str) -> Dict[str, Any]:
+            return {"ok": True, "code": 0}
+
+    class _DummyDanmaku:
+        async def events(self) -> Any:
+            if False:
+                yield None
+
+        async def close(self) -> None:
+            return
+
+    emitted: List[Tuple[str, Dict[str, Any]]] = []
+    streamer = HeadlessLiveStreamer(
+        renderer=HeadlessStageRenderer(repo_root=tmp_path),
+        audio_mixer=SyntheticAudioMixer(use_edge_tts=False),
+        director=DualAILiveDirector(responder=OfflineBanterResponder()),
+        controller=_FaceAuthOnReconnectCtrl(),  # type: ignore[arg-type]
+        video_encoder="libx264",
+        status_callback=lambda tag, payload: emitted.append((tag, payload)),
+    )
+
+    pipeline_calls = 0
+
+    async def _fail_first(**_kwargs: Any) -> Dict[str, Any]:
+        nonlocal pipeline_calls
+        pipeline_calls += 1
+        raise RtmpStreamDisconnectedError("Failed to update header with correct duration")
+
+    with patch.object(streamer, "_run_av_pipeline", side_effect=_fail_first):
+        res = asyncio.run(
+            streamer.run_go_live(
+                duration_sec=10.0,
+                area_id=1062,
+                danmaku_client_factory=lambda _rid: _DummyDanmaku(),
+                realtime_pacing=False,
+                max_reconnects=2,
+                reconnect_backoff_sec=0.01,
+            )
+        )
+
+    assert res["ok"] is False
+    assert pipeline_calls == 1
+    assert start_calls == 2
+    assert stop_calls == 1
+    assert res["reconnect_attempts"] == 1
+    tags = [t for t, _ in emitted]
+    assert "LIVE_RECONNECTING" in tags
+    assert "FACE_AUTH_REQUIRED" in tags
+    assert "LIVE_STOPPED" in tags
+    assert "first_seg_secret" not in json.dumps(res, ensure_ascii=False)
+    assert "33445566" not in json.dumps(res, ensure_ascii=False)
