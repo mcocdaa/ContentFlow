@@ -913,6 +913,118 @@ def cmd_benchmark(args):
     return 0
 
 
+def _configure_breakout_radar_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "--queries",
+        default="AI博弈实验,AI开源工具,DeepSeek大肥鱼,AI科幻短片",
+        help="Comma-separated Bilibili WBI search queries",
+    )
+    parser.add_argument(
+        "--max-followers",
+        type=int,
+        default=50000,
+        help="Maximum creator follower count for dark-horse filter (default: 50000)",
+    )
+    parser.add_argument(
+        "--min-views",
+        type=int,
+        default=30000,
+        help="Minimum video views for dark-horse filter (default: 30000)",
+    )
+    parser.add_argument(
+        "--min-duration",
+        type=int,
+        default=45,
+        help="Minimum video duration in seconds (default: 45)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=12,
+        help="Maximum search candidates fetched per query (default: 12)",
+    )
+    parser.add_argument(
+        "--horse-race",
+        action="store_true",
+        help="Evaluate local channel horse-race performance only (zero network calls)",
+    )
+    parser.add_argument(
+        "--analytics-json",
+        default=None,
+        help="Optional path to redacted Bilibili analytics JSON snapshot",
+    )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Save breakout_radar_latest.json and breakout_radar_latest.md to library/benchmarks/",
+    )
+    parser.add_argument("--json", action="store_true", help="Output structured JSON report to stdout")
+    return parser
+
+
+def cmd_breakout_radar(args: Any) -> int:
+    """Runs Bilibili dark-horse breakout radar and/or local channel horse-race evaluation (Zero-PII)."""
+    import re
+
+    from core.breakout_radar import DEFAULT_ANALYTICS_SNAPSHOT, BreakoutRadarEngine
+
+    if isinstance(args, (list, tuple)):
+        parsed_args = _configure_breakout_radar_parser(argparse.ArgumentParser(prog="breakout-radar")).parse_args(
+            list(args)
+        )
+    else:
+        parsed_args = args
+
+    horse_race_only = bool(getattr(parsed_args, "horse_race", False))
+    analytics_arg = getattr(parsed_args, "analytics_json", None)
+    analytics_path = Path(analytics_arg) if analytics_arg else None
+
+    engine = BreakoutRadarEngine(
+        root_dir=CONTENTFLOW_ROOT,
+        cookies={} if horse_race_only else None,
+    )
+
+    radar_report: dict[str, Any] | None = None
+    if not horse_race_only:
+        raw_queries = str(getattr(parsed_args, "queries", "") or "")
+        query_list = [q.strip() for q in re.split(r"[,，]", raw_queries) if q.strip()]
+        radar_report = engine.scan_dark_horses(
+            queries=query_list or None,
+            max_followers=int(getattr(parsed_args, "max_followers", 50000)),
+            min_views=int(getattr(parsed_args, "min_views", 30000)),
+            min_duration_sec=int(getattr(parsed_args, "min_duration", 45)),
+            per_query_limit=int(getattr(parsed_args, "limit", 12)),
+        )
+
+    horse_race_report: dict[str, Any] | None = None
+    if horse_race_only:
+        horse_race_report = engine.evaluate_channel_horse_race(analytics_json_path=analytics_path)
+    else:
+        snap_target = analytics_path if analytics_path is not None else DEFAULT_ANALYTICS_SNAPSHOT
+        if snap_target.exists():
+            horse_race_report = engine.evaluate_channel_horse_race(analytics_json_path=snap_target)
+
+    md_text = engine.format_radar_markdown(radar_report, horse_race_report)
+    payload: dict[str, Any] = {
+        "mode": "horse_race" if horse_race_only else "full",
+        "radar": radar_report,
+        "horse_race": horse_race_report,
+    }
+
+    if bool(getattr(parsed_args, "save", False)):
+        json_path, md_path = engine.save_report(payload, md_text)
+        payload["saved_files"] = {"json": str(json_path), "markdown": str(md_path)}
+
+    if bool(getattr(parsed_args, "json", False)):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(md_text, end="")
+        if "saved_files" in payload:
+            print(f"[+] Saved JSON:     {payload['saved_files']['json']}")
+            print(f"[+] Saved Markdown: {payload['saved_files']['markdown']}")
+    return 0
+
+
 def cmd_assemble_episode(args):
     """Assembles a multi-act 60FPS episode from an EpisodeSpec JSON manifest."""
     from core.episode_assembler import EpisodeAssembler
@@ -1274,6 +1386,14 @@ def main():
     p_bm.add_argument("--no-save", action="store_true", help="Do not write JSON report to library/benchmarks/")
     p_bm.add_argument("--json", action="store_true", help="Output structured JSON report to stdout")
     p_bm.set_defaults(func=cmd_benchmark)
+
+    # breakout-radar
+    p_br = subparsers.add_parser(
+        "breakout-radar",
+        help="Scan Bilibili small-account dark-horse breakouts and evaluate local channel horse-race tracks",
+    )
+    _configure_breakout_radar_parser(p_br)
+    p_br.set_defaults(func=cmd_breakout_radar)
 
     # assemble-episode
     p_ae = subparsers.add_parser("assemble-episode", help="Assemble a multi-act 60FPS MP4 from an EpisodeSpec JSON")
