@@ -15,7 +15,9 @@ import gc
 import json
 import math
 import subprocess
+import tempfile
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
@@ -53,6 +55,7 @@ class EpisodeSpec:
     loudnorm_target_i: float = -14.0
     hook_banner_text: Optional[str] = None
     hook_banner_sec: float = 1.6
+    copy_video_stream: bool = False
 
 
 def _crop_frame_to_target(frm: np.ndarray, target_w: int = 1920, target_h: int = 1080) -> np.ndarray:
@@ -564,6 +567,193 @@ def apply_hook_banner_overlay(
     return out
 
 
+def _probe_stream(path: Path, selector: str) -> Dict[str, Any]:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", selector, "-show_streams", "-of", "json", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    streams = json.loads(result.stdout)["streams"]
+    if len(streams) != 1:
+        raise ValueError(f"copy_video_stream requires a {selector} stream in {path.name}")
+    return cast(Dict[str, Any], streams[0])
+
+
+def _check_packet_timeline(path: Path, selector: str, end: int, frame_ticks: Optional[int] = None) -> int:
+    """Verify a complete interval starting at PTS zero. MP4 delivers H.264 packets in decode order."""
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        selector,
+        "-show_packets",
+        "-show_entries",
+        "packet=pts,duration,flags:packet_side_data=skip_samples,discard_padding",
+        "-of",
+        "compact=p=0",
+        str(path),
+    ]
+    next_pts = count = 0
+    pending: set[int] = set()
+    with subprocess.Popen(cmd, text=True, stdout=subprocess.PIPE) as probe:
+        assert probe.stdout is not None
+        try:
+            for line in probe.stdout:
+                if not line.strip():
+                    continue
+                fields = dict(part.split("=", 1) for part in line.strip().split("|") if "=" in part)
+                try:
+                    pts, duration = int(fields["pts"]), int(fields["duration"])
+                except (KeyError, ValueError) as exc:
+                    raise ValueError(f"copy_video_stream packet timing unavailable for {path.name}") from exc
+                bad_flags = {"C", "D"}.intersection(fields.get("flags", ""))
+                if duration <= 0 or pts < next_pts or pts + duration > end or bad_flags:
+                    raise ValueError(f"copy_video_stream invalid {selector} packet at {pts} in {path.name}")
+                if int(fields.get("skip_samples", 0)) or int(fields.get("discard_padding", 0)):
+                    raise ValueError(f"copy_video_stream found trimmed packets in {path.name}")
+                if frame_ticks is None:
+                    if pts != next_pts:
+                        raise ValueError(f"copy_video_stream discontinuous audio at {pts} in {path.name}")
+                    next_pts += duration
+                else:
+                    if duration != frame_ticks or pts % frame_ticks or pts in pending:
+                        raise ValueError(f"copy_video_stream non-CFR video at {pts} in {path.name}")
+                    pending.add(pts)
+                    while next_pts in pending:
+                        pending.remove(next_pts)
+                        next_pts += frame_ticks
+                    # H.264 reorders B frames. Bound memory even for malformed input.
+                    if len(pending) > 64:
+                        raise ValueError(f"copy_video_stream excessive packet reordering or a gap in {path.name}")
+                count += 1
+            if probe.wait():
+                raise RuntimeError(f"ffprobe could not read the complete {selector} stream in {path.name}")
+        finally:
+            if probe.poll() is None:
+                probe.kill()
+    if not count or pending or next_pts != end:
+        raise ValueError(f"copy_video_stream incomplete or nonzero-start {selector} timeline in {path.name}")
+    return count
+
+
+def _assemble_with_stream_copy(spec: EpisodeSpec) -> Dict[str, Any]:
+    if len(spec.acts) != 1 or spec.subtitle_srt_path or spec.hook_banner_text:
+        raise ValueError("copy_video_stream requires one act without subtitles or a banner")
+    act = spec.acts[0]
+    if act.transition_in != "none" or act.beat_punch_bpm is not None:
+        raise ValueError("copy_video_stream cannot apply transitions or camera moves")
+
+    video = _probe_stream(act.video_path, "v:0")
+    aspect = Fraction(spec.width, spec.height)
+    expected = {
+        "codec_name": "h264",
+        "pix_fmt": "yuv420p",
+        "color_primaries": "bt709",
+        "color_transfer": "bt709",
+        "color_space": "bt709",
+        "width": spec.width,
+        "height": spec.height,
+        "sample_aspect_ratio": "1:1",
+        "display_aspect_ratio": f"{aspect.numerator}:{aspect.denominator}",
+        "field_order": "progressive",
+        "start_pts": 0,
+    }
+    for key, value in expected.items():
+        if video.get(key) != value:
+            raise ValueError(f"copy_video_stream requires {key}={value}, got {video.get(key)}")
+    if video.get("disposition", {}).get("attached_pic") or any(
+        d.get("side_data_type") == "Display Matrix" for d in video.get("side_data_list", [])
+    ):
+        raise ValueError("copy_video_stream requires a video track without display transforms")
+    fps = Fraction(str(spec.target_fps))
+    if fps <= 0 or any(Fraction(video[key]) != fps for key in ("r_frame_rate", "avg_frame_rate")):
+        raise ValueError("copy_video_stream source frame rate differs from target_fps")
+    video_tick = Fraction(video["time_base"])
+    step = 1 / (fps * video_tick)
+    if step.denominator != 1:
+        raise ValueError("copy_video_stream cannot represent constant frame intervals in the source time base")
+    video_end = int(video["duration_ts"])
+    count = _check_packet_timeline(act.video_path, "v:0", video_end, int(step))
+
+    audio = _probe_stream(spec.audio_path, "a:0")
+    audio_end = int(audio["duration_ts"])
+    if audio_end * Fraction(audio["time_base"]) != video_end * video_tick:
+        raise ValueError("copy_video_stream requires equal source video and audio durations")
+    _check_packet_timeline(spec.audio_path, "a:0", audio_end)
+
+    destination = spec.output_mp4_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Same filesystem for atomic replacement; concurrent attempts use independent staging files.
+    with tempfile.TemporaryDirectory(prefix=".assemble-", dir=destination.parent) as directory:
+        staged = Path(directory) / "master.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-v",
+                "error",
+                "-xerror",
+                "-i",
+                str(act.video_path),
+                "-i",
+                str(spec.audio_path),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-map_metadata",
+                "-1",
+                "-map_chapters",
+                "-1",
+                "-c:v",
+                "copy",
+                "-af",
+                f"loudnorm=I={spec.loudnorm_target_i}:LRA=7:TP=-1.5",
+                "-c:a",
+                "aac",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                "-b:a",
+                "192k",
+                "-movflags",
+                "+faststart",
+                "-movie_timescale",
+                "48000",
+                str(staged),
+            ],
+            check=True,
+        )
+        muxed = _probe_stream(staged, "v:0")
+        if (
+            muxed.get("start_pts") != 0
+            or int(muxed["nb_frames"]) != count
+            or int(muxed["duration_ts"]) * Fraction(muxed["time_base"]) != video_end * video_tick
+        ):
+            raise RuntimeError("stream copy did not preserve the video timeline")
+        soundtrack = _probe_stream(staged, "a:0")
+        if (
+            soundtrack.get("codec_name") != "aac"
+            or soundtrack.get("sample_rate") != "48000"
+            or soundtrack.get("channels") != 2
+            or soundtrack.get("start_pts") != 0
+            or abs(int(soundtrack["duration_ts"]) * Fraction(soundtrack["time_base"]) - video_end * video_tick)
+            > Fraction(1, 48000)
+        ):
+            raise RuntimeError("stream copy output has an invalid or truncated AAC soundtrack")
+        staged.replace(destination)
+    return {
+        "output_mp4": str(destination),
+        "frames": count,
+        "fps": spec.target_fps,
+        "duration_sec": round(count / spec.target_fps, 3),
+        "act_start_times": [0.0],
+    }
+
+
 class EpisodeAssembler:
     """Stitches multi-act raw video clips into a 1080P @ 60FPS H.264 master with -14 LUFS audio."""
 
@@ -590,7 +780,11 @@ class EpisodeAssembler:
         hook_banner_text = str(raw_banner).strip() if raw_banner is not None and str(raw_banner).strip() else None
         raw_banner_sec = data.get("hook_banner_sec")
         hook_banner_sec = float(raw_banner_sec) if raw_banner_sec is not None else 1.6
+        copy_stream = data.get("copy_video_stream", False)
+        if not isinstance(copy_stream, bool):
+            raise ValueError("copy_video_stream must be a boolean")
         return EpisodeSpec(
+            copy_video_stream=copy_stream,
             acts=acts,
             audio_path=_resolve(data["audio_path"]),
             output_mp4_path=_resolve(data["output_mp4_path"]),
@@ -618,6 +812,9 @@ class EpisodeAssembler:
             raise ValueError("EpisodeSpec.acts must not be empty")
         if not spec.audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {spec.audio_path}")
+
+        if spec.copy_video_stream:
+            return _assemble_with_stream_copy(spec)
 
         act_infos: List[Tuple[ActSpec, int, float, int]] = []
         for act in spec.acts:

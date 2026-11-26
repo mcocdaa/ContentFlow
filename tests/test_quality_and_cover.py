@@ -747,3 +747,54 @@ def test_quality_gate_original_work_credits_full_score(tmp_path: Path) -> None:
     assert blockers == []
     assert comp.score == 20.0
     assert comp.issues == []
+
+
+@pytest.mark.parametrize("style", ["tech_split", "vivid_scene"])
+def test_narrow_hero_preserves_width_in_both_cover_formats(tmp_path: Path, style: str) -> None:
+    from PIL import ImageChops
+
+    source = tmp_path / "four-three.jpg"
+    hero = tmp_path / "narrow.png"
+    Image.new("RGB", (160, 120), "#839a9c").save(source)
+    cutout = Image.new("RGBA", (100, 1500))
+    cutout.paste((240, 28, 31, 255), (45, 0, 55, 1500))
+    cutout.save(hero)
+    output = tmp_path / "cover.jpg"
+    result = CoverDesigner().design_cover(
+        source,
+        output,
+        hook_line1="",
+        hook_line2="",
+        hook_line3="",
+        badge_text="",
+        bottom_tags=[],
+        transparent_hero_path=hero,
+        hero_alpha_crop_top_ratio=1.0,
+        cover_style=style,
+    )
+    assert result.output_4x3_path is not None
+    boxes = []
+    for cover in (output, result.output_4x3_path):
+        with Image.open(cover) as im:
+            red, green, _ = im.convert("RGB").split()
+            bounds = ImageChops.subtract(red, green).point(lambda v: 255 if v > 140 else 0).getbbox()
+            assert bounds is not None
+            x0, y0, x1, y1 = bounds
+            # 1500-by-10 visible pixels scaled to height 1048 should remain ~7 pixels wide.
+            assert 6 <= x1 - x0 <= 8
+            assert 1046 <= y1 - y0 <= 1048
+            boxes.append(bounds)
+    left, top, right, bottom = boxes[0]
+    assert boxes[1] == (left - 240, top, right - 240, bottom)
+
+
+def test_panel_framing_keeps_a_circle_round_on_small_source() -> None:
+    from PIL import ImageDraw
+
+    source = Image.new("RGB", (48, 35))
+    ImageDraw.Draw(source).ellipse((15, 11, 27, 23), fill="white")
+    panel = CoverDesigner._fit_subject_panel(source, (0.0, 1.0, 0.5), 0.5, (192, 216))
+    bounds = panel.convert("L").point(lambda value: 255 if value > 127 else 0).getbbox()
+    assert bounds is not None
+    left, top, right, bottom = bounds
+    assert abs((right - left) - (bottom - top)) <= 1

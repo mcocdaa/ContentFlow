@@ -30,6 +30,8 @@
 
 ## 🚀 快速开始
 
+制作可操作的技术演示，可从透明 PNG 实验、双比例裁图和十分钟专注钟入手。示例含离线工具、视频绘制入口及素材许可。[HTML 动画卡片与可操作演示](library/motion_cards/README.md)
+
 ### 1. 启动 Studio WebUI 与 Canonical API 服务
 
 ```bash

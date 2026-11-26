@@ -44,6 +44,7 @@ vendor/ComfyUI/
 vendor/kling_cli/
 projects/*/delivery/staged_*/
 projects/*/delivery/bilibili_verify_receipt.json
+projects/*/delivery/bilibili_schedule_receipt.json
 projects/*/assets/bgm/
 projects/*/assets/clean_anchors/
 projects/*/assets/keyframes/
@@ -59,6 +60,10 @@ projects/*/assets/*.mp4
 projects/*/assets/*.wav
 projects/*/assets/*.mp3
 projects/*/assets/kling_cover_*.json
+!projects/025_whale_png_motion_lab/assets/cover-base.jpg
+!projects/025_whale_png_motion_lab/assets/whale-pet-icon.png
+!projects/025_whale_png_motion_lab/assets/whale-pet-front.png
+!projects/026_cover_crop_focus_lab/assets/interview_original.jpg
 library/analytics/bilibili_*.json
 library/analytics/bilibili_*.md
 library/benchmarks/

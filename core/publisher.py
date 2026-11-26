@@ -842,8 +842,12 @@ class BilibiliUploader:
 
         stmt_content = str(stmt.get("content") or "").strip()
         neutral_mark = str(arc.get("neutral_mark") or "").strip()
-        ai_declaration_verified = bool(
-            ("人工智能" in neutral_mark) or ("人工智能" in stmt_content) or (creation_statement_id == 101)
+        # The current official web form reads back {id: 1, content: "含AI生成内容"}.
+        # The older API used ID 101. ID 1 alone does not identify an AI declaration.
+        labels = [re.sub(r"\s+", "", s).casefold() for s in (neutral_mark, stmt_content)]
+        ai_declaration_verified = creation_statement_id == 101 or any(
+            s == "含ai生成内容" or ("人工智能" in s and not re.search(r"未|没有|不含|未经|非人工智能", s))
+            for s in labels
         )
 
         dtime_val: Optional[int] = None

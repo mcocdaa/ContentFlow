@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps, ImageStat
 
 from config.settings import DEFAULT_FONTS
 
@@ -233,6 +233,22 @@ class CoverDesigner:
             )
             cur_x += w + 20
 
+    @staticmethod
+    def _fit_subject_panel(
+        src: Image.Image, crop: Tuple[float, float, float], subject_x: float, size: Tuple[int, int]
+    ) -> Image.Image:
+        """Uniformly fill the panel from the requested vertical band and horizontal focal point."""
+        top_ratio, bottom_ratio, focus_x = crop
+        width, height = size
+        top = min(max(0, int(src.height * top_ratio)), src.height - 1)
+        bottom = min(src.height, max(top + 1, int(src.height * bottom_ratio)))
+        crop_h = min(bottom - top, src.width * height / width)
+        crop_w = min(src.width, crop_h * width / height)
+        left = max(0.0, min(src.width - crop_w, focus_x * src.width - subject_x * crop_w))
+        upper = top + (bottom - top - crop_h) / 2
+        box = (left, upper, min(src.width, left + crop_w), min(src.height, upper + crop_h))
+        return src.convert("RGB").resize(size, Image.Resampling.LANCZOS, box=box)
+
     def _compose_portrait_to_16x9(
         self,
         src: Image.Image,
@@ -243,11 +259,11 @@ class CoverDesigner:
         """Converts a 9:16 portrait image into a 1920x1080 viral cover."""
         # 1. Build 1920x1080 deep-sea / cyber glowing background from upscaled blurred base image
         bg_scale = max(TARGET_WIDTH / src.width, TARGET_HEIGHT / src.height) * 1.12
-        bg_w, bg_h = int(src.width * bg_scale), int(src.height * bg_scale)
-        bg = src.convert("RGB").resize((bg_w, bg_h), Image.Resampling.LANCZOS)
-        crop_x = (bg_w - TARGET_WIDTH) // 2
-        crop_y = (bg_h - TARGET_HEIGHT) // 3
-        bg = bg.crop((crop_x, crop_y, crop_x + TARGET_WIDTH, crop_y + TARGET_HEIGHT))
+        box_w, box_h = TARGET_WIDTH / bg_scale, TARGET_HEIGHT / bg_scale
+        left, top = (src.width - box_w) / 2, (src.height - box_h) / 3
+        bg = src.convert("RGB").resize(
+            (TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS, box=(left, top, left + box_w, top + box_h)
+        )
         bg = bg.filter(ImageFilter.GaussianBlur(radius=32))
         bg = ImageEnhance.Brightness(bg).enhance(0.42)
         bg = ImageEnhance.Color(bg).enhance(1.35)
@@ -276,13 +292,14 @@ class CoverDesigner:
         # 3. Place HD character subject in right golden visual zone x: 980..1760
         char_target_w = 780  # 1760 - 980 = 780
         char_scale = char_target_w / float(src.width)
-        char_h = int(src.height * char_scale)
-        char_img = src.convert("RGBA").resize((char_target_w, char_h), Image.Resampling.LANCZOS)
-
-        # Crop top/upper-mid portion (head, face, gesture, torso/skirt) to fit 1080 height
-        if char_h > TARGET_HEIGHT:
-            char_crop = char_img.crop((0, 0, char_target_w, TARGET_HEIGHT))
+        char_h = round(src.height * char_scale)
+        # Keep the top of tall portraits and bottom-align shorter ones without stretching the subject.
+        if char_h >= TARGET_HEIGHT:
+            char_crop = ImageOps.fit(
+                src.convert("RGBA"), (char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS, centering=(0.5, 0.0)
+            )
         else:
+            char_img = src.convert("RGBA").resize((char_target_w, char_h), Image.Resampling.LANCZOS)
             char_crop = Image.new("RGBA", (char_target_w, TARGET_HEIGHT), (0, 0, 0, 0))
             char_crop.paste(char_img, (0, TARGET_HEIGHT - char_h))
 
@@ -362,7 +379,7 @@ class CoverDesigner:
         hero_file = Path(transparent_hero_path) if transparent_hero_path else None
         use_transparent_hero = bool(hero_file is not None and hero_file.exists())
 
-        bg = src.convert("RGB").resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+        bg = ImageOps.fit(src.convert("RGB"), (TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
         bg = bg.filter(ImageFilter.GaussianBlur(radius=32 if use_transparent_hero else 28))
         bg = ImageEnhance.Brightness(bg).enhance(0.40 if use_transparent_hero else 0.38)
         bg = ImageEnhance.Color(bg).enhance(1.32 if use_transparent_hero else 1.30)
@@ -405,8 +422,8 @@ class CoverDesigner:
 
                 hw, hh = hero_rgba.size
                 scale = min(1048.0 / float(max(1, hh)), 840.0 / float(max(1, hw)))
-                scaled_w = max(32, int(round(hw * scale)))
-                scaled_h = max(32, int(round(hh * scale)))
+                scaled_w = max(1, int(round(hw * scale)))
+                scaled_h = max(1, int(round(hh * scale)))
                 hero_scaled = hero_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
 
             r_ch, g_ch, b_ch, a_ch = hero_scaled.split()
@@ -436,20 +453,9 @@ class CoverDesigner:
             hero_layer.paste(hero_final, (paste_x, paste_y))
             base.alpha_composite(hero_layer)
         else:
-            sw, sh = src.size
-            cy0_r, cy1_r, center_x_r = hero_crop_params if hero_crop_params is not None else (0.02, 0.76, 0.355)
+            crop = hero_crop_params if hero_crop_params is not None else (0.02, 0.76, 0.355)
             char_target_w = 960
-            cy0 = max(0, int(sh * cy0_r))
-            cy1 = min(sh, int(sh * cy1_r))
-            crop_h = max(64, cy1 - cy0)
-            crop_w = int(round(crop_h * (char_target_w / float(TARGET_HEIGHT))))
-            cx0 = max(0, int(round(center_x_r * sw - 0.422 * crop_w)))
-            cx1 = min(sw, cx0 + crop_w)
-            if cx1 - cx0 < crop_w:
-                cx0 = max(0, cx1 - crop_w)
-
-            char_crop_raw = src.convert("RGB").crop((cx0, cy0, max(cx0 + 32, cx1), max(cy0 + 32, cy1)))
-            char_resized = char_crop_raw.resize((char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+            char_resized = self._fit_subject_panel(src, crop, 0.422, (char_target_w, TARGET_HEIGHT))
             char_resized = ImageEnhance.Brightness(char_resized).enhance(1.06)
             char_resized = ImageEnhance.Contrast(char_resized).enhance(1.06)
             char_resized = char_resized.filter(ImageFilter.UnsharpMask(radius=1.6, percent=155, threshold=2))
@@ -529,7 +535,7 @@ class CoverDesigner:
         hero_file = Path(transparent_hero_path) if transparent_hero_path else None
         use_transparent_hero = bool(hero_file is not None and hero_file.exists())
 
-        bg = src.convert("RGB").resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+        bg = ImageOps.fit(src.convert("RGB"), (TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
         bg = bg.filter(ImageFilter.GaussianBlur(radius=10 if use_transparent_hero else 4))
 
         # Lift dark stages so feed thumbnails stay vivid and free of pitch-black dead space
@@ -569,8 +575,8 @@ class CoverDesigner:
 
                 hw, hh = hero_rgba.size
                 scale = min(1048.0 / float(max(1, hh)), 840.0 / float(max(1, hw)))
-                scaled_w = max(32, int(round(hw * scale)))
-                scaled_h = max(32, int(round(hh * scale)))
+                scaled_w = max(1, int(round(hw * scale)))
+                scaled_h = max(1, int(round(hh * scale)))
                 hero_scaled = hero_rgba.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
 
             r_ch, g_ch, b_ch, a_ch = hero_scaled.split()
@@ -609,20 +615,9 @@ class CoverDesigner:
             hero_layer.paste(hero_final, (paste_x, paste_y))
             base.alpha_composite(hero_layer)
         else:
-            sw, sh = src.size
-            cy0_r, cy1_r, center_x_r = hero_crop_params if hero_crop_params is not None else (0.04, 0.78, 0.50)
+            crop = hero_crop_params if hero_crop_params is not None else (0.04, 0.78, 0.50)
             char_target_w = 960
-            cy0 = max(0, int(sh * cy0_r))
-            cy1 = min(sh, int(sh * cy1_r))
-            crop_h = max(64, cy1 - cy0)
-            crop_w = int(round(crop_h * (char_target_w / float(TARGET_HEIGHT))))
-            cx0 = max(0, int(round(center_x_r * sw - 0.5 * crop_w)))
-            cx1 = min(sw, cx0 + crop_w)
-            if cx1 - cx0 < crop_w:
-                cx0 = max(0, cx1 - crop_w)
-
-            char_crop_raw = src.convert("RGB").crop((cx0, cy0, max(cx0 + 32, cx1), max(cy0 + 32, cy1)))
-            char_resized = char_crop_raw.resize((char_target_w, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+            char_resized = self._fit_subject_panel(src, crop, 0.50, (char_target_w, TARGET_HEIGHT))
             char_resized = ImageEnhance.Brightness(char_resized).enhance(1.10)
             char_resized = ImageEnhance.Contrast(char_resized).enhance(1.06)
             char_rgba = char_resized.convert("RGBA")
