@@ -50,7 +50,7 @@ DEFAULT_RADAR_QUERIES: Tuple[str, ...] = (
     "DeepSeek大肥鱼",
     "AI科幻短片",
 )
-DEFAULT_ANALYTICS_SNAPSHOT = Path("/home/mcocdaa/.contentflow/accounts/analytics/bilibili_latest.json")
+DEFAULT_ANALYTICS_SNAPSHOT = Path.home() / ".contentflow" / "accounts" / "analytics" / "bilibili_latest.json"
 
 HORSE_RACE_CORE_TRACKS: Tuple[str, ...] = (
     "trio_sitcom",
