@@ -1192,9 +1192,9 @@ def test_speech_deepseek_tts_wav_pcm_streaming_header_and_fallback(tmp_path: Pat
     assert seen_calls[0]["voice_id"] == "stella"
     assert seen_calls[0]["format"] == "wav"
     assert seen_calls[0]["filter_markdown"] is True
-    with wave.open(str(out_wav), "rb") as wf:
-        assert wf.getframerate() == 24000
-        assert wf.getnframes() == len(pcm_body) // 2
+    with wave.open(str(out_wav), "rb") as wf_read:
+        assert wf_read.getframerate() == 24000
+        assert wf_read.getnframes() == len(pcm_body) // 2
 
     # 2. Explicit voice=tide + .pcm output
     out_pcm = tmp_path / "ds_tide.pcm"

@@ -59,7 +59,12 @@ from core.live_studio import (
     scrub_rtmp_secrets,
     synthesize_offline_fallback_pcm,
 )
-from core.live_studio.headless_streamer import VOICE_MAP, VOICE_STYLE_MAP
+from core.live_studio.headless_streamer import (
+    CHARACTER_CUTOUT_RELS,
+    VOICE_MAP,
+    VOICE_STYLE_MAP,
+    _discover_git_main_repo_root,
+)
 from scripts import launch_headless_live
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -756,15 +761,30 @@ def test_voice_map_subset_of_verified_edge_tts_and_yowane_offline_distinct() -> 
     assert np.allclose(yow_pcm[:min_len, 0], yow_pcm[:min_len, 1], atol=1e-5)
 
 
-def test_trio_headless_stage_renderer_1080p_poll_widget_and_celebration() -> None:
+def test_trio_headless_stage_renderer_1080p_poll_widget_and_celebration(tmp_path: Path) -> None:
     renderer = HeadlessStageRenderer(cast=TRIO_CAST, follower_count=18, follower_goal=1000)
     assert renderer.cast == TRIO_CAST
     assert renderer.loaded_assets["background"] != "gradient_fallback"
     assert renderer.loaded_assets["dafeiyu"].startswith(("cutout:", "canonical:"))
     assert renderer.loaded_assets["gemini"].startswith(("cutout:", "canonical:"))
     assert renderer.loaded_assets["yowane"].startswith(("cutout:", "canonical:"))
-    # Main repo cutout discovery should resolve Yowane solo rooftop cutout inside share worktree
-    assert "yowane_rooftop_hero_cutout.png" in renderer.loaded_assets["yowane"]
+    yowane_cutout_rel = CHARACTER_CUTOUT_RELS["yowane"]
+    main_root = _discover_git_main_repo_root(REPO_ROOT)
+    has_local_cutout = (REPO_ROOT / yowane_cutout_rel).is_file() or (
+        main_root is not None and (main_root / yowane_cutout_rel).is_file()
+    )
+    if has_local_cutout:
+        assert "yowane_rooftop_hero_cutout.png" in renderer.loaded_assets["yowane"]
+    else:
+        assert "master_reference.jpg" in renderer.loaded_assets["yowane"]
+
+    # Deterministic cutout discovery verification even on fresh CI checkouts without local untracked cutouts
+    fake_yowane_cutout = tmp_path / yowane_cutout_rel
+    fake_yowane_cutout.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGBA", (120, 180), (200, 210, 240, 255)).save(fake_yowane_cutout, format="PNG")
+    cutout_renderer = HeadlessStageRenderer(cast=TRIO_CAST, repo_root=tmp_path)
+    assert cutout_renderer.loaded_assets["yowane"].startswith("cutout:")
+    assert "yowane_rooftop_hero_cutout.png" in cutout_renderer.loaded_assets["yowane"]
 
     poll = LivePollState(topic="下期主控弹幕公投", options=("大肥鱼", "Gemini娘", "弱音大姐头"))
     poll.record_vote("观众1", "扣1", now=10.0)
